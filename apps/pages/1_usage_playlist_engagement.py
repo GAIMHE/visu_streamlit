@@ -11,12 +11,16 @@ import streamlit as st
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 SRC_DIR = ROOT_DIR / "src"
+APPS_DIR = ROOT_DIR / "apps"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
+if str(APPS_DIR) not in sys.path:
+    sys.path.insert(0, str(APPS_DIR))
 
 from visu2.config import get_settings
 from visu2.contracts import DERIVED_SCHEMA_VERSION, RUNTIME_CORE_COLUMNS
 from visu2.reporting import load_derived_manifest
+from runtime_bootstrap import bootstrap_runtime_assets
 
 
 st.markdown(
@@ -133,6 +137,7 @@ def _build_filtered_fact(
 
 
 def main() -> None:
+    bootstrap_runtime_assets()
     settings = get_settings()
     derived_dir = settings.artifacts_derived_dir
     fact_path = derived_dir / "fact_attempt_core.parquet"

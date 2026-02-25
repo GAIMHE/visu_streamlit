@@ -9,8 +9,11 @@ import streamlit as st
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 SRC_DIR = ROOT_DIR / "src"
+APPS_DIR = ROOT_DIR / "apps"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
+if str(APPS_DIR) not in sys.path:
+    sys.path.insert(0, str(APPS_DIR))
 
 from visu2.config import get_settings
 from visu2.contracts import RUNTIME_CORE_COLUMNS
@@ -21,6 +24,7 @@ from visu2.objective_activity_matrix import (
     build_objective_activity_cells,
     build_ragged_matrix_payload,
 )
+from runtime_bootstrap import bootstrap_runtime_assets
 
 
 st.markdown(
@@ -194,6 +198,7 @@ def _extract_selected_cell(
 
 
 def main() -> None:
+    bootstrap_runtime_assets()
     settings = get_settings()
     activity_path = settings.artifacts_derived_dir / "agg_activity_daily.parquet"
     exercise_daily_path = settings.artifacts_derived_dir / "agg_exercise_daily.parquet"

@@ -12,8 +12,11 @@ import streamlit as st
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 SRC_DIR = ROOT_DIR / "src"
+APPS_DIR = ROOT_DIR / "apps"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
+if str(APPS_DIR) not in sys.path:
+    sys.path.insert(0, str(APPS_DIR))
 
 from visu2.bottleneck import apply_bottleneck_filters, build_bottleneck_frame
 from visu2.contracts import (
@@ -24,6 +27,7 @@ from visu2.contracts import (
 )
 from visu2.config import get_settings
 from visu2.reporting import load_derived_manifest
+from runtime_bootstrap import bootstrap_runtime_assets
 
 
 st.set_page_config(
@@ -270,6 +274,7 @@ def apply_filters(
 
 
 def main() -> None:
+    bootstrap_runtime_assets()
     settings = get_settings()
     derived_dir = settings.artifacts_derived_dir
     report_path = settings.consistency_report_path

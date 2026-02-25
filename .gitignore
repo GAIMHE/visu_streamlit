@@ -63,3 +63,6 @@ temp/
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# .env file for environment variables
+.env

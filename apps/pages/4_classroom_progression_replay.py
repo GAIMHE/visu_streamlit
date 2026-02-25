@@ -11,8 +11,11 @@ import streamlit as st
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 SRC_DIR = ROOT_DIR / "src"
+APPS_DIR = ROOT_DIR / "apps"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
+if str(APPS_DIR) not in sys.path:
+    sys.path.insert(0, str(APPS_DIR))
 
 from visu2.classroom_progression import (
     VALID_MODE_SCOPES,
@@ -22,6 +25,7 @@ from visu2.classroom_progression import (
     select_default_classroom,
 )
 from visu2.config import get_settings
+from runtime_bootstrap import bootstrap_runtime_assets
 
 
 st.markdown(
@@ -105,6 +109,7 @@ def _default_date_range(row: dict[str, object]) -> tuple[date, date]:
 
 
 def main() -> None:
+    bootstrap_runtime_assets()
     settings = get_settings()
     fact_path = settings.artifacts_derived_dir / "fact_attempt_core.parquet"
     if not fact_path.exists():

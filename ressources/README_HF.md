@@ -139,6 +139,30 @@ Recommended flow:
 4. Use `zpdes_rules.json` for dependency and activation/deactivation rules.
 5. Add exercise content from `exercises.json` if needed.
 
+## How the deployed Streamlit app consumes these files
+
+The deployed app uses local file paths internally (`data/...` and `artifacts/...`), but those files can be synchronized at startup from this Hugging Face dataset repository.
+
+Expected deployment pattern:
+1. Keep code in GitHub.
+2. Keep runtime files in this HF dataset repo with the same relative paths.
+3. Configure app secrets/env:
+   - `VISU2_HF_REPO_ID`
+   - `VISU2_HF_REVISION` (pin to a tag/commit)
+   - `HF_TOKEN` (private access)
+4. On startup, the app downloads required runtime files and then runs normally with local paths.
+
+Runtime subset usually needed by the app:
+- `data/learning_catalog.json`
+- `data/zpdes_rules.json`
+- `data/exercises.json`
+- `artifacts/reports/consistency_report.json`
+- `artifacts/reports/derived_manifest.json`
+- `artifacts/derived/*.parquet`
+
+Note:
+- `adaptiv_math_history.parquet` is not required at deployed runtime unless you rebuild derived artifacts inside the deployment environment.
+
 ## ZPDES mini glossary
 
 - `ZPDES`: adaptive progression mode where content availability depends on mastery rules.

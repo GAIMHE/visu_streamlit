@@ -59,6 +59,31 @@ Expected outputs after checks/build:
 - `artifacts/reports/derived_manifest.json`
 - `artifacts/derived/*.parquet`
 
+## Deploy with HF Runtime Assets
+For deployment, keep code on GitHub and store runtime data in a private Hugging Face dataset repository.
+
+Runtime sync is automatic at app startup when these keys are configured:
+- `VISU2_HF_REPO_ID` (for example: `org/visu2-runtime-data`)
+- `VISU2_HF_REVISION` (pinned tag/commit, for reproducible dashboards)
+- `HF_TOKEN` (private dataset access token)
+- Optional: `VISU2_HF_REPO_TYPE` (default: `dataset`)
+- Optional: `VISU2_HF_ALLOW_PATTERNS_JSON` (advanced override)
+
+If `VISU2_HF_REPO_ID` is not set, the app runs in local-only mode.
+
+Files expected in the HF dataset layout:
+- `data/learning_catalog.json`
+- `data/zpdes_rules.json`
+- `data/exercises.json`
+- `artifacts/reports/consistency_report.json`
+- `artifacts/reports/derived_manifest.json`
+- `artifacts/derived/*.parquet` (all runtime aggregates)
+
+Optional prefetch command (outside Streamlit):
+```bash
+uv run python scripts/sync_runtime_assets.py --repo-id <org/repo> --revision <tag> --strict
+```
+
 ## Streamlit Pages and Figures
 
 ### Page 1: Learning Analytics Overview (`apps/streamlit_app.py`)

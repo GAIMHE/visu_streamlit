@@ -11,8 +11,11 @@ import streamlit as st
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 SRC_DIR = ROOT_DIR / "src"
+APPS_DIR = ROOT_DIR / "apps"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
+if str(APPS_DIR) not in sys.path:
+    sys.path.insert(0, str(APPS_DIR))
 
 from visu2.config import get_settings
 from visu2.zpdes_dependencies import (
@@ -21,6 +24,7 @@ from visu2.zpdes_dependencies import (
     filter_dependency_graph_by_objectives,
     list_supported_module_codes_from_metadata,
 )
+from runtime_bootstrap import bootstrap_runtime_assets
 
 
 st.markdown(
@@ -656,6 +660,7 @@ def load_dependency_tables(
 
 
 def main() -> None:
+    bootstrap_runtime_assets()
     settings = get_settings()
     activity_path = settings.artifacts_derived_dir / "agg_activity_daily.parquet"
     if not activity_path.exists():
