@@ -52,6 +52,7 @@ data/
 # Local Codex assistant config
 AGENTS.md
 .codex/skills/
+CONTRIBUTING.md
 
 # Temporary files
 *.log
