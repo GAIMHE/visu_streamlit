@@ -49,6 +49,10 @@ artifacts/
 !artifacts/.gitkeep
 data/
 
+# Local Codex assistant config
+AGENTS.md
+.codex/skills/
+
 # Temporary files
 *.log
 tmp/
