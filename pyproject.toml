@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "visu2"
+version = "0.1.0"
+description = "Phase 0 analytics contracts and thin Streamlit slice for AdaptivMath data"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "duckdb>=1.2.2",
+  "openpyxl>=3.1.5",
+  "pandas>=2.2.3",
+  "plotly>=6.0.0",
+  "polars>=1.24.0",
+  "pyarrow>=19.0.1",
+  "streamlit>=1.42.2",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3.5",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-q"

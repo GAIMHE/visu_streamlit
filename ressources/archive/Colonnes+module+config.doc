@@ -1,0 +1,900 @@
+Date: Tue, 25 Nov 2025 14:56:50 +0000 (UTC)
+Message-ID: <2085798409.5.1764082610784@6b191726f0a2>
+Subject: Exported From Confluence
+MIME-Version: 1.0
+Content-Type: multipart/related; 
+	boundary="----=_Part_4_889991779.1764082610784"
+
+------=_Part_4_889991779.1764082610784
+Content-Type: text/html; charset=UTF-8
+Content-Transfer-Encoding: quoted-printable
+Content-Location: file:///C:/exported.html
+
+<html xmlns:o=3D'urn:schemas-microsoft-com:office:office'
+      xmlns:w=3D'urn:schemas-microsoft-com:office:word'
+      xmlns:v=3D'urn:schemas-microsoft-com:vml'
+      xmlns=3D'urn:w3-org-ns:HTML'>
+<head>
+    <meta http-equiv=3D"Content-Type" content=3D"text/html; charset=3Dutf-8=
+">
+    <title>Colonnes module config</title>
+    <!--[if gte mso 9]>
+    <xml>
+        <o:OfficeDocumentSettings>
+            <o:TargetScreenSize>1024x640</o:TargetScreenSize>
+            <o:PixelsPerInch>72</o:PixelsPerInch>
+            <o:AllowPNG/>
+        </o:OfficeDocumentSettings>
+        <w:WordDocument>
+            <w:View>Print</w:View>
+            <w:Zoom>90</w:Zoom>
+            <w:DoNotOptimizeForBrowser/>
+        </w:WordDocument>
+    </xml>
+    <![endif]-->
+    <style>
+                <!--
+        @page Section1 {
+            size: 8.5in 11.0in;
+            margin: 1.0in;
+            mso-header-margin: .5in;
+            mso-footer-margin: .5in;
+            mso-paper-source: 0;
+        }
+
+        table {
+            border: solid 1px;
+            border-collapse: collapse;
+        }
+
+        table td, table th {
+            border: solid 1px;
+            padding: 5px;
+        }
+
+        td {
+            page-break-inside: avoid;
+        }
+
+        tr {
+            page-break-after: avoid;
+        }
+
+        div.Section1 {
+            page: Section1;
+        }
+
+        /* Confluence print stylesheet. Common to all themes for print medi=
+a */
+/* Full of !important until we improve batching for print CSS */
+
+@media print {
+    #main {
+        padding-bottom: 1em !important; /* The default padding of 6em is to=
+o much for printouts */
+    }
+
+    body {
+        font: var(--ds-font-body-small, Arial, Helvetica, FreeSans, sans-se=
+rif);
+    }
+
+    body, #full-height-container, #main, #page, #content, .has-personal-sid=
+ebar #content {
+        background: var(--ds-surface, #fff) !important;
+        color: var(--ds-text, #000) !important;
+        border: 0 !important;
+        width: 100% !important;
+        height: auto !important;
+        min-height: auto !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        display: block !important;
+    }
+
+    a, a:link, a:visited, a:focus, a:hover, a:active {
+        color: var(--ds-text, #000);
+    }
+
+    #content h1,
+    #content h2,
+    #content h3,
+    #content h4,
+    #content h5,
+    #content h6 {
+        page-break-after: avoid;
+    }
+
+    pre {
+        font: var(--ds-font-code, Monaco, "Courier New", monospace);
+    }
+
+    #header,
+    .aui-header-inner,
+    #navigation,
+    #sidebar,
+    .sidebar,
+    #personal-info-sidebar,
+    .ia-fixed-sidebar,
+    .page-actions,
+    .navmenu,
+    .ajs-menu-bar,
+    .noprint,
+    .inline-control-link,
+    .inline-control-link a,
+    a.show-labels-editor,
+    .global-comment-actions,
+    .comment-actions,
+    .quick-comment-container,
+    #addcomment {
+        display: none !important;
+    }
+
+    /* CONF-28544 cannot print multiple pages in IE */
+    #splitter-content {
+        position: relative !important;
+    }
+
+    .comment .date::before {
+        content: none !important; /* remove middot for print view */
+    }
+
+    h1.pagetitle img {
+        height: auto;
+        width: auto;
+    }
+
+    .print-only {
+        display: block;
+    }
+
+    #footer {
+        position: relative !important; /* CONF-17506 Place the footer at en=
+d of the content */
+        margin: 0;
+        padding: 0;
+        background: none;
+        clear: both;
+    }
+
+    #poweredby {
+        border-top: none;
+        background: none;
+    }
+
+    #poweredby li.print-only {
+        display: list-item;
+        font-style: italic;
+    }
+
+    #poweredby li.noprint {
+        display: none;
+    }
+
+    /* no width controls in print */
+    .wiki-content .table-wrap,
+    .wiki-content p,
+    .panel .codeContent,
+    .panel .codeContent pre,
+    .image-wrap {
+        overflow: visible !important;
+    }
+
+    /* TODO - should this work? */
+    #children-section,
+    #comments-section .comment,
+    #comments-section .comment .comment-body,
+    #comments-section .comment .comment-content,
+    #comments-section .comment p {
+        page-break-inside: avoid;
+    }
+
+    #page-children a {
+        text-decoration: none;
+    }
+
+    /**
+     hide twixies
+
+     the specificity here is a hack because print styles
+     are getting loaded before the base styles. */
+    #comments-section.pageSection .section-header,
+    #comments-section.pageSection .section-title,
+    #children-section.pageSection .section-header,
+    #children-section.pageSection .section-title,
+    .children-show-hide {
+        padding-left: 0;
+        margin-left: 0;
+    }
+
+    .children-show-hide.icon {
+        display: none;
+    }
+
+    /* personal sidebar */
+    .has-personal-sidebar #content {
+        margin-right: 0px;
+    }
+
+    .has-personal-sidebar #content .pageSection {
+        margin-right: 0px;
+    }
+
+    .no-print, .no-print * {
+        display: none !important;
+    }
+}
+-->
+    </style>
+</head>
+<body>
+    <h1>Colonnes module config</h1>
+    <div class=3D"Section1">
+        <h2 id=3D"Colonnesmoduleconfig-D=C3=A9finitionspr=C3=A9alables">
+<style>[data-colorid=3Dh2uqdmybsm]{color:#36b37e} html[data-color-mode=3Dda=
+rk] [data-colorid=3Dh2uqdmybsm]{color:#4cc994}[data-colorid=3Dii99ca13lx]{c=
+olor:#36b37e} html[data-color-mode=3Ddark] [data-colorid=3Dii99ca13lx]{colo=
+r:#4cc994}[data-colorid=3Dk9gyju80be]{color:#bf2600} html[data-color-mode=
+=3Ddark] [data-colorid=3Dk9gyju80be]{color:#ff6640}[data-colorid=3Dv607z936=
+n3]{color:#36b37e} html[data-color-mode=3Ddark] [data-colorid=3Dv607z936n3]=
+{color:#4cc994}[data-colorid=3Dfrwgt9wy8a]{color:#ff5630} html[data-color-m=
+ode=3Ddark] [data-colorid=3Dfrwgt9wy8a]{color:#cf2600}[data-colorid=3Dqxp13=
+gpl1q]{color:#36b37e} html[data-color-mode=3Ddark] [data-colorid=3Dqxp13gpl=
+1q]{color:#4cc994}[data-colorid=3Dqwviewf1hb]{color:#36b37e} html[data-colo=
+r-mode=3Ddark] [data-colorid=3Dqwviewf1hb]{color:#4cc994}[data-colorid=3Dob=
+oshb6dcv]{color:#36b37e} html[data-color-mode=3Ddark] [data-colorid=3Dobosh=
+b6dcv]{color:#4cc994}[data-colorid=3Dekmixnh6lx]{color:#36b37e} html[data-c=
+olor-mode=3Ddark] [data-colorid=3Dekmixnh6lx]{color:#4cc994}[data-colorid=
+=3Dhmhwvd0fil]{color:#ff5630} html[data-color-mode=3Ddark] [data-colorid=3D=
+hmhwvd0fil]{color:#cf2600}[data-colorid=3Dqfe8fis8zu]{color:#bf2600} html[d=
+ata-color-mode=3Ddark] [data-colorid=3Dqfe8fis8zu]{color:#ff6640}[data-colo=
+rid=3Dwupjg1mr8g]{color:#36b37e} html[data-color-mode=3Ddark] [data-colorid=
+=3Dwupjg1mr8g]{color:#4cc994}</style>D=C3=A9finitions pr=C3=A9alables</h2>
+<p>Un module s=E2=80=99organise en objectifs, un objectif comporte plusieur=
+s activit=C3=A9s, et une activit=C3=A9 correspond =C3=A0 un ensemble d=E2=
+=80=99exercices pouvant =C3=AAtre propos=C3=A9s =C3=A0 un =C3=A9l=C3=A8ve.<=
+/p>
+<p>Le score des =C3=A9l=C3=A8ves pour un exercice est compris entre 0 et 1 =
+: 0 =C3=A9tant le score minimal pouvant =C3=AAtre d=C3=A9fini pour un exerc=
+ice (l'=C3=A9l=C3=A8ve n=E2=80=99a par exemple donn=C3=A9 aucun =C3=A9l=C3=
+=A9ment de r=C3=A9ponse juste) et 1 =C3=A9tant le score maximal pouvant =C3=
+=AAtre d=C3=A9fini pour un exercice (l'=C3=A9l=C3=A8ve a eu tout bon =C3=A0=
+ l=E2=80=99exercice).</p>
+<p>Lorsque l=E2=80=99on parle de score moyen pour une activit=C3=A9, on con=
+sid=C3=A8re la moyenne des scores qu=E2=80=99un =C3=A9l=C3=A8ve a eu sur le=
+s <strong>N</strong> exercices qu=E2=80=99il a fait au sein d=E2=80=99une m=
+=C3=AAme activit=C3=A9.</p>
+<p>Certains param=C3=A8tres peuvent =C3=AAtre d=C3=A9fini aussi bien au niv=
+eau des objectifs que des activit=C3=A9s. Si on les d=C3=A9finis seulement =
+pour l=E2=80=99objectif la m=C3=AAme valeur sera utilis=C3=A9 pour les acti=
+vit=C3=A9s.</p>
+<p>Il n=E2=80=99est pas n=C3=A9cessaire de remplir tous les param=C3=A8tres=
+. Dans le cas ou un param=C3=A8tre n=E2=80=99est pas d=C3=A9fini une valeur=
+ par d=C3=A9faut sera utilis=C3=A9.</p>
+<h2 id=3D"Colonnesmoduleconfig-Listedesvaleurpard=C3=A9fautpourchacundespar=
+am=C3=A8treauseindetoutnosmodules:"><span class=3D"inline-comment-marker" d=
+ata-ref=3D"8bba6af9-019f-49e5-b227-74db67f6fc59">Liste des valeur par d=C3=
+=A9faut pour chacun des param=C3=A8tre au sein de tout nos modules </span>:=
+</h2>
+<p>activationThreshold : 75%</p>
+<p>deactivationThreshold : 90%</p>
+<p>nbMinStep : 4</p>
+<p>nbStepToComputeScore : 4</p>
+<p>nbExoToComputeProgress : 8</p>
+<p>activation_coeff : 1</p>
+<p>stay_consec_min : 3</p>
+<p>nbMaxComputeThreshold : 4</p>
+<p>stay_behavior : 0</p>
+<p></p>
+<h2 id=3D"Colonnesmoduleconfig-D=C3=A9finitiondesparam=C3=A8trespourunmodul=
+e">D=C3=A9finition des param=C3=A8tres pour un module</h2>
+<ul>
+<li>
+<p><strong>states_definition</strong> : colonne g=C3=A9n=C3=A9ral permettan=
+t de d=C3=A9finir l'=C3=A9co-syst=C3=A8me IA au sein du Butler ainsi que ce=
+rtains param=C3=A8tres g=C3=A9n=C3=A9raux des IA. Cette colonne n=E2=80=99e=
+st pas obligatoire. Pour la suite on sp=C3=A9cifie en vert la valeur par d=
+=C3=A9faut de chaque param=C3=A8tre</p>
+<ul>
+<li>
+<p><strong>d=C3=A9finition des algos</strong> : On <span class=3D"inline-co=
+mment-marker" data-ref=3D"3f3e2c4e-824e-43b2-bdc1-e45d3bd4bacc">peut sp=C3=
+=A9cifier</span> pour chaque module (sur la ligne qui correspond au module)=
+ quel algo on souhaite utiliser parmi ZPDES, test adaptatif, a<span class=
+=3D"inline-comment-marker" data-ref=3D"a689aed5-c9c8-4fdc-b32b-773b2050fb9a=
+">gent de message (MMA) et agent de d=C3=A9tection de variation de score (S=
+AM)</span></p>
+<ul>
+<li>
+<p>zpdes : 1/0 =E2=86=92 <span data-colorid=3D"wupjg1mr8g">1</span></p></li=
+>
+<li>
+<p><span class=3D"inline-comment-marker" data-ref=3D"c15d917c-7ff0-429b-ba0=
+3-2ba717b8bb9f">adaptiveTest : 1/0 =E2=86=92 </span><span data-colorid=3D"h=
+2uqdmybsm"><span class=3D"inline-comment-marker" data-ref=3D"c15d917c-7ff0-=
+429b-ba03-2ba717b8bb9f">0</span></span></p></li>
+<li>
+<p>SAM: 1/0 =E2=86=92 <span data-colorid=3D"qxp13gpl1q">1</span></p></li>
+<li>
+<p>MMA: 1/0 =E2=86=92 <span data-colorid=3D"ekmixnh6lx">1</span></p></li>
+<li>
+<p>Si la colonne states_definition est pr=C3=A9sente mais quand aucun algo =
+est sp=C3=A9cifi=C3=A9 on prendra comme valeur par d=C3=A9faut [ ZPDES, SAM=
+, MMA ]</p></li>
+<li>
+<p><span data-colorid=3D"frwgt9wy8a">Les valeurs pr=C3=A9sentent ici ne ser=
+ont utilis=C3=A9 que si la colonne states_definition est pr=C3=A9sente. Sin=
+on pour choisir quels algos utilis=C3=A9 ou non, on se r=C3=A9f=C3=A9r=C3=
+=A8 au base_config.json qui sp=C3=A9cifie les algos sur l=E2=80=99ensemble =
+de la d=C3=A9clinaison. states_definition permet donc dans ce contexte d=E2=
+=80=99avoir des comportements sp=C3=A9cifiques =C3=A0 certains modules dans=
+ une d=C3=A9clinaison donn=C3=A9e</span></p></li>
+</ul></li>
+<li>
+<p><strong>d=C3=A9finition des param=C3=A8tres dans les algos</strong> :</p=
+>
+<ul>
+<li>
+<p><span class=3D"inline-comment-marker" data-ref=3D"35f2a86a-179c-41b0-b26=
+b-4073d4a67bd2">bo_value</span> : number =E2=86=92 sp=C3=A9cifie le nombre =
+de r=C3=A9ponse du m=C3=AAme type qu=E2=80=99on souhaite avoir sur une m=C3=
+=AAme activit=C3=A9 avant de lui assigner un <span class=3D"inline-comment-=
+marker" data-ref=3D"5041d218-78a7-480a-a72f-0f10b1f6944b">=C3=A9tat (maitri=
+s=C3=A9 ou non maitris=C3=A9) </span>dans le test. Seulement des valeurs im=
+pairs possible (NB : mettre plus que 3 risque de rallonger =C3=A9norm=C3=A9=
+ment la dur=C3=A9e du test). (bo =3D =E2=80=98best of=E2=80=99) =E2=86=92 <=
+span data-colorid=3D"v607z936n3">1</span></p>
+<ul>
+<li>
+<p>par exemple si bo_value =3D1 alors une seule question suffit</p></li>
+<li>
+<p>si bo_value =3D 3 alors la premi=C3=A8re type de r=C3=A9ponse =C3=A0 avo=
+ir <span class=3D"inline-comment-marker" data-ref=3D"c49f6b59-6c43-4543-bef=
+2-39f04dcd3d83">2 occurrence</span> (donc on pose entre 2 et 3 questions pa=
+r activit=C3=A9s)</p>
+<ul>
+<li>
+<p>Exemple : on va s=E2=80=99int=C3=A9resser =C3=A0 l'=C3=A9tat de O1A1 dan=
+s cette s=C3=A9rie de question et on repr=C3=A9sente seulement les premi=C3=
+=A8res questions<br>
+-&gt; O1A1 : 1<br>
+-&gt; O2A1 : 0<br>
+-&gt; O1A1 : 1<br>
+-&gt; =E2=80=A6<br>
+Il y a eu 2 bonnes r=C3=A9ponses sur O1A1 donc on consid=C3=A8re l=E2=80=99=
+activit=C3=A9 maitris=C3=A9. Si on avait 2 fois d=E2=80=99affil=C3=A9 une m=
+auvaise r=C3=A9ponse on aurait consid=C3=A9r=C3=A9 l=E2=80=99activit=C3=A9 =
+non-ma=C3=AEtris=C3=A9<br><br>
+2=C3=A8me cas : <br>
+-&gt; O1A1 : 1<br>
+-&gt; O2A1 : 0<br>
+-&gt; O1A1 : 0<br>
+-&gt; =E2=80=A6<br>
+-&gt;O1A1 : 1 <br>
+Ici les deux premi=C3=A8res occurrence de O1A1 apportent des informations c=
+ontradictoire donc une 3=C3=A8me question est n=C3=A9cessaire pour d=C3=A9p=
+artager les 2 =E2=86=92 d=E2=80=99o=C3=B9 le nom de BO3 : best of 3 <br></p=
+></li>
+</ul></li>
+</ul></li>
+<li>
+<p>AT_min : nombre minimum de questions qu=E2=80=99on souhaite avoir dans l=
+e test adaptatif =E2=86=92 <span data-colorid=3D"qwviewf1hb">0</span></p></=
+li>
+<li>
+<p>AT_max : nombre maximal de question qu=E2=80=99on souhaite avoir dans le=
+ test adaptatif =E2=86=92 <span data-colorid=3D"ii99ca13lx">20</span></p></=
+li>
+<li>
+<p>stay_behavior : sp=C3=A9cifie le comportement de sampling qu=E2=80=99on =
+souhaite avoir dans <span class=3D"inline-comment-marker" data-ref=3D"bb8cf=
+f89-cd03-4324-b682-6b5d8342711d">ZPDES =E2=86=92 </span><span data-colorid=
+=3D"oboshb6dcv"><span class=3D"inline-comment-marker" data-ref=3D"bb8cff89-=
+cd03-4324-b682-6b5d8342711d">0</span></span></p>
+<ul>
+<li>
+<p>0 : fait des s=C3=A9ries compl=C3=A8tes de stay_consec_min avant de resa=
+mple une activit=C3=A9/objectif</p></li>
+<li>
+<p>1 : peut changer d=E2=80=99activit=C3=A9/objectif a chaque step apr=C3=
+=A8s stay_consec_min fait</p></li>
+<li>
+<p>2 : force le changement d=E2=80=99activit=C3=A9/objectif apr=C3=A8s stay=
+_consec_min</p></li>
+</ul></li>
+</ul></li>
+<li>
+<p><span data-colorid=3D"hmhwvd0fil">Toutes les valeurs n=E2=80=99ont pas b=
+esoin d'=C3=AAtre sp=C3=A9cifi=C3=A9, dans le cas ou seulement certaines va=
+leurs seraient sp=C3=A9cifi=C3=A9 on prend les valeurs par d=C3=A9faut pour=
+ les autres. Donc par exemple si on veut r=C3=A9gler la valeur de AT_min il=
+ faut aussi sp=C3=A9cifier qu=E2=80=99on veut le test adaptatif</span></p><=
+/li>
+</ul></li>
+</ul>
+<h2 id=3D"Colonnesmoduleconfig-D=C3=A9finitiondesparam=C3=A8trespourlesobje=
+ctifs">D=C3=A9finition des param=C3=A8tres pour les objectifs</h2>
+<h4 id=3D"Colonnesmoduleconfig-Param=C3=A8tressp=C3=A9cifiquespourlad=C3=A9=
+finitiondel=E2=80=99objectif">Param=C3=A8tres sp=C3=A9cifiques pour la d=C3=
+=A9finition de l=E2=80=99objectif</h4>
+<p>Valeur =C3=A0 remplir pour chaque colonne au niveau de la ligne correspo=
+ndant =C3=A0 l=E2=80=99objectif</p>
+<ul>
+<li>
+<p>prerequisites : pr=C3=A9requis =C3=A0 valider pour permettre l=E2=80=99o=
+uverture de l=E2=80=99objectif. Possibilit=C3=A9 d=E2=80=99avoir plusieurs =
+pr=C3=A9requis d=E2=80=99ouverture avec des valeurs, des conditions et des =
+natures diff=C3=A9rentes</p>
+<ul>
+<li>
+<p>les valeurs correspondent au seuil =C3=A0 d=C3=A9passer (ou =C3=A0 ne pa=
+s d=C3=A9passer) pour compl=C3=A9ter le pr=C3=A9requis</p></li>
+<li>
+<p>les conditions permettent de sp=C3=A9cifier si on veut que la moyenne de=
+ l'=C3=A9l=C3=A8ve d=C3=A9passe un seuil (&gt;=3D), soit inf=C3=A9rieur =C3=
+=A0 un seuil (&lt;=3D), soit =C3=A9gal =C3=A0 une valeur pr=C3=A9cise (=3D=
+=3D), ou diff=C3=A9rente d=E2=80=99une valeur pr=C3=A9cise (!=3D)</p></li>
+<li>
+<p>la nature permet de sp=C3=A9cifier si le pr=C3=A9requis est n=C3=A9cessa=
+ire (and) ou suffisant (or) (dans le cas ou on a plusieurs pr=C3=A9requis i=
+l faut que tout les pr=C3=A9requis de type n=C3=A9cessaire soit rempli alor=
+s qu=E2=80=99un seul de type suffisant suffi justement)</p></li>
+<li>
+<p><span class=3D"inline-comment-marker" data-ref=3D"62b157b0-3994-45ca-8af=
+b-12c5f9114d10">Les pr=C3=A9requis correspondent =C3=A0 des conditions =C3=
+=A0 v=C3=A9rifier sur le score de l'=C3=A9l=C3=A8ve. Ces conditions peuvent=
+ =C3=AAtre rempli au bout de 1 questions th=C3=A9oriquement, c=E2=80=99est =
+pour quoi il y a un autre param=C3=A8tre dans le module config qui permet d=
+e sp=C3=A9cifier combien de questions doit faire l=E2=80=99=C3=A9l=C3=A8ve =
+au minimum avant que l=E2=80=99algo commence =C3=A0 v=C3=A9rifier la compl=
+=C3=A9tion des pr=C3=A9requis. Il s=E2=80=99agit du param=C3=A8tre nbMinSte=
+p (=C3=A0 comprendre dans le sens =E2=80=9Cnumber of minimum exercises to d=
+o in activity before checking prerequisite completion=E2=80=9D)</span></p><=
+/li>
+<li>
+<p>ex : <span class=3D"confluence-embedded-file-wrapper"><img class=3D"conf=
+luence-embedded-image confluence-content-image-inline" alt=3D"image-2024073=
+1-151417.png" loading=3D"lazy" src=3D"2777c23380e221d59b9b4e63c3b900c6a5b07=
+ff48bb327f5431b5ed08b8366c0" data-image-src=3D"https://evidencebprod.atlass=
+ian.net/wiki/download/attachments/1058340923/image-20240731-151417.png?vers=
+ion=3D1&amp;modificationDate=3D1722438858672&amp;cacheVersion=3D1&amp;api=
+=3Dv2" data-height=3D"28" data-width=3D"743" data-unresolved-comment-count=
+=3D"0" data-linked-resource-id=3D"1057652795" data-linked-resource-version=
+=3D"1" data-linked-resource-type=3D"attachment" data-linked-resource-defaul=
+t-alias=3D"image-20240731-151417.png" data-base-url=3D"https://evidencebpro=
+d.atlassian.net/wiki" data-linked-resource-content-type=3D"image/png" data-=
+linked-resource-container-id=3D"1058340923" data-linked-resource-container-=
+version=3D"12" data-media-id=3D"f40e9ca3-47b1-46f4-8181-8d38e4997b1b" data-=
+media-type=3D"file" width=3D"468" height=3D"17"></span> Ici pour ouvrir l=
+=E2=80=99objectif il faut soit avoir eu plus de 75% de bonne r=C3=A9ponse s=
+ur O4A4 et O4A5 et O4A6 ou bien avoir eu exactement 50% de bonne r=C3=A9pon=
+se sur O4A3 (donc ind=C3=A9pendamment du score obtenu sur A4, A5 et A6)</p>=
+</li>
+<li>
+<p>Si on d=C3=A9finit juste l=E2=80=99activit=C3=A9 qui sert de pr=C3=A9req=
+uis alors automatiquement on sera dans le cas <code>moyenne de score &gt;=
+=3D 0.75</code></p></li>
+</ul></li>
+<li>
+<p>init_open : sp=C3=A9cifie si l=E2=80=99objectif en question est ouvert d=
+=C3=A8s le d=C3=A9marrage du module =E2=86=92 2 valeurs possible : Y (ouver=
+te d=C3=A8s e d=C3=A9but du module) ou vide (s=E2=80=99il l=E2=80=99ouvertu=
+re d=C3=A9pend d=E2=80=99un autre objectif)</p></li>
+<li>
+<p>stay_consec_min: <span class=3D"inline-comment-marker" data-ref=3D"6d258=
+2b0-5c87-42bf-9628-53cf3df7a6bb">nombre d=E2=80=99exercices cons=C3=A9cutif=
+s =C3=A0 faire au sein d=E2=80=99un m=C3=AAme objectif avant que le process=
+us de s=C3=A9lection d=E2=80=99objectif se relance au sein du ZPDES</span>.=
+</p>
+<ul>
+<li>
+<p>Exemple : stay_consec_min =3D 4 ; l'=C3=A9l=C3=A8ve d=C3=A9marre une s=
+=C3=A9rie d=E2=80=99exercices dans l=E2=80=99objectif 3, imaginons qu'il fa=
+sse 2 exercices de l=E2=80=99activit=C3=A9 1 et 2 exercices de l=E2=80=99ac=
+tivit=C3=A9 2 de l=E2=80=99objectif 3, maintenant qu=E2=80=99il a fait 4 ex=
+ercices dans l=E2=80=99objectif 3, l=E2=80=99algorithme va pouvoir proposer=
+ un autre objectif ou rester sur le m=C3=AAme.</p></li>
+</ul></li>
+</ul>
+<p style=3D"margin-left: 30.0px;">NB : Cependant la valeur peut changer et =
+varier pour les activit=C3=A9s au sein du m=C3=AAme objectif. La valeur peu=
+t =C3=AAtre mis =C3=A0 niveau de l=E2=80=99objectif ou de l=E2=80=99activit=
+=C3=A9 et on peut avoir des valeurs diff=C3=A9rentes entre les deux et auss=
+i entre les activit=C3=A9s. Par exemple O1 =3D 4 ; O1A1 =3D 2 ; O1A2 =3D 4,=
+ =C3=A7a veut dire que quand on tombe sur O1A1 on va faire 2 exercices puis=
+ on va =C3=AAtre oblig=C3=A9 de refaire une activit=C3=A9 de O1 pour attein=
+dre la valeur de 4. Par contre si ensuite on tombe sur O1A2 on va quand m=
+=C3=AAme devoir faire 4 exos.</p>
+<ul>
+<li>
+<p>nbMinStep : nombre de <span class=3D"inline-comment-marker" data-ref=3D"=
+fcee6e44-893b-45b5-853a-e31a2c9611b7">questions </span>minimale (ind=C3=A9p=
+endamment de la r=C3=A9ussite) =C3=A0 faire avant qu=E2=80=99on ne lance le=
+ processus de v=C3=A9rification de compl=C3=A9tion des pr=C3=A9requis</p>
+<ul>
+<li>
+<p>si on d=C3=A9finit ce param=C3=A8tre au niveau de l=E2=80=99objectif on =
+l=E2=80=99assigne =C3=A0 chaque activit=C3=A9 de l=E2=80=99objectif</p></li=
+>
+</ul></li>
+<li>
+<p>activationThreshold: seuil d=E2=80=99activation par d=C3=A9faut d=E2=80=
+=99une nouvelle activit=C3=A9 au sein de l=E2=80=99objectif en fonction du =
+score moyen de l'=C3=A9l=C3=A8ve sur l=E2=80=99ensemble des activit=C3=A9s =
+ouvertes et non d=C3=A9sactiv=C3=A9es de l=E2=80=99objectif (m=C3=A9canique=
+ g=C3=A9n=C3=A9rique de l=E2=80=99algorithme pour l=E2=80=99ouverte d=E2=80=
+=99une nouvelle activit=C3=A9).</p>
+<ul>
+<li>
+<p>M=C3=A9canique utilis=C3=A9 si il n=E2=80=99y a pas de pr=C3=A9requis d=
+=C3=A9fini explicitement</p></li>
+<li>
+<p>Exemple : si activationThreshold =3D 0.5, alors =C3=A0 partir du moment =
+o=C3=B9 un =C3=A9l=C3=A8ve a un score moyen de 0.5 sur l=E2=80=99ensemble d=
+es activit=C3=A9s actuellement ouvertes/accessibles par l'=C3=A9l=C3=A8ve, =
+la prochaine activit=C3=A9 de l=E2=80=99objectif est ouverte.</p></li>
+</ul></li>
+<li>
+<p>deact_prerequisites : condition particuli=C3=A8re de d=C3=A9sactivation =
+de l=E2=80=99objectif. (de base un objectif est d=C3=A9sactiv=C3=A9 quand t=
+oute les activit=C3=A9 sont ma=C3=AEtris=C3=A9e/ d=C3=A9sactiv=C3=A9)</p>
+<ul>
+<li>
+<p>Exemple : Fermeture de l=E2=80=99objectif 3 lorsque l'=C3=A9l=C3=A8ve a =
+un score moyen de 90% sur l=E2=80=99activit=C3=A9 6 de l=E2=80=99objectif 3=
+ et un score moyen de 90% sur l=E2=80=99activit=C3=A9 2 de l=E2=80=99object=
+if 4.</p></li>
+</ul></li>
+<li>
+<p>deact_Threshold : Si pas de pr=C3=A9requis de d=C3=A9activation d=C3=A9f=
+inis, permet de sp=C3=A9cifier =C3=A0 partir de quel seuil on d=C3=A9sactiv=
+e les activit=C3=A9s</p>
+<ul>
+<li>
+<p><span class=3D"inline-comment-marker" data-ref=3D"9aaa6545-65dc-4f57-836=
+8-e611507f0b0f">On peut le d=C3=A9finir sup=C3=A9rieur =C3=A0 1 mais dans c=
+e cas il faut un pr=C3=A9requis de d=C3=A9sactivation pour pouvoir fermer l=
+=E2=80=99activit=C3=A9 et donc l=E2=80=99objectif et donc le module</span><=
+/p></li>
+</ul></li>
+<li>
+<p>States_definition :</p>
+<ul>
+<li>
+<p>On peut sp=C3=A9cifier le stay_behavior comme pr=C3=A9c=C3=A9demment pou=
+r l=E2=80=99ensemble d=E2=80=99un objectif</p></li>
+<li>
+<p>il est possible d=E2=80=99exclure certaines activit=C3=A9s/objectifs du =
+test adaptatif ou du zpdes en sp=C3=A9cifiant la valeur mgAT: 1/0 et mgZPDE=
+S : 1/0 dans la ligne correspondant =C3=A0 l=E2=80=99objectif</p>
+<ul>
+<li>
+<p><span class=3D"inline-comment-marker" data-ref=3D"095a50b0-11d3-4cad-aa0=
+8-e2941898f23f">attention =C3=A0 sp=C3=A9cifier les algos =C3=A0 utiliser a=
+u niveau du module pour pouvoir utiliser mgAT ensuite</span></p></li>
+<li>
+<p>il faut enlever les objectifs de mani=C3=A8re =C3=A0 ne pas casser la st=
+ructure du graph ie ne pas enlever O2 par exemple s=E2=80=99il sert de pr=
+=C3=A9requis pour O3</p>
+<p></p></li>
+</ul></li>
+</ul></li>
+</ul>
+<h2 id=3D"Colonnesmoduleconfig-Param=C3=A8trespard=C3=A9fautpourlad=C3=A9fi=
+nitiondesactivit=C3=A9s"><span class=3D"inline-comment-marker" data-ref=3D"=
+d9dca6cd-a360-422b-8517-f9ae84d4a2a2">Param=C3=A8tres </span>par d=C3=A9fau=
+t pour la d=C3=A9finition des activit=C3=A9s</h2>
+<ul>
+<li>
+<p>nbMinStep : nombre d=E2=80=99exercices minimal =C3=A0 faire avant que l=
+=E2=80=99algorithme ne calcule le score moyen de l'=C3=A9l=C3=A8ve afin d'a=
+ctiver ou d=C3=A9sactiver une activit=C3=A9.</p>
+<ul>
+<li>
+<p>Exemple : si nbMinStep =3D 4 ; =C3=A0 partir du moment ou l'=C3=A9l=C3=
+=A8ve aura fait 4 exercices d=E2=80=99une activit=C3=A9, cette activit=C3=
+=A9 pourra =C3=AAtre prise en compte dans le m=C3=A9canisme d=E2=80=99ouver=
+ture par d=C3=A9faut de ZPDES et si l'=C3=A9l=C3=A8ve a le score moyen requ=
+is , alors une nouvelle activit=C3=A9 peut =C3=AAtre ouverte et/ou l=E2=80=
+=99activit=C3=A9 peut =C3=AAtre d=C3=A9sactiv=C3=A9e.</p></li>
+</ul></li>
+<li>
+<p>nbMaxComputeThreshold : nombre d=E2=80=99exercices maximal =C3=A0 prendr=
+e en compte pour calculer le score moyen de l'=C3=A9l=C3=A8ve afin d'active=
+r ou d=C3=A9sactiver une activit=C3=A9.</p>
+<ul>
+<li>
+<p>Exemple : si nbMinStep =3D 4 et nbMaxComputeThreshold =3D 8, alors =C3=
+=A0 partir du moment o=C3=B9 l'=C3=A9l=C3=A8ve a fait 4 exercices d=E2=80=
+=99une activit=C3=A9, l=E2=80=99algorithme va commencer =C3=A0 calculer le =
+score moyen de l'=C3=A9l=C3=A8ve sur les derni=C3=A8res activit=C3=A9s afin=
+ d'=C3=A9valuer si on ouvre des nouvelles activit=C3=A9s ou si l=E2=80=99on=
+ d=C3=A9sactive l=E2=80=99activit=C3=A9, et avec nbMaxComputeThreshold =3D =
+8, cela veut dire que tant que l'=C3=A9l=C3=A8ve n=E2=80=99a pas fait 8 exe=
+rcices, alors tous les exercices qu=E2=80=99il a fait sont pris en compte p=
+our calculer son score moyen, et =C3=A0 partir du moment o=C3=B9 il a fait =
+plus de 8 exercices dans l=E2=80=99activit=C3=A9 alors seuls les 8 derniers=
+ exercices sont pris en compte dans le calcul du score moyen de l'=C3=A9l=
+=C3=A8ve.</p>
+<ul>
+<li>
+<p><strong><span data-colorid=3D"qfe8fis8zu">Remarque :</span></strong> nbM=
+inStep peut tout a fait =C3=AAtre =C3=A9gal =C3=A0 nbMaxComputeThreshold, a=
+ussi nbMaxComputeThreshold peut =C3=AAtre d=C3=A9fini inf=C3=A9rieur ou sup=
+=C3=A9rieur =C3=A0 nbMinStep, imaginons que l=E2=80=99on veut qu=E2=80=99un=
+ =C3=A9l=C3=A8ve fasse au moins 10 exercices dans une activit=C3=A9 particu=
+li=C3=A8re mais qu=E2=80=99une fois qu=E2=80=99il aura fait les 10 exercice=
+s on voudra que son score soit calcul=C3=A9 sur les 2 derniers exercices qu=
+=E2=80=99il a faits, alors nbMinStep =3D 10 et nbStepToComputeScore =3D 2.<=
+/p></li>
+</ul></li>
+</ul></li>
+<li>
+<p>window_progression : nombre d=E2=80=99exercices pour =C3=A9valuer le pro=
+gr=C3=A8s de l'=C3=A9l=C3=A8ve.</p>
+<ul>
+<li>
+<p>Par exemple si on met 8, le progr=C3=A8s de l'=C3=A9l=C3=A8ve sera calcu=
+l=C3=A9 en comparant les 4 derniers exercices avec les 4 pr=C3=A9c=C3=A9den=
+ts.</p></li>
+</ul></li>
+<li>
+<p>deact_Threshold : seuil de d=C3=A9sactivation des activit=C3=A9s au sein=
+ de l=E2=80=99objectif, si un =C3=A9l=C3=A8ve a un score moyen =C3=A0 une a=
+ctivit=C3=A9 d=C3=A9passant ce seuil alors l=E2=80=99activit=C3=A9 est cons=
+id=C3=A9r=C3=A9e comme maitris=C3=A9e et est d=C3=A9sactiv=C3=A9e.</p>
+<ul>
+<li>
+<p>Exemple : si deact_Threshold =3D 0.5, alors =C3=A0 partir du moment o=C3=
+=B9 un =C3=A9l=C3=A8ve a un score moyen de 0.5 sur l=E2=80=99ensemble des a=
+ctivit=C3=A9 actuellement ouverte/accessible par l'=C3=A9l=C3=A8ve, la proc=
+haine activit=C3=A9 de l=E2=80=99objectif est ouverte.</p></li>
+</ul></li>
+<li>
+<p><span class=3D"inline-comment-marker" data-ref=3D"0621f822-baea-4ae4-899=
+0-9d356c0a595e">activation_coeff (prom_coeff) </span>: coefficient d=E2=80=
+=99activation d=E2=80=99une nouvelle activit=C3=A9. Lorsqu=E2=80=99une acti=
+vit=C3=A9 est ouverte, une valeur de qualit=C3=A9 lui sera attribu=C3=A9e. =
+Cette qualit=C3=A9 est la valeur qui d=C3=A9termine la probabilit=C3=A9 que=
+ l=E2=80=99activit=C3=A9 soit choisie par l=E2=80=99algo (NB : on initialis=
+e tous les activit=C3=A9s avec une m=C3=AAme probabilit=C3=A9 de s=C3=A9lec=
+tion. Ensuite avec les r=C3=A9ponses de l'=C3=A9l=C3=A8ve on va venir augme=
+nter ou diminuer la probabilit=C3=A9 de s=C3=A9lection des activit=C3=A9s s=
+elon les r=C3=A9ponses. Par exemple si l'=C3=A9l=C3=A8ve enchaine plusieurs=
+ bonnes r=C3=A9ponses sur une m=C3=AAme activit=C3=A9 alors sa probabilit=
+=C3=A9 de s=C3=A9lection va diminuer. De m=C3=AAme s=E2=80=99il enchaine le=
+s mauvaises r=C3=A9ponses). Ainsi si une activit=C3=A9 est activ=C3=A9e, sa=
+ qualit=C3=A9 va =C3=AAtre =C3=A9gale au coefficient d=E2=80=99activation m=
+ultipli=C3=A9 par la qualit=C3=A9 de l=E2=80=99activit=C3=A9 la plus haute.=
+ NB : =C3=A7a permet de manipuler la strat=C3=A9gie de s=C3=A9lection. Mais=
+ =C3=A7a peut =C3=AAtre utile si on souhaite que l'=C3=A9l=C3=A8ve voit tr=
+=C3=A8s vite les nouvelles activit=C3=A9s avant de forc=C3=A9ment r=C3=A9us=
+sir =C3=A0 fermer les anciennes. Dans les fait ce param=C3=A8tre est toujou=
+rs =C3=A0 1</p>
+<ul>
+<li>
+<p>Exemple : si activation_coeff =3D 1, lorsqu=E2=80=99une activit=C3=A9 es=
+t ouverte, elle aura la m=C3=AAme qualit=C3=A9 que l=E2=80=99activit=C3=A9 =
+la <span class=3D"inline-comment-marker" data-ref=3D"ca193478-71c5-4465-bdf=
+2-9df0fddb17fb">plus int=C3=A9ressante</span> (celle ou l'=C3=A9l=C3=A8ve =
+=C3=A0 50% de chance de r=C3=A9pondre correctement) =C3=A0 proposer actuell=
+ement et sera donc autant propos=C3=A9e. Si activation_coeff =3D 0.5, alors=
+ l=E2=80=99activit=C3=A9 sera =C3=A0 peu pr=C3=A8s propos=C3=A9e deux fois =
+moins souvent que l=E2=80=99activit=C3=A9 la plus int=C3=A9ressante.</p></l=
+i>
+</ul></li>
+<li>
+<p>stay_consec_min : nombre d=E2=80=99exercices cons=C3=A9cutifs =C3=A0 fai=
+re correspondant =C3=A0 la m=C3=AAme activit=C3=A9 avant de resample une ac=
+tivit=C3=A9 au sein de l=E2=80=99objectif</p>
+<ul>
+<li>
+<p>On peut avoir une valeur diff=C3=A9rente pour un objectif et pour les ac=
+tivit=C3=A9s au sein de cet objectif</p></li>
+<li>
+<p>par exemple si au niveau de l=E2=80=99objectif on d=C3=A9finit la valeur=
+ =C3=A0 4 et au niveau des activit=C3=A9s =C3=A0 2 cela veut dire que lorsq=
+ue l=E2=80=99algo s=C3=A9lectionnera cet objectif l=E2=80=99=C3=A9l=C3=A8ve=
+ devra faire 4 exercices avant que l=E2=80=99algo resample l=E2=80=99object=
+if =C3=A0 travailler. En revanche dans l=E2=80=99objectif, une fois qu=E2=
+=80=99une activit=C3=A9 est s=C3=A9lectionn=C3=A9 il faut seulement 2 exerc=
+ices avant que l=E2=80=99algo resample l=E2=80=99activit=C3=A9 =C3=A0 propo=
+ser dans cet objectif.</p></li>
+<li>
+<p><strong><span data-colorid=3D"k9gyju80be">Remarque :</span></strong> il =
+vaut mieux que la valeur au niveau de l=E2=80=99objectif soit un multiple d=
+e la valeur au niveau des activit=C3=A9s</p>
+<p></p></li>
+</ul></li>
+</ul>
+<p></p>
+<h2 id=3D"Colonnesmoduleconfig-Conseilsetbonnepratiques:"><span class=3D"in=
+line-comment-marker" data-ref=3D"3c8ce521-d902-4a95-9726-54c7810bfc58">Cons=
+eils et bonne pratiques : </span></h2>
+<ul>
+<li>
+<p>sur les pr=C3=A9requis</p>
+<ul>
+<li>
+<p>d=C3=A9finir un pr=C3=A9requis d=E2=80=99activation pour les objectifs =
+=E2=86=92 ne pas le faire pose pas de probl=C3=A8me pour les algos mais ave=
+c la pr=C3=A9sence du test adaptatif c=E2=80=99est plus pratique pour la g=
+=C3=A9n=C3=A9ration de graph et autre calculs d=E2=80=99avoir =C3=A7a</p></=
+li>
+<li>
+<p>D=C3=A9finir les pr=C3=A9requis d=E2=80=99activation dans l=E2=80=99ordr=
+e d=E2=80=99apparition dans le module config. C=E2=80=99est =C3=A0 dire qu=
+=E2=80=99on ne peux pas d=C3=A9finit O7A5 comme pr=C3=A9requis d=E2=80=99ac=
+tivation pour O6A9 par exemple car on parcourt le module config (et la conf=
+ig IA) de mani=C3=A8re lin=C3=A9aire donc au moment de trait=C3=A9 O6 on n=
+=E2=80=99a pas encore cr=C3=A9e les infos sur O7</p></li>
+<li>
+<p>On peut d=C3=A9finir un_ deact_threshold sup=C3=A9rieur =C3=A0 1 si on s=
+ouhaite qu=E2=80=99une activit=C3=A9 reste ouverte tout au long du module m=
+ais il faut dans ce cas d=C3=A9finir un pr=C3=A9requis de d=C3=A9sactiqu=E2=
+=80=99une activit=C3=A9 reste ouverte tout au long du module mais il faut d=
+ans ce cas d=C3=A9finir un pr=C3=A9requis de d=C3=A9sactivation (typiquemen=
+t la derni=C3=A8re activit=C3=A9 de l=E2=80=99objectif ou du module) car si=
+non le module ne se terminera jamais et l'=C3=A9l=C3=A8ve finira par faire =
+des exos en boucle sur la seule activit=C3=A9 ouverte</p></li>
+</ul></li>
+<li>
+<p>Sur la s=C3=A9lection des objectifs =C3=A0 utiliser dans le test adaptat=
+ifs :</p>
+<ul>
+<li>
+<p>Si on veut retirer des objectifs du test adaptatif, bien v=C3=A9rifi=C3=
+=A9 qu=E2=80=99on ne casse pas les chaines de d=C3=A9pendance. Ne pas non p=
+lus retirer un objectif en plein milieu car pour l=E2=80=99instant on se ba=
+se sur l=E2=80=99ordre d=E2=80=99apparition de l=E2=80=99objectif et non so=
+n code directement. Par exemple si une activit=C3=A9 de O5 =C3=A0 comme pr=
+=C3=A9requis une activit=C3=A9 de O3 et qu=E2=80=99on d=C3=A9cide de retire=
+r O2 du test adaptatif alors la lib de g=C3=A9n=C3=A9ration de graph consid=
+=C3=A8rera que le troisi=C3=A8me objectif du module est O4 car il est le 3=
+=C3=A8me =C3=A0 apparaitre dans la liste des objectifs disponible</p></li>
+<li>
+<p>Idem si on veut enlever des activit=C3=A9s du test.</p></li>
+<li>
+<p>Dans l=E2=80=99absolu pour l=E2=80=99instant mieux vaut enlever les obje=
+ctifs et les activit=C3=A9s en partant de la fin</p></li>
+</ul></li>
+<li>
+<p>Sur l=E2=80=99ajout de nouvelles activit=C3=A9s et/ou objectifs :</p>
+<ul>
+<li>
+<p>Il est possible de rajouter de nouvelles activit=C3=A9s dans un module e=
+xistant mais il faut faire attention =C3=A0 ne pas casser l=E2=80=99histori=
+que d'=C3=A9l=C3=A8ves d=C3=A9j=C3=A0 existant. Par exemple si on souhaite =
+rajouter une nouvelle activit=C3=A9 A1 dans un objectif mais qu=E2=80=99on =
+ne souhaite pas pour autant rouvrir un objectif d=C3=A9j=C3=A0 ferm=C3=A9 p=
+our les anciens =C3=A9l=C3=A8ves il faut ajouter des pr=C3=A9requis de d=C3=
+=A9sactivation sur cet activit=C3=A9 de tel sorte que la pr=C3=A9sence d=E2=
+=80=99exercice plus loin dans l=E2=80=99objectif entrainent la fermeture de=
+ A1. Comme =C3=A7a il est possible de faire en sorte que cette nouvelle act=
+ivit=C3=A9 soit visible que par les =C3=A9l=C3=A8ves n=E2=80=99ayant pas co=
+mmenc=C3=A9 le module avant l=E2=80=99introduction de cette activit=C3=A9.<=
+/p></li>
+<li>
+<p>Dans le cas ou on souhaiterai rajouter l=E2=80=99activit=C3=A9 au milieu=
+ de l=E2=80=99objectif, c=E2=80=99est plus d=C3=A9licat car si l=E2=80=99=
+=C3=A9l=C3=A8ve =C3=A0 r=C3=A9aliser un test adaptatif, l'=C3=A9tat de celu=
+i-ci est fig=C3=A9 et donc le nombre d=E2=80=99activit=C3=A9 attendu par le=
+ test est fig=C3=A9 lui aussi. L=E2=80=99ajout d=E2=80=99une nouvelle activ=
+it=C3=A9 au milieu peut venir accorder des cr=C3=A9dits =C3=A0 la mauvaises=
+ activit=C3=A9</p></li>
+</ul></li>
+</ul>
+<p></p>
+    </div>
+</body>
+</html>
+------=_Part_4_889991779.1764082610784
+Content-Type: application/octet-stream
+Content-Transfer-Encoding: base64
+Content-Location: file:///C:/2777c23380e221d59b9b4e63c3b900c6a5b07ff48bb327f5431b5ed08b8366c0
+
+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
+------=_Part_4_889991779.1764082610784--
