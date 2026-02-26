@@ -89,8 +89,48 @@ def load_aggregates(derived_dir: Path) -> dict[str, pl.DataFrame]:
     return {
         "activity": pl.read_parquet(derived_dir / "agg_activity_daily.parquet"),
         "objective": pl.read_parquet(derived_dir / "agg_objective_daily.parquet"),
-        "transition": pl.read_parquet(derived_dir / "agg_transition_edges.parquet"),
     }
+
+
+def _collect_lazy(lf: pl.LazyFrame) -> pl.DataFrame:
+    """Prefer streaming execution on large lazy plans to reduce peak memory."""
+    try:
+        return lf.collect(engine="streaming")
+    except TypeError:
+        return lf.collect()
+
+
+@st.cache_data(show_spinner=False)
+def load_top_transition_edges(
+    transition_path: Path,
+    start_date: date,
+    end_date: date,
+    module_code: str | None,
+    activity_id: str | None,
+    top_n: int,
+    has_same_objective_rate: bool,
+) -> pl.DataFrame:
+    edge_group_cols = [
+        "from_activity_id",
+        "to_activity_id",
+        "from_activity_label",
+        "to_activity_label",
+    ]
+    lf = pl.scan_parquet(transition_path).filter(
+        (pl.col("date_utc") >= pl.lit(start_date)) & (pl.col("date_utc") <= pl.lit(end_date))
+    )
+    if module_code:
+        lf = lf.filter(pl.col("from_module_code") == module_code)
+    if activity_id:
+        lf = lf.filter(pl.col("from_activity_id") == activity_id)
+    if has_same_objective_rate:
+        lf = lf.filter(pl.col("same_objective_rate") < 1.0)
+    lf = lf.group_by(edge_group_cols).agg(
+        pl.sum("transition_count").alias("transition_count"),
+        pl.sum("success_conditioned_count").alias("success_conditioned_count"),
+    )
+    lf = lf.sort("transition_count", descending=True).head(max(1, int(top_n)))
+    return _collect_lazy(lf)
 
 
 def _parquet_columns(path: Path) -> list[str]:
@@ -280,6 +320,7 @@ def main() -> None:
     report_path = settings.consistency_report_path
     manifest_path = settings.derived_manifest_path
     fact_path = derived_dir / "fact_attempt_core.parquet"
+    transition_path = derived_dir / "agg_transition_edges.parquet"
     module_usage_daily_path = derived_dir / "agg_module_usage_daily.parquet"
     student_module_exposure_path = derived_dir / "agg_student_module_exposure.parquet"
     playlist_module_usage_path = derived_dir / "agg_playlist_module_usage.parquet"
@@ -289,7 +330,7 @@ def main() -> None:
     required = [
         derived_dir / "agg_activity_daily.parquet",
         derived_dir / "agg_objective_daily.parquet",
-        derived_dir / "agg_transition_edges.parquet",
+        transition_path,
         module_usage_daily_path,
         student_module_exposure_path,
         playlist_module_usage_path,
@@ -311,7 +352,7 @@ def main() -> None:
             "fact_attempt_core": _parquet_columns(fact_path),
             "agg_activity_daily": data["activity"].columns,
             "agg_objective_daily": data["objective"].columns,
-            "agg_transition_edges": data["transition"].columns,
+            "agg_transition_edges": _parquet_columns(transition_path),
             "agg_module_usage_daily": _parquet_columns(module_usage_daily_path),
             "agg_student_module_exposure": _parquet_columns(student_module_exposure_path),
             "agg_playlist_module_usage": _parquet_columns(playlist_module_usage_path),
@@ -342,17 +383,8 @@ def main() -> None:
             "activity_label": "activity_id",
         },
     )
-    transition_base = data["transition"]
-    if "from_module_code" not in transition_base.columns and "module_code" in transition_base.columns:
-        transition_base = transition_base.rename({"module_code": "from_module_code"})
-    transition, _ = _ensure_label_columns(
-        transition_base,
-        {
-            "from_activity_label": "from_activity_id",
-            "to_activity_label": "to_activity_id",
-            "from_module_label": "from_module_code",
-        },
-    )
+    transition_columns = set(_parquet_columns(transition_path))
+    transition_has_same_objective_rate = "same_objective_rate" in transition_columns
 
     min_date = activity["date_utc"].min()
     max_date = activity["date_utc"].max()
@@ -444,17 +476,6 @@ def main() -> None:
     filtered_activity = apply_filters(
         activity, start_date, end_date, module_filter, objective_filter, activity_filter
     )
-    filtered_transition = apply_filters(
-        transition,
-        start_date,
-        end_date,
-        module_filter,
-        None,
-        activity_filter,
-        activity_from_col="from_activity_id",
-        module_col="from_module_code",
-    )
-
     fact_query = build_fact_query(
         fact_path=fact_path,
         start_date=start_date,
@@ -468,14 +489,15 @@ def main() -> None:
         pl.col("user_id").drop_nulls().n_unique().alias("unique_students"),
         pl.col("exercise_id").drop_nulls().n_unique().alias("unique_exercises"),
         pl.col("data_correct").cast(pl.Float64).mean().alias("success_rate"),
-    ).collect().to_dicts()[0]
+    )
+    kpi = _collect_lazy(kpi).to_dicts()[0]
     kpi_exercise_balanced = (
         fact_query.filter(pl.col("exercise_id").is_not_null())
         .group_by("exercise_id")
         .agg(pl.col("data_correct").cast(pl.Float64).mean().alias("exercise_success_rate"))
         .select(pl.col("exercise_success_rate").mean().alias("exercise_balanced_success_rate"))
-        .collect()
     )
+    kpi_exercise_balanced = _collect_lazy(kpi_exercise_balanced)
     kpi_exercise_balanced_value = (
         float(kpi_exercise_balanced["exercise_balanced_success_rate"][0])
         if kpi_exercise_balanced.height > 0
@@ -530,8 +552,8 @@ def main() -> None:
             how="left",
         )
         .sort("success_rate", descending=True)
-        .collect()
     )
+    work_mode_summary = _collect_lazy(work_mode_summary)
     if work_mode_summary.height == 0:
         st.info("No work mode rows available after filters.")
     else:
@@ -802,25 +824,15 @@ def main() -> None:
     st.caption(
         "This view shows the most common activity-to-activity paths across different objectives in the selected period."
     )
-    transition_source = filtered_transition
-    if "same_objective_rate" in transition_source.columns:
-        transition_source = transition_source.filter(pl.col("same_objective_rate") < 1.0)
-    edge_group_cols = [
-        "from_activity_id",
-        "to_activity_id",
-        "from_activity_label",
-        "to_activity_label",
-    ]
-    transition_edges = (
-        transition_source.group_by(edge_group_cols)
-        .agg(
-            pl.sum("transition_count").alias("transition_count"),
-            pl.sum("success_conditioned_count").alias("success_conditioned_count"),
-        )
-        .sort("transition_count", descending=True)
-        .head(top_n_transitions)
-        .to_pandas()
-    )
+    transition_edges = load_top_transition_edges(
+        transition_path=transition_path,
+        start_date=start_date,
+        end_date=end_date,
+        module_code=module_filter,
+        activity_id=activity_filter,
+        top_n=top_n_transitions,
+        has_same_objective_rate=transition_has_same_objective_rate,
+    ).to_pandas()
     if transition_edges.empty:
         st.info("No cross-objective transition rows after filters.")
     else:
