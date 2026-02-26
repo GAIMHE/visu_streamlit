@@ -24,7 +24,6 @@ def _required_artifacts(settings_root: Path) -> list[Path]:
         settings_root / "artifacts" / "derived" / "agg_student_module_progress.parquet",
         settings_root / "artifacts" / "derived" / "agg_transition_edges.parquet",
         settings_root / "artifacts" / "derived" / "agg_module_usage_daily.parquet",
-        settings_root / "artifacts" / "derived" / "agg_student_module_exposure.parquet",
         settings_root / "artifacts" / "derived" / "agg_playlist_module_usage.parquet",
         settings_root / "artifacts" / "derived" / "agg_module_activity_usage.parquet",
         settings_root / "artifacts" / "derived" / "agg_exercise_daily.parquet",

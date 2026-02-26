@@ -11,7 +11,6 @@ from visu2.derive import (
     build_agg_module_usage_daily_from_fact,
     build_agg_objective_daily_from_fact,
     build_agg_playlist_module_usage_from_fact,
-    build_agg_student_module_exposure_from_fact,
     build_agg_student_module_progress_from_fact,
 )
 
@@ -111,42 +110,8 @@ def test_student_module_agg_shape() -> None:
 
 def test_module_usage_daily_shape_and_keys() -> None:
     agg = build_agg_module_usage_daily_from_fact(_sample_fact())
-    assert {"date_utc", "module_code", "attempts", "unique_playlists"}.issubset(set(agg.columns))
+    assert {"date_utc", "module_code", "attempts", "unique_students"}.issubset(set(agg.columns))
     assert agg.group_by(["date_utc", "module_code"]).len().filter(pl.col("len") > 1).height == 0
-
-
-def test_student_module_exposure_shape_and_bucket_boundaries() -> None:
-    high_attempts = 52
-    total_rows = 10 + 40 + high_attempts
-    fact = pl.DataFrame(
-        {
-            "created_at": [datetime(2025, 1, 1, 10, 0, 0)] * total_rows,
-            "date_utc": [datetime(2025, 1, 1).date()] * total_rows,
-            "user_id": ["u_low"] * 10 + ["u_mid"] * 40 + ["u_high"] * high_attempts,
-            "classroom_id": ["c1"] * total_rows,
-            "playlist_or_module_id": ["p1"] * total_rows,
-            "activity_id": ["a1"] * total_rows,
-            "activity_label": ["Activity 1"] * total_rows,
-            "objective_id": ["o1"] * total_rows,
-            "objective_label": ["Objective 1"] * total_rows,
-            "module_id": ["m1"] * total_rows,
-            "module_code": ["M1"] * total_rows,
-            "module_label": ["Module 1"] * total_rows,
-            "work_mode": ["playlist"] * total_rows,
-            "data_correct": [True] * total_rows,
-            "data_duration": [10.0] * total_rows,
-            "session_duration": [None] * total_rows,
-            "attempt_number": [1] * total_rows,
-        }
-    )
-    agg = build_agg_student_module_exposure_from_fact(fact)
-    bucket_map = {
-        row["user_id"]: row["exposure_bucket"] for row in agg.select(["user_id", "exposure_bucket"]).to_dicts()
-    }
-    assert bucket_map["u_low"] == "low<=10"
-    assert bucket_map["u_mid"] == "mid11-50"
-    assert bucket_map["u_high"] == "high>50"
-    assert agg.group_by(["user_id", "module_code"]).len().filter(pl.col("len") > 1).height == 0
 
 
 def test_playlist_module_usage_shape_and_keys() -> None:

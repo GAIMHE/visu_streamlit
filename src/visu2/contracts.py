@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 DERIVED_MANIFEST_VERSION = "1.0"
-DERIVED_SCHEMA_VERSION = "phase0_thin_slice_v2_labels"
+DERIVED_SCHEMA_VERSION = "phase0_thin_slice_v3_lean"
 ACTIVE_CANONICAL_MODULE_CODES = ("M1", "M31", "M32", "M33", "M41", "M42", "M43")
 
 EXPECTED_BASELINE = {
@@ -43,7 +43,6 @@ REQUIRED_FACT_COLUMNS = [
     "created_at",
     "date_utc",
     "user_id",
-    "teacher_id",
     "classroom_id",
     "playlist_or_module_id",
     "objective_id",
@@ -51,14 +50,11 @@ REQUIRED_FACT_COLUMNS = [
     "activity_id",
     "activity_label",
     "exercise_id",
-    "module_long_title",
     "data_correct",
     "data_duration",
     "session_duration",
     "work_mode",
     "attempt_number",
-    "student_attempt_index",
-    "first_attempt_success_rate",
     "module_id",
     "module_code",
     "module_label",
@@ -122,32 +118,13 @@ REQUIRED_AGG_COLUMNS = {
     ],
     "agg_module_usage_daily": [
         "date_utc",
-        "module_id",
         "module_code",
         "module_label",
         "attempts",
         "unique_students",
-        "unique_classrooms",
-        "unique_playlists",
-        "success_rate",
-        "median_duration",
-        "repeat_attempt_rate",
-    ],
-    "agg_student_module_exposure": [
-        "user_id",
-        "module_id",
-        "module_code",
-        "module_label",
-        "attempts",
-        "unique_activities",
-        "active_days",
-        "total_time_seconds",
-        "is_effective_user",
-        "exposure_bucket",
     ],
     "agg_playlist_module_usage": [
         "playlist_or_module_id",
-        "module_id",
         "module_code",
         "module_label",
         "work_mode",
@@ -156,18 +133,14 @@ REQUIRED_AGG_COLUMNS = {
         "unique_classrooms",
         "unique_activities",
         "success_rate",
-        "median_duration",
     ],
     "agg_module_activity_usage": [
-        "module_id",
         "module_code",
         "module_label",
         "activity_id",
         "activity_label",
         "attempts",
         "unique_students",
-        "unique_classrooms",
-        "unique_playlists",
         "activity_share_within_module",
     ],
     "agg_exercise_daily": [
@@ -239,30 +212,12 @@ RUNTIME_CORE_COLUMNS = {
     ],
     "agg_module_usage_daily": [
         "date_utc",
-        "module_id",
         "module_code",
         "attempts",
         "unique_students",
-        "unique_classrooms",
-        "unique_playlists",
-        "success_rate",
-        "median_duration",
-        "repeat_attempt_rate",
-    ],
-    "agg_student_module_exposure": [
-        "user_id",
-        "module_id",
-        "module_code",
-        "attempts",
-        "unique_activities",
-        "active_days",
-        "total_time_seconds",
-        "is_effective_user",
-        "exposure_bucket",
     ],
     "agg_playlist_module_usage": [
         "playlist_or_module_id",
-        "module_id",
         "module_code",
         "work_mode",
         "attempts",
@@ -270,16 +225,12 @@ RUNTIME_CORE_COLUMNS = {
         "unique_classrooms",
         "unique_activities",
         "success_rate",
-        "median_duration",
     ],
     "agg_module_activity_usage": [
-        "module_id",
         "module_code",
         "activity_id",
         "attempts",
         "unique_students",
-        "unique_classrooms",
-        "unique_playlists",
         "activity_share_within_module",
     ],
     "agg_exercise_daily": [
@@ -321,9 +272,6 @@ RUNTIME_LABEL_COLUMNS = {
         "from_module_label",
     ],
     "agg_module_usage_daily": [
-        "module_label",
-    ],
-    "agg_student_module_exposure": [
         "module_label",
     ],
     "agg_playlist_module_usage": [

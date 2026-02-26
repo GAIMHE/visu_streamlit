@@ -322,7 +322,6 @@ def main() -> None:
     fact_path = derived_dir / "fact_attempt_core.parquet"
     transition_path = derived_dir / "agg_transition_edges.parquet"
     module_usage_daily_path = derived_dir / "agg_module_usage_daily.parquet"
-    student_module_exposure_path = derived_dir / "agg_student_module_exposure.parquet"
     playlist_module_usage_path = derived_dir / "agg_playlist_module_usage.parquet"
     module_activity_usage_path = derived_dir / "agg_module_activity_usage.parquet"
     exercise_daily_path = derived_dir / "agg_exercise_daily.parquet"
@@ -332,7 +331,6 @@ def main() -> None:
         derived_dir / "agg_objective_daily.parquet",
         transition_path,
         module_usage_daily_path,
-        student_module_exposure_path,
         playlist_module_usage_path,
         module_activity_usage_path,
         exercise_daily_path,
@@ -354,7 +352,6 @@ def main() -> None:
             "agg_objective_daily": data["objective"].columns,
             "agg_transition_edges": _parquet_columns(transition_path),
             "agg_module_usage_daily": _parquet_columns(module_usage_daily_path),
-            "agg_student_module_exposure": _parquet_columns(student_module_exposure_path),
             "agg_playlist_module_usage": _parquet_columns(playlist_module_usage_path),
             "agg_module_activity_usage": _parquet_columns(module_activity_usage_path),
             "agg_exercise_daily": _parquet_columns(exercise_daily_path),

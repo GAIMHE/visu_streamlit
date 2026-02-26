@@ -160,6 +160,9 @@ Runtime subset usually needed by the app:
 - `artifacts/reports/derived_manifest.json`
 - `artifacts/derived/*.parquet`
 
+Current lean runtime artifact set excludes:
+- `artifacts/derived/agg_student_module_exposure.parquet` (deprecated/removed from build contract).
+
 Note:
 - `adaptiv_math_history.parquet` is not required at deployed runtime unless you rebuild derived artifacts inside the deployment environment.
 

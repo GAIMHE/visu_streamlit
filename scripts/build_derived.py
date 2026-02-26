@@ -51,7 +51,6 @@ def _build_manifest(
         "agg_student_module_progress",
         "agg_transition_edges",
         "agg_module_usage_daily",
-        "agg_student_module_exposure",
         "agg_playlist_module_usage",
         "agg_module_activity_usage",
         "agg_exercise_daily",

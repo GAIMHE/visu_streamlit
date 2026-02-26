@@ -106,7 +106,7 @@ This page focuses on exposure intensity, time trends, playlist/module usage patt
 It is useful for understanding how learners and classes interact with content at module/activity levels.
 
 - Exposure Overview  
-  Dataset: `artifacts/derived/agg_student_module_exposure.parquet`
+  Dataset: `artifacts/derived/fact_attempt_core.parquet`
 - Module Usage Trends (attempts and students over time)  
   Dataset: `artifacts/derived/agg_module_usage_daily.parquet`
 - Module/Playlist Analytics  

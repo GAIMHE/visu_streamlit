@@ -53,7 +53,6 @@ div, p, label {
 def load_tables(derived_dir: Path) -> dict[str, pl.DataFrame]:
     return {
         "module_daily": pl.read_parquet(derived_dir / "agg_module_usage_daily.parquet"),
-        "student_exposure": pl.read_parquet(derived_dir / "agg_student_module_exposure.parquet"),
         "playlist_module": pl.read_parquet(derived_dir / "agg_playlist_module_usage.parquet"),
         "module_activity": pl.read_parquet(derived_dir / "agg_module_activity_usage.parquet"),
     }
@@ -117,7 +116,6 @@ def _compatibility_status(
     required_tables = {
         "fact_attempt_core",
         "agg_module_usage_daily",
-        "agg_student_module_exposure",
         "agg_playlist_module_usage",
         "agg_module_activity_usage",
     }
@@ -182,7 +180,6 @@ def main() -> None:
     required = [
         fact_path,
         derived_dir / "agg_module_usage_daily.parquet",
-        derived_dir / "agg_student_module_exposure.parquet",
         derived_dir / "agg_playlist_module_usage.parquet",
         derived_dir / "agg_module_activity_usage.parquet",
     ]
@@ -194,7 +191,6 @@ def main() -> None:
 
     data = load_tables(derived_dir)
     module_daily = data["module_daily"]
-    student_exposure = data["student_exposure"]
     playlist_module = data["playlist_module"]
     module_activity = data["module_activity"]
 
@@ -202,7 +198,6 @@ def main() -> None:
         table_columns={
             "fact_attempt_core": _parquet_columns(fact_path),
             "agg_module_usage_daily": module_daily.columns,
-            "agg_student_module_exposure": student_exposure.columns,
             "agg_playlist_module_usage": playlist_module.columns,
             "agg_module_activity_usage": module_activity.columns,
         },

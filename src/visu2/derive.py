@@ -430,28 +430,21 @@ def build_fact_attempt_core(settings: Settings, sample_rows: int | None = None) 
                 "created_at",
                 "date_utc",
                 "user_id",
-                "teacher_id",
                 "classroom_id",
                 "playlist_or_module_id",
                 "objective_id",
-                "objective_id_summary",
                 "objective_label",
                 "activity_id",
                 "activity_label",
                 "exercise_id",
-                "module_long_title",
                 "data_correct",
                 "data_duration",
                 "session_duration",
                 "work_mode",
                 "attempt_number",
-                "student_attempt_index",
-                "first_attempt_success_rate",
                 "module_id",
                 "module_code",
                 "module_label",
-                "mapping_source",
-                "fallback_code_raw",
             ]
         )
         .collect()
@@ -536,48 +529,12 @@ def build_agg_student_module_progress_from_fact(
 def build_agg_module_usage_daily_from_fact(fact: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame:
     return (
         _as_lazy(fact)
-        .group_by(["date_utc", "module_id", "module_code", "module_label"])
+        .group_by(["date_utc", "module_code", "module_label"])
         .agg(
             pl.len().alias("attempts"),
             pl.col("user_id").drop_nulls().n_unique().alias("unique_students"),
-            pl.col("classroom_id").drop_nulls().n_unique().alias("unique_classrooms"),
-            pl.col("playlist_or_module_id").drop_nulls().n_unique().alias("unique_playlists"),
-            pl.col("data_correct").cast(pl.Float64).mean().alias("success_rate"),
-            pl.col("data_duration").median().alias("median_duration"),
-            (pl.col("attempt_number") > 1).cast(pl.Float64).mean().alias("repeat_attempt_rate"),
         )
         .sort(["date_utc", "attempts"], descending=[False, True])
-        .collect()
-    )
-
-
-def build_agg_student_module_exposure_from_fact(fact: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame:
-    attempt_time_seconds = pl.coalesce(
-        [
-            pl.col("session_duration").cast(pl.Float64),
-            pl.col("data_duration").cast(pl.Float64),
-        ]
-    ).alias("attempt_time_seconds")
-    return (
-        _as_lazy(fact)
-        .with_columns(attempt_time_seconds)
-        .group_by(["user_id", "module_id", "module_code", "module_label"])
-        .agg(
-            pl.len().alias("attempts"),
-            pl.col("activity_id").drop_nulls().n_unique().alias("unique_activities"),
-            pl.col("date_utc").drop_nulls().n_unique().alias("active_days"),
-            pl.col("attempt_time_seconds").sum().alias("total_time_seconds"),
-        )
-        .with_columns(
-            (pl.col("attempts") > 10).alias("is_effective_user"),
-            pl.when(pl.col("attempts") <= 10)
-            .then(pl.lit("low<=10"))
-            .when(pl.col("attempts") <= 50)
-            .then(pl.lit("mid11-50"))
-            .otherwise(pl.lit("high>50"))
-            .alias("exposure_bucket"),
-        )
-        .sort(["module_code", "attempts"], descending=[False, True])
         .collect()
     )
 
@@ -595,14 +552,13 @@ def build_agg_playlist_module_usage_from_fact(fact: pl.DataFrame | pl.LazyFrame)
         .filter(
             ~(pl.col("playlist_has_mapped_module") & pl.col("module_code").is_null())
         )
-        .group_by(["playlist_or_module_id", "module_id", "module_code", "module_label"])
+        .group_by(["playlist_or_module_id", "module_code", "module_label"])
         .agg(
             pl.len().alias("attempts"),
             pl.col("user_id").drop_nulls().n_unique().alias("unique_students"),
             pl.col("classroom_id").drop_nulls().n_unique().alias("unique_classrooms"),
             pl.col("activity_id").drop_nulls().n_unique().alias("unique_activities"),
             pl.col("data_correct").cast(pl.Float64).mean().alias("success_rate"),
-            pl.col("data_duration").median().alias("median_duration"),
             pl.col("work_mode")
             .drop_nulls()
             .n_unique()
@@ -629,12 +585,10 @@ def build_agg_playlist_module_usage_from_fact(fact: pl.DataFrame | pl.LazyFrame)
 def build_agg_module_activity_usage_from_fact(fact: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame:
     return (
         _as_lazy(fact)
-        .group_by(["module_id", "module_code", "module_label", "activity_id", "activity_label"])
+        .group_by(["module_code", "module_label", "activity_id", "activity_label"])
         .agg(
             pl.len().alias("attempts"),
             pl.col("user_id").drop_nulls().n_unique().alias("unique_students"),
-            pl.col("classroom_id").drop_nulls().n_unique().alias("unique_classrooms"),
-            pl.col("playlist_or_module_id").drop_nulls().n_unique().alias("unique_playlists"),
         )
         .with_columns(
             (pl.col("attempts") / pl.col("attempts").sum().over("module_code")).alias(
@@ -718,8 +672,6 @@ def write_derived_tables(settings: Settings, sample_rows: int | None = None) -> 
         / "agg_student_module_progress.parquet",
         "agg_transition_edges": settings.artifacts_derived_dir / "agg_transition_edges.parquet",
         "agg_module_usage_daily": settings.artifacts_derived_dir / "agg_module_usage_daily.parquet",
-        "agg_student_module_exposure": settings.artifacts_derived_dir
-        / "agg_student_module_exposure.parquet",
         "agg_playlist_module_usage": settings.artifacts_derived_dir
         / "agg_playlist_module_usage.parquet",
         "agg_module_activity_usage": settings.artifacts_derived_dir
@@ -735,7 +687,6 @@ def write_derived_tables(settings: Settings, sample_rows: int | None = None) -> 
     agg_student_module = build_agg_student_module_progress_from_fact(fact)
     agg_transition = build_transition_edges_from_fact(fact)
     agg_module_usage_daily = build_agg_module_usage_daily_from_fact(fact)
-    agg_student_module_exposure = build_agg_student_module_exposure_from_fact(fact)
     agg_playlist_module_usage = build_agg_playlist_module_usage_from_fact(fact)
     agg_module_activity_usage = build_agg_module_activity_usage_from_fact(fact)
     agg_exercise_daily = build_agg_exercise_daily_from_fact(fact, settings=settings)
@@ -760,11 +711,6 @@ def write_derived_tables(settings: Settings, sample_rows: int | None = None) -> 
         "agg_module_usage_daily",
     )
     _validate_required_columns(
-        agg_student_module_exposure,
-        REQUIRED_AGG_COLUMNS["agg_student_module_exposure"],
-        "agg_student_module_exposure",
-    )
-    _validate_required_columns(
         agg_playlist_module_usage,
         REQUIRED_AGG_COLUMNS["agg_playlist_module_usage"],
         "agg_playlist_module_usage",
@@ -786,7 +732,6 @@ def write_derived_tables(settings: Settings, sample_rows: int | None = None) -> 
     agg_student_module.write_parquet(outputs["agg_student_module_progress"])
     agg_transition.write_parquet(outputs["agg_transition_edges"])
     agg_module_usage_daily.write_parquet(outputs["agg_module_usage_daily"])
-    agg_student_module_exposure.write_parquet(outputs["agg_student_module_exposure"])
     agg_playlist_module_usage.write_parquet(outputs["agg_playlist_module_usage"])
     agg_module_activity_usage.write_parquet(outputs["agg_module_activity_usage"])
     agg_exercise_daily.write_parquet(outputs["agg_exercise_daily"])

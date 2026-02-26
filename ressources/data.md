@@ -30,6 +30,11 @@ Legacy files may still exist in the repository for historical traceability, but 
 - `data/legacy/admathGraphe.json`
 - `data/legacy/modules_configGraphe.xlsx`
 
+Derived runtime update (2026-02-26):
+- Lean derived schema `phase0_thin_slice_v3_lean` is now active.
+- `agg_student_module_exposure.parquet` was removed from runtime/build contracts.
+- Page-2 exposure and diligent analytics are computed from filtered `fact_attempt_core` directly.
+
 ## 2. Dataset Inventory
 
 | File | Format | Size (bytes) | Role |

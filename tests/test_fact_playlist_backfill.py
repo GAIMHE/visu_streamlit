@@ -143,7 +143,5 @@ def test_playlist_placeholder_ids_are_backfilled_from_exercise_summary(tmp_path)
     assert row["exercise_id"] == "ex-1"
     assert row["activity_id"] == "a1"
     assert row["objective_id"] == "o1"
-    assert row["objective_id_summary"] == "o1"
     assert row["module_id"] == "m1"
     assert row["module_code"] == "M1"
-    assert row["mapping_source"] == "catalog_exercise"
