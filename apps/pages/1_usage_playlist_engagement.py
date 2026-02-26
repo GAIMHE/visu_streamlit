@@ -22,6 +22,12 @@ from visu2.contracts import DERIVED_SCHEMA_VERSION, RUNTIME_CORE_COLUMNS
 from visu2.reporting import load_derived_manifest
 from runtime_bootstrap import bootstrap_runtime_assets
 
+st.set_page_config(
+    page_title="Usage Playlist Engagement",
+    page_icon=":bar_chart:",
+    layout="wide",
+)
+
 
 st.markdown(
     """

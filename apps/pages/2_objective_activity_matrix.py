@@ -26,6 +26,12 @@ from visu2.objective_activity_matrix import (
 )
 from runtime_bootstrap import bootstrap_runtime_assets
 
+st.set_page_config(
+    page_title="Objective Activity Matrix",
+    page_icon=":bar_chart:",
+    layout="wide",
+)
+
 
 st.markdown(
     """

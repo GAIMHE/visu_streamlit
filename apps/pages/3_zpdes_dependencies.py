@@ -26,6 +26,12 @@ from visu2.zpdes_dependencies import (
 )
 from runtime_bootstrap import bootstrap_runtime_assets
 
+st.set_page_config(
+    page_title="ZPDES Dependency Graph",
+    page_icon=":bar_chart:",
+    layout="wide",
+)
+
 
 st.markdown(
     """

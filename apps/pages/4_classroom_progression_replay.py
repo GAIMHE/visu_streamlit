@@ -27,6 +27,12 @@ from visu2.classroom_progression import (
 from visu2.config import get_settings
 from runtime_bootstrap import bootstrap_runtime_assets
 
+st.set_page_config(
+    page_title="Classroom Progression Replay",
+    page_icon=":bar_chart:",
+    layout="wide",
+)
+
 
 st.markdown(
     """
