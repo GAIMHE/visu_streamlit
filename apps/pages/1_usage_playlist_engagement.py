@@ -53,6 +53,36 @@ def load_tables(derived_dir: Path) -> dict[str, pl.DataFrame]:
     }
 
 
+def _collect_lazy(lf: pl.LazyFrame) -> pl.DataFrame:
+    """Prefer streaming execution on large lazy plans to reduce peak memory."""
+    try:
+        return lf.collect(engine="streaming")
+    except TypeError:
+        return lf.collect()
+
+
+@st.cache_data(show_spinner=False)
+def load_classroom_values(
+    fact_path: Path,
+    start_date: date,
+    end_date: date,
+    module_code: str | None,
+) -> list[str]:
+    lf = pl.scan_parquet(fact_path).filter(
+        (pl.col("date_utc") >= pl.lit(start_date)) & (pl.col("date_utc") <= pl.lit(end_date))
+    )
+    if module_code:
+        lf = lf.filter(pl.col("module_code") == module_code)
+    df = _collect_lazy(
+        lf.select("classroom_id")
+        .drop_nulls()
+        .filter(pl.col("classroom_id") != "None")
+        .unique()
+        .sort("classroom_id")
+    )
+    return df["classroom_id"].to_list()
+
+
 def _parquet_columns(path: Path) -> list[str]:
     return list(pq.ParquetFile(path).schema_arrow.names)
 
@@ -215,14 +245,11 @@ def main() -> None:
     selected_module = st.sidebar.selectbox("Module", list(module_options.keys()))
     module_filter = module_options[selected_module]
 
-    classroom_values = (
-        pl.scan_parquet(fact_path)
-        .select("classroom_id")
-        .drop_nulls()
-        .unique()
-        .collect()
-        .sort("classroom_id")["classroom_id"]
-        .to_list()
+    classroom_values = load_classroom_values(
+        fact_path=fact_path,
+        start_date=start_date,
+        end_date=end_date,
+        module_code=module_filter,
     )
     classroom_options = ["All"] + classroom_values
     selected_classroom = st.sidebar.selectbox("Classroom (optional)", classroom_options)
@@ -283,8 +310,8 @@ def main() -> None:
             .otherwise(pl.lit("high>50"))
             .alias("exposure_bucket"),
         )
-        .collect()
     )
+    exposure_filtered = _collect_lazy(exposure_filtered)
 
     st.subheader("Exposure Overview")
     st.caption("This section segments student-module exposure using attempt volume and highlights effective usage.")
@@ -543,9 +570,8 @@ def main() -> None:
             .otherwise(pl.lit("non_diligent"))
             .alias("group")
         )
-        .collect()
-        .to_pandas()
     )
+    perf = _collect_lazy(perf).to_pandas()
     st.dataframe(
         perf[["group", "attempts", "success_rate", "median_duration", "repeat_attempt_rate"]],
         width='stretch',
