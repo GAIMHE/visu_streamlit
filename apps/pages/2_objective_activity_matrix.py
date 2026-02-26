@@ -54,6 +54,7 @@ METRIC_LABELS = {
     "exercise_balanced_success_rate": "Exercise-balanced success rate",
     "repeat_attempt_rate": "Repeat attempt rate",
     "first_attempt_success_rate": "First-attempt success rate",
+    "playlist_unique_exercises": "Playlist unique exercises",
 }
 
 
@@ -208,6 +209,7 @@ def main() -> None:
     settings = get_settings()
     activity_path = settings.artifacts_derived_dir / "agg_activity_daily.parquet"
     exercise_daily_path = settings.artifacts_derived_dir / "agg_exercise_daily.parquet"
+    fact_path = settings.artifacts_derived_dir / "fact_attempt_core.parquet"
     catalog_path = settings.learning_catalog_path
 
     if not activity_path.exists():
@@ -233,6 +235,22 @@ def main() -> None:
         "first_attempt_success_rate",
         "first_attempt_count",
     }.issubset(set(activity.columns))
+    fact_columns = set()
+    if fact_path.exists():
+        try:
+            import pyarrow.parquet as pq
+
+            fact_columns = set(pq.ParquetFile(fact_path).schema_arrow.names)
+        except Exception:
+            fact_columns = set()
+    has_playlist_unique_metric = {
+        "date_utc",
+        "module_code",
+        "objective_id",
+        "activity_id",
+        "exercise_id",
+        "work_mode",
+    }.issubset(fact_columns)
 
     min_date = activity["date_utc"].min()
     max_date = activity["date_utc"].max()
@@ -299,6 +317,10 @@ def main() -> None:
         st.info(
             "Exercise-balanced success metric is unavailable because `agg_exercise_daily` is missing or incompatible."
         )
+    if not has_playlist_unique_metric:
+        st.info(
+            "Playlist unique exercises metric is unavailable because `fact_attempt_core` is missing or incompatible."
+        )
 
     st.sidebar.header("Matrix Controls")
     selected_module_label = st.sidebar.selectbox(
@@ -327,6 +349,10 @@ def main() -> None:
         available_metrics = [
             metric for metric in available_metrics if metric != "exercise_balanced_success_rate"
         ]
+    if not has_playlist_unique_metric:
+        available_metrics = [
+            metric for metric in available_metrics if metric != "playlist_unique_exercises"
+        ]
     metric_display_options = [METRIC_LABELS[metric] for metric in available_metrics]
     selected_metric_display = st.sidebar.selectbox(
         "Metric",
@@ -343,6 +369,7 @@ def main() -> None:
     show_ids_in_hover = bool(st.sidebar.checkbox("Show IDs in hover", value=False))
 
     try:
+        fact_lf = pl.scan_parquet(fact_path) if has_playlist_unique_metric else None
         cells_df = build_objective_activity_cells(
             agg_activity_daily=activity,
             module_code=selected_module_code,
@@ -351,6 +378,7 @@ def main() -> None:
             metric=metric,
             summary_payload=summary_payload,
             agg_exercise_daily=exercise_daily,
+            fact_attempt_core=fact_lf,
         )
     except ValueError as err:
         st.error(str(err))
@@ -720,6 +748,7 @@ def main() -> None:
             start_date=start_date,
             end_date=end_date,
             metric=metric,
+            fact_attempt_core=(pl.scan_parquet(fact_path) if has_playlist_unique_metric else None),
         )
     except ValueError as err:
         st.error(str(err))

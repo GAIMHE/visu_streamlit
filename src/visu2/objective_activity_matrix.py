@@ -11,6 +11,7 @@ VALID_MATRIX_METRICS = (
     "exercise_balanced_success_rate",
     "repeat_attempt_rate",
     "first_attempt_success_rate",
+    "playlist_unique_exercises",
 )
 
 _CELLS_SCHEMA: dict[str, pl.DataType] = {
@@ -58,6 +59,22 @@ def _empty_drilldown_df() -> pl.DataFrame:
 
 def _as_frame(df: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame:
     return df.collect() if isinstance(df, pl.LazyFrame) else df
+
+
+def _collect_lazy(lf: pl.LazyFrame) -> pl.DataFrame:
+    try:
+        return lf.collect(engine="streaming")
+    except TypeError:
+        return lf.collect()
+
+
+def _columns_of(df: pl.DataFrame | pl.LazyFrame) -> list[str]:
+    if isinstance(df, pl.DataFrame):
+        return list(df.columns)
+    try:
+        return list(df.collect_schema().names())
+    except Exception:
+        return list(df.schema.keys())
 
 
 def _safe_label(label: str | None, identifier: str | None) -> str:
@@ -187,7 +204,7 @@ def format_cell_value(metric: str, value: float | None) -> str:
         return ""
     if isinstance(value, float) and math.isnan(value):
         return ""
-    if metric == "attempts":
+    if metric in {"attempts", "playlist_unique_exercises"}:
         return f"{int(round(float(value)))}"
     return f"{float(value) * 100:.1f}%"
 
@@ -200,6 +217,7 @@ def build_objective_activity_cells(
     metric: str,
     summary_payload: dict,
     agg_exercise_daily: pl.DataFrame | pl.LazyFrame | None = None,
+    fact_attempt_core: pl.DataFrame | pl.LazyFrame | None = None,
 ) -> pl.DataFrame:
     if metric not in VALID_MATRIX_METRICS:
         raise ValueError(
@@ -337,6 +355,75 @@ def build_objective_activity_cells(
             )
             .to_dicts()
         )
+    elif metric == "playlist_unique_exercises":
+        if fact_attempt_core is None:
+            raise ValueError(
+                "Matrix metric 'playlist_unique_exercises' requires fact_attempt_core."
+            )
+        fact_cols = _columns_of(fact_attempt_core)
+        missing_fact_cols = [
+            col
+            for col in [
+                "date_utc",
+                "module_code",
+                "objective_id",
+                "activity_id",
+                "exercise_id",
+                "work_mode",
+            ]
+            if col not in fact_cols
+        ]
+        if missing_fact_cols:
+            raise ValueError(
+                "Matrix source is missing required columns: "
+                f"{missing_fact_cols}"
+            )
+        fact_lf = fact_attempt_core.lazy() if isinstance(fact_attempt_core, pl.DataFrame) else fact_attempt_core
+        playlist_filtered = (
+            fact_lf.filter(
+                (pl.col("module_code") == module_code)
+                & (pl.col("date_utc") >= pl.lit(start_date))
+                & (pl.col("date_utc") <= pl.lit(end_date))
+                & (pl.col("work_mode") == "playlist")
+                & pl.col("objective_id").is_not_null()
+                & (pl.col("objective_id").cast(pl.Utf8) != "None")
+                & pl.col("activity_id").is_not_null()
+                & (pl.col("activity_id").cast(pl.Utf8) != "None")
+                & pl.col("exercise_id").is_not_null()
+                & (pl.col("exercise_id").cast(pl.Utf8) != "None")
+            )
+        )
+        group_exprs: list[pl.Expr] = [
+            pl.col("exercise_id").cast(pl.Utf8).n_unique().cast(pl.Float64).alias("playlist_unique_exercises"),
+        ]
+        if "objective_label" in fact_cols:
+            group_exprs.append(
+                pl.col("objective_label")
+                .cast(pl.Utf8)
+                .drop_nulls()
+                .first()
+                .alias("objective_label")
+            )
+        else:
+            group_exprs.append(
+                pl.lit(None, dtype=pl.Utf8).alias("objective_label")
+            )
+        if "activity_label" in fact_cols:
+            group_exprs.append(
+                pl.col("activity_label")
+                .cast(pl.Utf8)
+                .drop_nulls()
+                .first()
+                .alias("activity_label")
+            )
+        else:
+            group_exprs.append(
+                pl.lit(None, dtype=pl.Utf8).alias("activity_label")
+            )
+
+        aggregated = _collect_lazy(
+            playlist_filtered.group_by(["module_code", "objective_id", "activity_id"]).agg(group_exprs)
+        ).to_dicts()
     else:
         aggregated = (
             normalized.group_by(["module_code", "objective_id", "activity_id"])
@@ -388,6 +475,8 @@ def build_objective_activity_cells(
             if metric_value_raw is None:
                 continue
             metric_value = float(metric_value_raw)
+        elif metric == "playlist_unique_exercises":
+            metric_value = float(row.get("playlist_unique_exercises") or 0.0)
         else:
             attempts_sum = float(row.get("attempts_sum") or 0.0)
             if metric == "attempts":
@@ -596,11 +685,92 @@ def build_exercise_drilldown_frame(
     start_date: date,
     end_date: date,
     metric: str,
+    fact_attempt_core: pl.DataFrame | pl.LazyFrame | None = None,
 ) -> pl.DataFrame:
     if metric not in VALID_MATRIX_METRICS:
         raise ValueError(
             f"Unsupported metric '{metric}'. Expected one of {list(VALID_MATRIX_METRICS)}"
         )
+
+    if metric == "playlist_unique_exercises":
+        if fact_attempt_core is None:
+            raise ValueError(
+                "Exercise drilldown for 'playlist_unique_exercises' requires fact_attempt_core."
+            )
+        fact_cols = _columns_of(fact_attempt_core)
+        missing_fact_cols = [
+            col
+            for col in [
+                "date_utc",
+                "module_code",
+                "objective_id",
+                "activity_id",
+                "exercise_id",
+                "work_mode",
+                "data_correct",
+                "attempt_number",
+                "data_duration",
+            ]
+            if col not in fact_cols
+        ]
+        if missing_fact_cols:
+            raise ValueError(
+                "Drilldown source is missing required columns: "
+                f"{missing_fact_cols}"
+            )
+        fact_lf = fact_attempt_core.lazy() if isinstance(fact_attempt_core, pl.DataFrame) else fact_attempt_core
+        playlist_filtered = fact_lf.filter(
+            (pl.col("module_code") == module_code)
+            & (pl.col("objective_id") == objective_id)
+            & (pl.col("activity_id") == activity_id)
+            & (pl.col("date_utc") >= pl.lit(start_date))
+            & (pl.col("date_utc") <= pl.lit(end_date))
+            & (pl.col("work_mode") == "playlist")
+            & pl.col("exercise_id").is_not_null()
+            & (pl.col("exercise_id").cast(pl.Utf8) != "None")
+        )
+        playlist_grouped = _collect_lazy(
+            playlist_filtered.group_by(["exercise_id"])
+            .agg(
+                pl.len().cast(pl.Float64).alias("attempts"),
+                pl.col("data_correct").cast(pl.Float64).mean().alias("success_rate"),
+                (pl.col("attempt_number") > 1).cast(pl.Float64).mean().alias("repeat_attempt_rate"),
+                pl.col("data_correct")
+                .filter(pl.col("attempt_number") == 1)
+                .cast(pl.Float64)
+                .mean()
+                .alias("first_attempt_success_rate"),
+                (pl.col("attempt_number") == 1).cast(pl.Float64).sum().alias("first_attempt_count"),
+                pl.col("data_duration").cast(pl.Float64).median().alias("median_duration"),
+                pl.col("attempt_number").cast(pl.Float64).mean().alias("avg_attempt_number"),
+            )
+        )
+        if playlist_grouped.height == 0:
+            return _empty_drilldown_df()
+        drilldown = (
+            playlist_grouped.with_columns(
+                pl.col("exercise_id").cast(pl.Utf8),
+                pl.col("exercise_id").cast(pl.Utf8).alias("exercise_label"),
+                pl.lit("unknown", dtype=pl.Utf8).alias("exercise_type"),
+                pl.col("exercise_id").cast(pl.Utf8).str.slice(0, 8).alias("exercise_short_id"),
+            )
+            .with_columns(
+                pl.col("exercise_short_id").alias("exercise_display_label")
+            )
+            .with_columns(
+                pl.col("attempts").alias("metric_value")
+            )
+            .with_columns(
+                pl.struct(["metric_value"])
+                .map_elements(
+                    lambda row: format_cell_value(metric="attempts", value=row["metric_value"]),
+                    return_dtype=pl.Utf8,
+                )
+                .alias("metric_text")
+            )
+            .sort(["metric_value", "attempts"], descending=[True, True])
+        )
+        return drilldown.select(list(_DRILLDOWN_SCHEMA.keys()))
 
     frame = _as_frame(agg_exercise_daily)
     _assert_required_columns(
@@ -689,6 +859,8 @@ def build_exercise_drilldown_frame(
             .then(pl.col("success_rate"))
             .when(pl.lit(metric) == "exercise_balanced_success_rate")
             .then(pl.col("success_rate"))
+            .when(pl.lit(metric) == "playlist_unique_exercises")
+            .then(pl.col("attempts"))
             .when(pl.lit(metric) == "repeat_attempt_rate")
             .then(pl.col("repeat_attempt_rate"))
             .otherwise(pl.coalesce([pl.col("first_attempt_success_rate"), pl.lit(0.0)]))
