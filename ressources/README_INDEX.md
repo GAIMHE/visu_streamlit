@@ -11,6 +11,7 @@ This index defines the canonical documentation structure for the repository.
 - `ressources/data.md`
 - `ressources/DERIVED_FILES_FORMAT.md`
 - `ressources/README_HF.md`
+- `ressources/DATA_HANDLING.md`
 
 ## Archived Context Documents
 

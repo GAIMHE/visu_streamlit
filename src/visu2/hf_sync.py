@@ -26,6 +26,10 @@ DEFAULT_RUNTIME_RELATIVE_PATHS: tuple[str, ...] = (
     "artifacts/derived/agg_playlist_module_usage.parquet",
     "artifacts/derived/agg_module_activity_usage.parquet",
     "artifacts/derived/agg_exercise_daily.parquet",
+    "artifacts/derived/agg_exercise_elo.parquet",
+    "artifacts/derived/agg_activity_elo.parquet",
+    "artifacts/derived/student_elo_events.parquet",
+    "artifacts/derived/student_elo_profiles.parquet",
 )
 
 

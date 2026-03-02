@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 DERIVED_MANIFEST_VERSION = "1.0"
-DERIVED_SCHEMA_VERSION = "phase0_thin_slice_v3_lean"
+DERIVED_SCHEMA_VERSION = "phase0_thin_slice_v4_elo"
 ACTIVE_CANONICAL_MODULE_CODES = ("M1", "M31", "M32", "M33", "M41", "M42", "M43")
 
 EXPECTED_BASELINE = {
@@ -164,6 +164,62 @@ REQUIRED_AGG_COLUMNS = {
         "repeat_attempt_rate",
         "avg_attempt_number",
     ],
+    "agg_exercise_elo": [
+        "exercise_id",
+        "exercise_label",
+        "exercise_type",
+        "module_id",
+        "module_code",
+        "module_label",
+        "objective_id",
+        "objective_label",
+        "activity_id",
+        "activity_label",
+        "exercise_elo",
+        "calibration_attempts",
+        "calibration_success_rate",
+        "calibrated",
+    ],
+    "agg_activity_elo": [
+        "module_id",
+        "module_code",
+        "module_label",
+        "objective_id",
+        "objective_label",
+        "activity_id",
+        "activity_label",
+        "activity_mean_exercise_elo",
+        "calibrated_exercise_count",
+        "catalog_exercise_count",
+        "calibration_coverage_ratio",
+    ],
+    "student_elo_events": [
+        "user_id",
+        "attempt_ordinal",
+        "created_at",
+        "date_utc",
+        "work_mode",
+        "module_code",
+        "objective_id",
+        "activity_id",
+        "exercise_id",
+        "outcome",
+        "expected_success",
+        "exercise_elo",
+        "student_elo_pre",
+        "student_elo_post",
+    ],
+    "student_elo_profiles": [
+        "user_id",
+        "total_attempts",
+        "first_attempt_at",
+        "last_attempt_at",
+        "unique_modules",
+        "unique_objectives",
+        "unique_activities",
+        "final_student_elo",
+        "eligible_for_replay",
+    ],
 }
 
 RUNTIME_CORE_COLUMNS = {
@@ -249,6 +305,54 @@ RUNTIME_CORE_COLUMNS = {
         "repeat_attempt_rate",
         "avg_attempt_number",
     ],
+    "agg_exercise_elo": [
+        "exercise_id",
+        "module_id",
+        "module_code",
+        "objective_id",
+        "activity_id",
+        "exercise_elo",
+        "calibration_attempts",
+        "calibration_success_rate",
+        "calibrated",
+    ],
+    "agg_activity_elo": [
+        "module_id",
+        "module_code",
+        "objective_id",
+        "activity_id",
+        "activity_mean_exercise_elo",
+        "calibrated_exercise_count",
+        "catalog_exercise_count",
+        "calibration_coverage_ratio",
+    ],
+    "student_elo_events": [
+        "user_id",
+        "attempt_ordinal",
+        "created_at",
+        "date_utc",
+        "work_mode",
+        "module_code",
+        "objective_id",
+        "activity_id",
+        "exercise_id",
+        "outcome",
+        "expected_success",
+        "exercise_elo",
+        "student_elo_pre",
+        "student_elo_post",
+    ],
+    "student_elo_profiles": [
+        "user_id",
+        "total_attempts",
+        "first_attempt_at",
+        "last_attempt_at",
+        "unique_modules",
+        "unique_objectives",
+        "unique_activities",
+        "final_student_elo",
+        "eligible_for_replay",
+    ],
 }
 
 RUNTIME_LABEL_COLUMNS = {
@@ -286,5 +390,16 @@ RUNTIME_LABEL_COLUMNS = {
         "objective_label",
         "activity_label",
         "exercise_label",
+    ],
+    "agg_exercise_elo": [
+        "module_label",
+        "objective_label",
+        "activity_label",
+        "exercise_label",
+    ],
+    "agg_activity_elo": [
+        "module_label",
+        "objective_label",
+        "activity_label",
     ],
 }

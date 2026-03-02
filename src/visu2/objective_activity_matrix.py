@@ -9,6 +9,7 @@ VALID_MATRIX_METRICS = (
     "attempts",
     "success_rate",
     "exercise_balanced_success_rate",
+    "activity_mean_exercise_elo",
     "repeat_attempt_rate",
     "first_attempt_success_rate",
     "playlist_unique_exercises",
@@ -25,6 +26,9 @@ _CELLS_SCHEMA: dict[str, pl.DataType] = {
     "activity_col_label": pl.Utf8,
     "metric_value": pl.Float64,
     "metric_text": pl.Utf8,
+    "exercise_elo": pl.Float64,
+    "calibration_attempts": pl.Int64,
+    "calibration_success_rate": pl.Float64,
 }
 
 _DRILLDOWN_SCHEMA: dict[str, pl.DataType] = {
@@ -42,6 +46,9 @@ _DRILLDOWN_SCHEMA: dict[str, pl.DataType] = {
     "avg_attempt_number": pl.Float64,
     "metric_value": pl.Float64,
     "metric_text": pl.Utf8,
+    "exercise_elo": pl.Float64,
+    "calibration_attempts": pl.Int64,
+    "calibration_success_rate": pl.Float64,
 }
 
 
@@ -206,6 +213,8 @@ def format_cell_value(metric: str, value: float | None) -> str:
         return ""
     if metric in {"attempts", "playlist_unique_exercises"}:
         return f"{int(round(float(value)))}"
+    if metric == "activity_mean_exercise_elo":
+        return f"{int(round(float(value)))}"
     return f"{float(value) * 100:.1f}%"
 
 
@@ -217,6 +226,7 @@ def build_objective_activity_cells(
     metric: str,
     summary_payload: dict,
     agg_exercise_daily: pl.DataFrame | pl.LazyFrame | None = None,
+    agg_activity_elo: pl.DataFrame | pl.LazyFrame | None = None,
     fact_attempt_core: pl.DataFrame | pl.LazyFrame | None = None,
 ) -> pl.DataFrame:
     if metric not in VALID_MATRIX_METRICS:
@@ -355,6 +365,52 @@ def build_objective_activity_cells(
             )
             .to_dicts()
         )
+    elif metric == "activity_mean_exercise_elo":
+        if agg_activity_elo is None:
+            raise ValueError(
+                "Matrix metric 'activity_mean_exercise_elo' requires agg_activity_elo."
+            )
+        activity_elo_frame = _as_frame(agg_activity_elo)
+        _assert_required_columns(
+            activity_elo_frame,
+            [
+                "module_code",
+                "objective_id",
+                "activity_id",
+                "activity_mean_exercise_elo",
+                "calibrated_exercise_count",
+                "catalog_exercise_count",
+            ],
+        )
+        if "objective_label" not in activity_elo_frame.columns:
+            activity_elo_frame = activity_elo_frame.with_columns(
+                pl.col("objective_id").cast(pl.Utf8).alias("objective_label")
+            )
+        if "activity_label" not in activity_elo_frame.columns:
+            activity_elo_frame = activity_elo_frame.with_columns(
+                pl.col("activity_id").cast(pl.Utf8).alias("activity_label")
+            )
+        aggregated = (
+            activity_elo_frame.filter(pl.col("module_code") == module_code)
+            .filter(pl.col("activity_mean_exercise_elo").is_not_null())
+            .with_columns(
+                pl.col("objective_id").cast(pl.Utf8),
+                pl.col("activity_id").cast(pl.Utf8),
+                pl.col("objective_label").cast(pl.Utf8),
+                pl.col("activity_label").cast(pl.Utf8),
+            )
+            .select(
+                [
+                    "module_code",
+                    "objective_id",
+                    "activity_id",
+                    "objective_label",
+                    "activity_label",
+                    "activity_mean_exercise_elo",
+                ]
+            )
+            .to_dicts()
+        )
     elif metric == "playlist_unique_exercises":
         if fact_attempt_core is None:
             raise ValueError(
@@ -472,6 +528,11 @@ def build_objective_activity_cells(
 
         if metric == "exercise_balanced_success_rate":
             metric_value_raw = row.get("exercise_balanced_success_rate")
+            if metric_value_raw is None:
+                continue
+            metric_value = float(metric_value_raw)
+        elif metric == "activity_mean_exercise_elo":
+            metric_value_raw = row.get("activity_mean_exercise_elo")
             if metric_value_raw is None:
                 continue
             metric_value = float(metric_value_raw)
@@ -685,12 +746,72 @@ def build_exercise_drilldown_frame(
     start_date: date,
     end_date: date,
     metric: str,
+    agg_exercise_elo: pl.DataFrame | pl.LazyFrame | None = None,
     fact_attempt_core: pl.DataFrame | pl.LazyFrame | None = None,
 ) -> pl.DataFrame:
     if metric not in VALID_MATRIX_METRICS:
         raise ValueError(
             f"Unsupported metric '{metric}'. Expected one of {list(VALID_MATRIX_METRICS)}"
         )
+
+    if metric == "activity_mean_exercise_elo":
+        if agg_exercise_elo is None:
+            raise ValueError(
+                "Exercise drilldown for 'activity_mean_exercise_elo' requires agg_exercise_elo."
+            )
+        elo_frame = _as_frame(agg_exercise_elo)
+        _assert_required_columns(
+            elo_frame,
+            [
+                "module_code",
+                "objective_id",
+                "activity_id",
+                "exercise_id",
+                "exercise_elo",
+                "calibration_attempts",
+                "calibration_success_rate",
+                "calibrated",
+            ],
+        )
+        if "exercise_label" not in elo_frame.columns:
+            elo_frame = elo_frame.with_columns(
+                pl.col("exercise_id").cast(pl.Utf8).alias("exercise_label")
+            )
+        if "exercise_type" not in elo_frame.columns:
+            elo_frame = elo_frame.with_columns(
+                pl.lit("unknown", dtype=pl.Utf8).alias("exercise_type")
+            )
+        drilldown = (
+            elo_frame.filter(
+                (pl.col("module_code") == module_code)
+                & (pl.col("objective_id") == objective_id)
+                & (pl.col("activity_id") == activity_id)
+                & pl.col("calibrated")
+            )
+            .with_columns(
+                pl.col("exercise_id").cast(pl.Utf8),
+                pl.col("exercise_id").cast(pl.Utf8).str.slice(0, 8).alias("exercise_short_id"),
+                pl.col("exercise_id").cast(pl.Utf8).str.slice(0, 8).alias("exercise_display_label"),
+                pl.col("exercise_elo").alias("metric_value"),
+            )
+            .with_columns(
+                pl.struct(["metric_value"])
+                .map_elements(
+                    lambda row: format_cell_value(metric=metric, value=row["metric_value"]),
+                    return_dtype=pl.Utf8,
+                )
+                .alias("metric_text"),
+                pl.lit(None, dtype=pl.Float64).alias("attempts"),
+                pl.lit(None, dtype=pl.Float64).alias("success_rate"),
+                pl.lit(None, dtype=pl.Float64).alias("first_attempt_success_rate"),
+                pl.lit(None, dtype=pl.Float64).alias("first_attempt_count"),
+                pl.lit(None, dtype=pl.Float64).alias("median_duration"),
+                pl.lit(None, dtype=pl.Float64).alias("repeat_attempt_rate"),
+                pl.lit(None, dtype=pl.Float64).alias("avg_attempt_number"),
+            )
+            .sort(["metric_value", "calibration_attempts"], descending=[True, True])
+        )
+        return drilldown.select(list(_DRILLDOWN_SCHEMA.keys()))
 
     if metric == "playlist_unique_exercises":
         if fact_attempt_core is None:
@@ -758,7 +879,10 @@ def build_exercise_drilldown_frame(
                 pl.col("exercise_short_id").alias("exercise_display_label")
             )
             .with_columns(
-                pl.col("attempts").alias("metric_value")
+                pl.col("attempts").alias("metric_value"),
+                pl.lit(None, dtype=pl.Float64).alias("exercise_elo"),
+                pl.lit(None, dtype=pl.Int64).alias("calibration_attempts"),
+                pl.lit(None, dtype=pl.Float64).alias("calibration_success_rate"),
             )
             .with_columns(
                 pl.struct(["metric_value"])
@@ -867,6 +991,9 @@ def build_exercise_drilldown_frame(
             .alias("metric_value")
         )
         .with_columns(
+            pl.lit(None, dtype=pl.Float64).alias("exercise_elo"),
+            pl.lit(None, dtype=pl.Int64).alias("calibration_attempts"),
+            pl.lit(None, dtype=pl.Float64).alias("calibration_success_rate"),
             pl.struct(["metric_value"])
             .map_elements(
                 lambda row: format_cell_value(metric=metric, value=row["metric_value"]),

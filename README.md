@@ -1,5 +1,7 @@
 # VISU2
 
+https://adaptivisu.streamlit.app/
+
 ## Project and Data Context
 VISU2 is a learning analytics and visualization project built on Adaptiv'Math interaction traces.  
 The repository supports an interactive web app for exploration, visualisation and analysis.  
@@ -120,14 +122,16 @@ It is useful for understanding how learners and classes interact with content at
 This page shows module-internal structure with objectives on rows and local activity positions (`A1..An`) on columns.  
 It supports metric comparison and click-based drilldown to exercise level.
 
-- Objective-Activity matrix metrics  
-  Dataset: `artifacts/derived/agg_activity_daily.parquet`
+- Objective-Activity matrix metrics (`attempts`, success metrics, repeat rate, playlist unique exercises)  
+  Datasets: `artifacts/derived/agg_activity_daily.parquet`, `artifacts/derived/fact_attempt_core.parquet`
+- Activity mean exercise Elo metric  
+  Datasets: `artifacts/derived/agg_activity_elo.parquet`, `artifacts/derived/agg_exercise_elo.parquet`
 - Exercise-balanced metric and exercise drilldown  
   Dataset: `artifacts/derived/agg_exercise_daily.parquet`
 - Objective/activity ordering and labels  
   Dataset: `data/learning_catalog.json`
 - Exercise instruction panel (row click in drilldown table)  
-  Datasets: `artifacts/derived/agg_exercise_daily.parquet`, placeholder image `images/placeholder_exo.png`
+  Datasets: `artifacts/derived/agg_exercise_daily.parquet`, `artifacts/derived/agg_exercise_elo.parquet`, placeholder image `images/placeholder_exo.png`
 
 ### Page 4: ZPDES Dependency Graph (`apps/pages/3_zpdes_dependencies.py`)
 This page visualizes unlocking dependencies between objectives and activities, with optional metric overlays.  
@@ -140,7 +144,16 @@ It helps connect rule structure with observed performance.
 - Optional node performance overlays  
   Dataset: `artifacts/derived/agg_activity_daily.parquet`
 
-### Page 5: Classroom Progression Replay (`apps/pages/4_classroom_progression_replay.py`)
+### Page 5: Student Elo Evolution (`apps/pages/5_student_elo_evolution.py`)
+This page replays one or two student Elo trajectories over their own local attempt sequence.  
+It is useful for comparing progression pace, stability, and recovery after failures against fixed exercise difficulty.
+
+- Student Elo replay line chart  
+  Dataset: `artifacts/derived/student_elo_events.parquet`
+- Student selector and summary cards  
+  Dataset: `artifacts/derived/student_elo_profiles.parquet`
+
+### Page 6: Classroom Progression Replay (`apps/pages/4_classroom_progression_replay.py`)
 This page replays class progression over time as a student-by-activity matrix.  
 It helps inspect pace synchronization, divergence, and emerging bottlenecks in classroom contexts.
 

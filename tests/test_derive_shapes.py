@@ -6,12 +6,16 @@ import polars as pl
 
 from visu2.derive import (
     build_agg_activity_daily_from_fact,
+    build_agg_activity_elo_from_exercise_elo,
     build_agg_exercise_daily_from_fact,
+    build_agg_exercise_elo_from_fact,
     build_agg_module_activity_usage_from_fact,
     build_agg_module_usage_daily_from_fact,
     build_agg_objective_daily_from_fact,
     build_agg_playlist_module_usage_from_fact,
     build_agg_student_module_progress_from_fact,
+    build_student_elo_events_from_fact,
+    build_student_elo_profiles_from_events,
 )
 
 
@@ -190,3 +194,53 @@ def test_exercise_daily_shape_and_keys() -> None:
         .height
         == 0
     )
+
+
+def test_exercise_elo_shape_and_keys() -> None:
+    from visu2.config import get_settings
+
+    agg = build_agg_exercise_elo_from_fact(_sample_fact(), settings=get_settings())
+    assert {
+        "exercise_id",
+        "exercise_elo",
+        "calibration_attempts",
+        "calibration_success_rate",
+        "calibrated",
+        "activity_id",
+    }.issubset(set(agg.columns))
+
+
+def test_activity_elo_shape_and_keys() -> None:
+    from visu2.config import get_settings
+
+    exercise_elo = build_agg_exercise_elo_from_fact(_sample_fact(), settings=get_settings())
+    agg = build_agg_activity_elo_from_exercise_elo(exercise_elo, settings=get_settings())
+    assert {
+        "activity_id",
+        "activity_mean_exercise_elo",
+        "calibrated_exercise_count",
+        "catalog_exercise_count",
+        "calibration_coverage_ratio",
+    }.issubset(set(agg.columns))
+
+
+def test_student_elo_events_and_profiles_shape() -> None:
+    from visu2.config import get_settings
+
+    exercise_elo = build_agg_exercise_elo_from_fact(_sample_fact(), settings=get_settings())
+    events = build_student_elo_events_from_fact(_sample_fact(), exercise_elo)
+    profiles = build_student_elo_profiles_from_events(events)
+
+    assert {
+        "user_id",
+        "attempt_ordinal",
+        "exercise_elo",
+        "student_elo_pre",
+        "student_elo_post",
+    }.issubset(set(events.columns))
+    assert {
+        "user_id",
+        "total_attempts",
+        "final_student_elo",
+        "eligible_for_replay",
+    }.issubset(set(profiles.columns))

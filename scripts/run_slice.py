@@ -27,6 +27,10 @@ def _required_artifacts(settings_root: Path) -> list[Path]:
         settings_root / "artifacts" / "derived" / "agg_playlist_module_usage.parquet",
         settings_root / "artifacts" / "derived" / "agg_module_activity_usage.parquet",
         settings_root / "artifacts" / "derived" / "agg_exercise_daily.parquet",
+        settings_root / "artifacts" / "derived" / "agg_exercise_elo.parquet",
+        settings_root / "artifacts" / "derived" / "agg_activity_elo.parquet",
+        settings_root / "artifacts" / "derived" / "student_elo_events.parquet",
+        settings_root / "artifacts" / "derived" / "student_elo_profiles.parquet",
     ]
 
 

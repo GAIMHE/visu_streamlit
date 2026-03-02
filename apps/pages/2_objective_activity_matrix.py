@@ -52,6 +52,7 @@ METRIC_LABELS = {
     "attempts": "Attempts",
     "success_rate": "Success rate",
     "exercise_balanced_success_rate": "Exercise-balanced success rate",
+    "activity_mean_exercise_elo": "Activity mean exercise Elo",
     "repeat_attempt_rate": "Repeat attempt rate",
     "first_attempt_success_rate": "First-attempt success rate",
     "playlist_unique_exercises": "Playlist unique exercises",
@@ -65,6 +66,16 @@ def load_activity_daily(path: Path) -> pl.DataFrame:
 
 @st.cache_data(show_spinner=False)
 def load_exercise_daily(path: Path) -> pl.DataFrame:
+    return pl.read_parquet(path)
+
+
+@st.cache_data(show_spinner=False)
+def load_activity_elo(path: Path) -> pl.DataFrame:
+    return pl.read_parquet(path)
+
+
+@st.cache_data(show_spinner=False)
+def load_exercise_elo(path: Path) -> pl.DataFrame:
     return pl.read_parquet(path)
 
 
@@ -209,6 +220,8 @@ def main() -> None:
     settings = get_settings()
     activity_path = settings.artifacts_derived_dir / "agg_activity_daily.parquet"
     exercise_daily_path = settings.artifacts_derived_dir / "agg_exercise_daily.parquet"
+    activity_elo_path = settings.artifacts_derived_dir / "agg_activity_elo.parquet"
+    exercise_elo_path = settings.artifacts_derived_dir / "agg_exercise_elo.parquet"
     fact_path = settings.artifacts_derived_dir / "fact_attempt_core.parquet"
     catalog_path = settings.learning_catalog_path
 
@@ -322,6 +335,47 @@ def main() -> None:
             "Playlist unique exercises metric is unavailable because `fact_attempt_core` is missing or incompatible."
         )
 
+    activity_elo: pl.DataFrame | None = None
+    exercise_elo: pl.DataFrame | None = None
+    activity_elo_status = "ok"
+    exercise_elo_status = "ok"
+    if not activity_elo_path.exists():
+        activity_elo_status = "missing"
+    else:
+        activity_elo = load_activity_elo(activity_elo_path)
+        missing_activity_elo_core = [
+            col for col in RUNTIME_CORE_COLUMNS["agg_activity_elo"] if col not in activity_elo.columns
+        ]
+        if missing_activity_elo_core:
+            activity_elo_status = "incompatible"
+            st.warning(
+                "Activity Elo metric is unavailable because `agg_activity_elo` is incompatible."
+            )
+            st.markdown("- " + "\n- ".join(f"`{col}`" for col in missing_activity_elo_core))
+            st.code("uv run python scripts/build_derived.py --strict-checks")
+
+    if not exercise_elo_path.exists():
+        exercise_elo_status = "missing"
+    else:
+        exercise_elo = load_exercise_elo(exercise_elo_path)
+        missing_exercise_elo_core = [
+            col for col in RUNTIME_CORE_COLUMNS["agg_exercise_elo"] if col not in exercise_elo.columns
+        ]
+        if missing_exercise_elo_core:
+            exercise_elo_status = "incompatible"
+            st.warning(
+                "Activity Elo drilldown is unavailable because `agg_exercise_elo` is incompatible."
+            )
+            st.markdown("- " + "\n- ".join(f"`{col}`" for col in missing_exercise_elo_core))
+            st.code("uv run python scripts/build_derived.py --strict-checks")
+
+    has_activity_elo_metric = activity_elo_status == "ok" and exercise_elo_status == "ok"
+    if not has_activity_elo_metric:
+        st.info(
+            "Activity mean exercise Elo is unavailable because `agg_activity_elo` or "
+            "`agg_exercise_elo` is missing or incompatible."
+        )
+
     st.sidebar.header("Matrix Controls")
     selected_module_label = st.sidebar.selectbox(
         "Module",
@@ -353,6 +407,10 @@ def main() -> None:
         available_metrics = [
             metric for metric in available_metrics if metric != "playlist_unique_exercises"
         ]
+    if not has_activity_elo_metric:
+        available_metrics = [
+            metric for metric in available_metrics if metric != "activity_mean_exercise_elo"
+        ]
     metric_display_options = [METRIC_LABELS[metric] for metric in available_metrics]
     selected_metric_display = st.sidebar.selectbox(
         "Metric",
@@ -364,6 +422,11 @@ def main() -> None:
         for metric_key, metric_label in METRIC_LABELS.items()
         if metric_label == selected_metric_display and metric_key in available_metrics
     )
+    if metric == "activity_mean_exercise_elo":
+        st.info(
+            "This Elo metric is globally calibrated from historical first attempts. "
+            "The date filter is kept for consistency, but it does not change Elo values."
+        )
 
     show_cell_values = bool(st.sidebar.checkbox("Show cell values", value=True))
     show_ids_in_hover = bool(st.sidebar.checkbox("Show IDs in hover", value=False))
@@ -378,6 +441,7 @@ def main() -> None:
             metric=metric,
             summary_payload=summary_payload,
             agg_exercise_daily=exercise_daily,
+            agg_activity_elo=activity_elo,
             fact_attempt_core=fact_lf,
         )
     except ValueError as err:
@@ -547,16 +611,24 @@ def main() -> None:
         for row in render_rows
     ]
 
+    colorscale = [
+        [0.0, "#f6f2e6"],
+        [0.5, "#9f86c0"],
+        [1.0, "#2b0a8f"],
+    ]
+    if metric == "activity_mean_exercise_elo":
+        colorscale = [
+            [0.0, "#f4efe7"],
+            [0.5, "#d67d4b"],
+            [1.0, "#5e1f14"],
+        ]
+
     heatmap_kwargs: dict[str, object] = {
         "z": payload["z_values"],
         "x": payload["x_labels"],
         "y": y_axis_labels,
         "customdata": customdata_grid,
-        "colorscale": [
-            [0.0, "#f6f2e6"],
-            [0.5, "#9f86c0"],
-            [1.0, "#2b0a8f"],
-        ],
+        "colorscale": colorscale,
         "colorbar": {"title": metric_colorbar_title},
         "hovertemplate": hover_template,
         "hoverongaps": False,
@@ -660,13 +732,14 @@ def main() -> None:
         st.sidebar.write(event)
 
     st.subheader("Exercise Drilldown")
-    if exercise_daily_status == "missing":
+    requires_exercise_daily = metric != "activity_mean_exercise_elo"
+    if requires_exercise_daily and exercise_daily_status == "missing":
         st.info(
             "Exercise drilldown is unavailable because `agg_exercise_daily.parquet` is missing. "
             "Run `uv run python scripts/build_derived.py --strict-checks`."
         )
         return
-    if exercise_daily_status == "incompatible":
+    if requires_exercise_daily and exercise_daily_status == "incompatible":
         st.info("Exercise drilldown is disabled until artifacts are rebuilt.")
         return
 
@@ -748,6 +821,7 @@ def main() -> None:
             start_date=start_date,
             end_date=end_date,
             metric=metric,
+            agg_exercise_elo=exercise_elo,
             fact_attempt_core=(pl.scan_parquet(fact_path) if has_playlist_unique_metric else None),
         )
     except ValueError as err:
@@ -756,24 +830,47 @@ def main() -> None:
         return
 
     if drilldown.height == 0:
-        st.info("No exercise-level rows for the selected activity in this date range.")
+        if metric == "activity_mean_exercise_elo":
+            st.info("No calibrated exercise Elo rows for the selected activity.")
+        else:
+            st.info("No exercise-level rows for the selected activity in this date range.")
         return
 
-    drilldown_table = drilldown.select(
-        [
-            "exercise_short_id",
-            "exercise_id",
-            "exercise_label",
-            "exercise_type",
-            "attempts",
-            "success_rate",
-            "first_attempt_success_rate",
-            "repeat_attempt_rate",
-            "median_duration",
-        ]
-    )
-    drilldown_table_event = st.dataframe(
-        drilldown_table.select(
+    if metric == "activity_mean_exercise_elo":
+        drilldown_table = drilldown.select(
+            [
+                "exercise_short_id",
+                "exercise_id",
+                "exercise_label",
+                "exercise_type",
+                "exercise_elo",
+                "calibration_attempts",
+                "calibration_success_rate",
+            ]
+        )
+        drilldown_display = drilldown_table.select(
+            [
+                "exercise_short_id",
+                "exercise_elo",
+                "calibration_attempts",
+                "calibration_success_rate",
+            ]
+        )
+    else:
+        drilldown_table = drilldown.select(
+            [
+                "exercise_short_id",
+                "exercise_id",
+                "exercise_label",
+                "exercise_type",
+                "attempts",
+                "success_rate",
+                "first_attempt_success_rate",
+                "repeat_attempt_rate",
+                "median_duration",
+            ]
+        )
+        drilldown_display = drilldown_table.select(
             [
                 "exercise_short_id",
                 "exercise_type",
@@ -783,7 +880,9 @@ def main() -> None:
                 "repeat_attempt_rate",
                 "median_duration",
             ]
-        ).to_pandas(),
+        )
+    drilldown_table_event = st.dataframe(
+        drilldown_display.to_pandas(),
         width='stretch',
         hide_index=True,
         on_select="rerun",

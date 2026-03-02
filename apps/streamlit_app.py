@@ -325,6 +325,10 @@ def main() -> None:
     playlist_module_usage_path = derived_dir / "agg_playlist_module_usage.parquet"
     module_activity_usage_path = derived_dir / "agg_module_activity_usage.parquet"
     exercise_daily_path = derived_dir / "agg_exercise_daily.parquet"
+    exercise_elo_path = derived_dir / "agg_exercise_elo.parquet"
+    activity_elo_path = derived_dir / "agg_activity_elo.parquet"
+    student_elo_events_path = derived_dir / "student_elo_events.parquet"
+    student_elo_profiles_path = derived_dir / "student_elo_profiles.parquet"
 
     required = [
         derived_dir / "agg_activity_daily.parquet",
@@ -334,6 +338,10 @@ def main() -> None:
         playlist_module_usage_path,
         module_activity_usage_path,
         exercise_daily_path,
+        exercise_elo_path,
+        activity_elo_path,
+        student_elo_events_path,
+        student_elo_profiles_path,
         fact_path,
         report_path,
     ]
@@ -355,6 +363,10 @@ def main() -> None:
             "agg_playlist_module_usage": _parquet_columns(playlist_module_usage_path),
             "agg_module_activity_usage": _parquet_columns(module_activity_usage_path),
             "agg_exercise_daily": _parquet_columns(exercise_daily_path),
+            "agg_exercise_elo": _parquet_columns(exercise_elo_path),
+            "agg_activity_elo": _parquet_columns(activity_elo_path),
+            "student_elo_events": _parquet_columns(student_elo_events_path),
+            "student_elo_profiles": _parquet_columns(student_elo_profiles_path),
         },
         manifest_path=manifest_path,
     )

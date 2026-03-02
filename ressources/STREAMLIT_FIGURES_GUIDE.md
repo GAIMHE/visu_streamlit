@@ -3,8 +3,8 @@
 This document explains what each figure in the app shows, and the practical question it can answer.
 
 Important note:
-- These visuals are descriptive.  
-- They help spot patterns and compare groups.  
+- These visuals are descriptive.
+- They help spot patterns and compare groups.
 - They do **not** prove cause-and-effect by themselves.
 
 ---
@@ -118,13 +118,16 @@ Important note:
   - attempts
   - success rate
   - exercise-balanced success rate
+  - activity mean exercise Elo
   - repeat attempt rate
   - first-attempt success rate (if available)
+  - playlist unique exercises
 - Interaction: click populated squares directly to open exercise drilldown.
 
 **Question it can answer**
 - Inside a module, where are strong/weak zones across objectives and activity positions?
 - Do early vs late activities in objectives show different performance?
+- Which activities look intrinsically harder when difficulty is calibrated from exercise history?
 
 ---
 
@@ -145,9 +148,24 @@ Important note:
 
 ---
 
+## Page: Student Elo Evolution
+
+### 11) Student Elo Evolution (replay line chart)
+**What it shows**
+- One or two students' Elo trajectories over their own attempt sequence.
+- Exercise difficulty is fixed from the historical calibration.
+- The line replay advances in synchronized local steps (for example every 10 attempts).
+
+**Question it can answer**
+- Is a student improving steadily, plateauing, or oscillating?
+- Do two students with similar attempt volume progress at the same pace?
+- Do failures cause short dips followed by recovery, or longer stagnation?
+
+---
+
 ## Page: Classroom Progression Replay
 
-### 11) Student × Activity Replay Matrix (animated heatmap)
+### 12) Student x Activity Replay Matrix (animated heatmap)
 **What it shows**
 - A classroom matrix:
   - X-axis = students (anonymized)
@@ -169,4 +187,5 @@ Important note:
 - For intervention decisions:
   1. Find weak points (bottlenecks/matrix),
   2. Check path context (transitions/dependencies),
-  3. Check class-level dynamics (replay page).
+  3. Compare individual trajectories if needed (Student Elo),
+  4. Check class-level dynamics (replay page).

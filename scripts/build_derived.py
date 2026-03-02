@@ -54,6 +54,10 @@ def _build_manifest(
         "agg_playlist_module_usage",
         "agg_module_activity_usage",
         "agg_exercise_daily",
+        "agg_exercise_elo",
+        "agg_activity_elo",
+        "student_elo_events",
+        "student_elo_profiles",
     ]
     tables: dict[str, dict[str, object]] = {}
     for table_name in required_tables:

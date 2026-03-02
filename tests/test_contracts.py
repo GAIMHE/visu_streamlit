@@ -76,6 +76,10 @@ def test_required_agg_contracts_include_idee_pack() -> None:
         "agg_playlist_module_usage",
         "agg_module_activity_usage",
         "agg_exercise_daily",
+        "agg_exercise_elo",
+        "agg_activity_elo",
+        "student_elo_events",
+        "student_elo_profiles",
     }
     assert expected_tables.issubset(set(REQUIRED_AGG_COLUMNS.keys()))
 

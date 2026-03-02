@@ -126,6 +126,45 @@ def _exercise_daily_sample() -> pl.DataFrame:
     )
 
 
+def _activity_elo_sample() -> pl.DataFrame:
+    return pl.DataFrame(
+        {
+            "module_id": ["m1", "m1", "m2"],
+            "module_code": ["M1", "M1", "M2"],
+            "module_label": ["Module 1", "Module 1", "Module 2"],
+            "objective_id": ["o1", "o2", "o9"],
+            "objective_label": ["Objective One", "Objective Two", "Other objective"],
+            "activity_id": ["a1", "a2", "b1"],
+            "activity_label": ["Activity One", "Activity Two", "Other Activity"],
+            "activity_mean_exercise_elo": [1525.0, 1490.0, 1510.0],
+            "calibrated_exercise_count": [2, 1, 1],
+            "catalog_exercise_count": [2, 1, 1],
+            "calibration_coverage_ratio": [1.0, 1.0, 1.0],
+        }
+    )
+
+
+def _exercise_elo_sample() -> pl.DataFrame:
+    return pl.DataFrame(
+        {
+            "exercise_id": ["e1", "e2", "e3"],
+            "exercise_label": ["Exercise One", "Exercise Two", "Exercise Three"],
+            "exercise_type": ["MCQ", "MCQ", "MCQ"],
+            "module_id": ["m1", "m1", "m1"],
+            "module_code": ["M1", "M1", "M1"],
+            "module_label": ["Module 1", "Module 1", "Module 1"],
+            "objective_id": ["o1", "o1", "o2"],
+            "objective_label": ["Objective One", "Objective One", "Objective Two"],
+            "activity_id": ["a1", "a1", "a2"],
+            "activity_label": ["Activity One", "Activity One", "Activity Two"],
+            "exercise_elo": [1510.0, 1540.0, 1490.0],
+            "calibration_attempts": [4, 3, 2],
+            "calibration_success_rate": [0.75, 0.33, 0.5],
+            "calibrated": [True, True, True],
+        }
+    )
+
+
 def test_weighted_metrics_and_attempt_sums_are_correct() -> None:
     frame = _activity_daily_sample()
     summary_payload = _summary_payload()
@@ -210,6 +249,24 @@ def test_exercise_balanced_success_rate_requires_exercise_source() -> None:
         assert "requires agg_exercise_daily" in str(err)
         return
     raise AssertionError("Expected ValueError when agg_exercise_daily is missing.")
+
+
+def test_activity_mean_exercise_elo_uses_dedicated_source() -> None:
+    cells = build_objective_activity_cells(
+        agg_activity_daily=_activity_daily_sample(),
+        module_code="M1",
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 31),
+        metric="activity_mean_exercise_elo",
+        summary_payload=_summary_payload(),
+        agg_activity_elo=_activity_elo_sample(),
+    )
+
+    value = cells.filter(
+        (pl.col("objective_id") == "o1") & (pl.col("activity_id") == "a1")
+    )["metric_value"].item()
+    assert float(value) == 1525.0
+    assert format_cell_value("activity_mean_exercise_elo", float(value)) == "1525"
 
 
 def test_summary_first_order_with_deterministic_fallback_ordering() -> None:
@@ -411,3 +468,22 @@ def test_exercise_drilldown_returns_empty_when_no_rows() -> None:
         metric="attempts",
     )
     assert result.height == 0
+
+
+def test_exercise_drilldown_for_activity_elo_uses_elo_rows() -> None:
+    drilldown = build_exercise_drilldown_frame(
+        agg_exercise_daily=_exercise_daily_sample(),
+        module_code="M1",
+        objective_id="o1",
+        activity_id="a1",
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 31),
+        metric="activity_mean_exercise_elo",
+        agg_exercise_elo=_exercise_elo_sample(),
+    )
+
+    assert {"exercise_elo", "calibration_attempts", "calibration_success_rate"}.issubset(
+        set(drilldown.columns)
+    )
+    first_row = drilldown.to_dicts()[0]
+    assert float(first_row["metric_value"]) == 1540.0
