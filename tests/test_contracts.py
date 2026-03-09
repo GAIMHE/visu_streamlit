@@ -1,10 +1,50 @@
+"""
+test_contracts.py
+
+Validate runtime contracts and schema compatibility helpers.
+
+Dependencies
+------------
+- visu2
+
+Classes
+-------
+- None.
+
+Functions
+---------
+- test_fact_contract_has_required_columns: Test scenario for fact contract has required columns.
+- test_catalog_frames_builds_expected_hierarchy: Test scenario for catalog frames builds expected hierarchy.
+- test_required_agg_contracts_include_idee_pack: Test scenario for required agg contracts include idee pack.
+- test_active_canonical_module_codes_are_stable: Test scenario for active canonical module codes are stable.
+"""
 from __future__ import annotations
 
-from visu2.contracts import ACTIVE_CANONICAL_MODULE_CODES, REQUIRED_AGG_COLUMNS, REQUIRED_FACT_COLUMNS
+from visu2.contracts import (
+    ACTIVE_CANONICAL_MODULE_CODES,
+    REQUIRED_AGG_COLUMNS,
+    REQUIRED_FACT_COLUMNS,
+)
 from visu2.loaders import catalog_to_summary_frames
 
 
 def test_fact_contract_has_required_columns() -> None:
+    """Test fact contract has required columns.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     expected = {
         "created_at",
         "date_utc",
@@ -29,6 +69,22 @@ def test_fact_contract_has_required_columns() -> None:
 
 
 def test_catalog_frames_builds_expected_hierarchy() -> None:
+    """Test catalog frames builds expected hierarchy.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     catalog = {
         "meta": {},
         "id_label_index": {},
@@ -71,6 +127,22 @@ def test_catalog_frames_builds_expected_hierarchy() -> None:
 
 
 def test_required_agg_contracts_include_idee_pack() -> None:
+    """Test required agg contracts include idee pack.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     expected_tables = {
         "agg_module_usage_daily",
         "agg_playlist_module_usage",
@@ -85,4 +157,20 @@ def test_required_agg_contracts_include_idee_pack() -> None:
 
 
 def test_active_canonical_module_codes_are_stable() -> None:
+    """Test active canonical module codes are stable.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     assert ACTIVE_CANONICAL_MODULE_CODES == ("M1", "M31", "M32", "M33", "M41", "M42", "M43")

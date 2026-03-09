@@ -1,3 +1,22 @@
+"""
+test_transitions.py
+
+Validate transition edge extraction and ordering behavior.
+
+Dependencies
+------------
+- datetime
+- polars
+- visu2
+
+Classes
+-------
+- None.
+
+Functions
+---------
+- test_transition_edges_builds_expected_links: Test scenario for transition edges builds expected links.
+"""
 from __future__ import annotations
 
 from datetime import datetime
@@ -8,6 +27,22 @@ from visu2.transitions import build_transition_edges_from_fact
 
 
 def test_transition_edges_builds_expected_links() -> None:
+    """Test transition edges builds expected links.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     fact = pl.DataFrame(
         {
             "created_at": [

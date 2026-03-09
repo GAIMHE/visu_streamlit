@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""CLI entrypoint for building local derived artifacts and the manifest."""
+
 from __future__ import annotations
 
 import argparse
@@ -22,10 +24,12 @@ from visu2.reporting import write_derived_manifest, write_json_report
 
 
 def _ts() -> str:
+    """Return the current UTC timestamp as an ISO string."""
     return datetime.now(UTC).isoformat()
 
 
 def _parquet_table_profile(path: Path) -> dict[str, object]:
+    """Read a compact schema and row-count profile for one parquet file."""
     parquet = pq.ParquetFile(path)
     schema = parquet.schema_arrow
     columns = list(schema.names)
@@ -44,6 +48,7 @@ def _build_manifest(
     strict_checks: bool,
     checks_status: str,
 ) -> dict[str, object]:
+    """Build the manifest payload for the expected runtime tables."""
     required_tables = [
         "fact_attempt_core",
         "agg_activity_daily",
@@ -80,6 +85,7 @@ def _build_manifest(
 
 
 def main() -> int:
+    """Run the build pipeline and write checks and manifest outputs."""
     parser = argparse.ArgumentParser(description="Build derived datasets for the thin Streamlit slice.")
     parser.add_argument(
         "--sample-rows",

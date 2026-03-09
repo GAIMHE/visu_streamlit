@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""CLI entrypoint for running data contract and consistency checks."""
+
 from __future__ import annotations
 
 import argparse
@@ -17,6 +19,7 @@ from visu2.reporting import write_json_report
 
 
 def main() -> int:
+    """Execute the configured checks and optionally fail on non-pass status."""
     parser = argparse.ArgumentParser(description="Run Phase 0 data contracts and consistency checks.")
     parser.add_argument(
         "--output",

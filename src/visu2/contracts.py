@@ -1,3 +1,20 @@
+"""
+contracts.py
+
+Define derived schema versions and required column contracts used by build, checks, and UI compatibility.
+
+Dependencies
+------------
+- Standard library only in this module.
+
+Classes
+-------
+- None.
+
+Functions
+---------
+- None.
+"""
 from __future__ import annotations
 
 DERIVED_MANIFEST_VERSION = "1.0"

@@ -1,3 +1,25 @@
+"""
+bottleneck.py
+
+Build bottleneck scoring frames and label-safe ranking used by overview charts.
+
+Dependencies
+------------
+- contracts
+- datetime
+- pandas
+- polars
+
+Classes
+-------
+- None.
+
+Functions
+---------
+- make_unique_plot_label: Utility for make unique plot label.
+- apply_bottleneck_filters: Utility for apply bottleneck filters.
+- build_bottleneck_frame: Build bottleneck frame.
+"""
 from __future__ import annotations
 
 from datetime import date
@@ -35,6 +57,28 @@ def make_unique_plot_label(
     entity_id: str | None,
     collision_rank: int,
 ) -> str:
+    """Make unique plot label.
+
+Parameters
+----------
+base_label : str | None
+        Input parameter used by this routine.
+context : str | None
+        Input parameter used by this routine.
+entity_id : str | None
+        Input parameter used by this routine.
+collision_rank : int
+        Input parameter used by this routine.
+
+Returns
+-------
+str
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     base = str(base_label or "").strip() or "(unlabeled)"
     context_value = str(context or "").strip() or "unknown"
     entity = str(entity_id or "").strip()
@@ -57,6 +101,36 @@ def apply_bottleneck_filters(
     level: str,
     canonical_modules: tuple[str, ...] = ACTIVE_CANONICAL_MODULE_CODES,
 ) -> pl.DataFrame:
+    """Apply bottleneck filters.
+
+Parameters
+----------
+frame : pl.DataFrame
+        Input parameter used by this routine.
+start_date : date
+        Input parameter used by this routine.
+end_date : date
+        Input parameter used by this routine.
+module_code : str | None
+        Input parameter used by this routine.
+objective_id : str | None
+        Input parameter used by this routine.
+activity_id : str | None
+        Input parameter used by this routine.
+level : str
+        Input parameter used by this routine.
+canonical_modules : tuple[str, ...]
+        Input parameter used by this routine.
+
+Returns
+-------
+pl.DataFrame
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     if level not in BOTTLENECK_LEVEL_CONFIG:
         raise ValueError(f"Unsupported bottleneck level: {level}")
 
@@ -80,6 +154,28 @@ def build_bottleneck_frame(
     min_attempts: int,
     top_n: int,
 ) -> pd.DataFrame:
+    """Build bottleneck frame.
+
+Parameters
+----------
+filtered_activity : pl.DataFrame
+        Input parameter used by this routine.
+level : str
+        Input parameter used by this routine.
+min_attempts : int
+        Input parameter used by this routine.
+top_n : int
+        Input parameter used by this routine.
+
+Returns
+-------
+pd.DataFrame
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     if level not in BOTTLENECK_LEVEL_CONFIG:
         raise ValueError(f"Unsupported bottleneck level: {level}")
     if filtered_activity.height == 0:
@@ -162,6 +258,22 @@ def build_bottleneck_frame(
     )
 
     def _label_row(row: pd.Series) -> str:
+        """Label row.
+
+Parameters
+----------
+row : pd.Series
+            Input parameter used by this routine.
+
+Returns
+-------
+str
+            Result produced by this routine.
+
+Notes
+-----
+        Behavior is intentionally documented for maintainability and traceability.
+"""
         collision_rank = 0
         if int(row["label_collision_count"]) > 1:
             collision_rank = 1

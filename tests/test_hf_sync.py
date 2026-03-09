@@ -1,3 +1,28 @@
+"""
+test_hf_sync.py
+
+Validate HF runtime sync configuration parsing and synchronization behavior.
+
+Dependencies
+------------
+- pytest
+- visu2
+
+Classes
+-------
+- None.
+
+Functions
+---------
+- _build_settings: Utility for build settings.
+- _write_runtime_files: Utility for write runtime files.
+- test_load_hf_repo_config_from_env: Test scenario for load hf repo config from env.
+- test_load_hf_repo_config_secrets_override_env: Test scenario for load hf repo config secrets override env.
+- test_load_hf_repo_config_missing_required_values: Test scenario for load hf repo config missing required values.
+- test_load_hf_repo_config_returns_none_without_repo_id: Test scenario for load hf repo config returns none without repo id.
+- test_ensure_runtime_assets_from_hf_success: Test scenario for ensure runtime assets from hf success.
+- test_ensure_runtime_assets_from_hf_raises_on_missing_files: Test scenario for ensure runtime assets from hf raises on missing files.
+"""
 from __future__ import annotations
 
 import pytest
@@ -12,6 +37,22 @@ from visu2.hf_sync import (
 
 
 def _build_settings(tmp_path) -> Settings:
+    """Build settings.
+
+Parameters
+----------
+tmp_path : Any
+        Input parameter used by this routine.
+
+Returns
+-------
+Settings
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     data_dir = tmp_path / "data"
     artifacts_dir = tmp_path / "artifacts"
     derived_dir = artifacts_dir / "derived"
@@ -38,6 +79,24 @@ def _build_settings(tmp_path) -> Settings:
 
 
 def _write_runtime_files(root_dir, relative_paths: tuple[str, ...]) -> None:
+    """Write runtime files.
+
+Parameters
+----------
+root_dir : Any
+        Input parameter used by this routine.
+relative_paths : tuple[str, ...]
+        Input parameter used by this routine.
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     for rel_path in relative_paths:
         path = root_dir / rel_path
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -45,6 +104,22 @@ def _write_runtime_files(root_dir, relative_paths: tuple[str, ...]) -> None:
 
 
 def test_load_hf_repo_config_from_env() -> None:
+    """Test load hf repo config from env.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     config = load_hf_repo_config(
         environ={
             "VISU2_HF_REPO_ID": "org/repo",
@@ -61,6 +136,22 @@ def test_load_hf_repo_config_from_env() -> None:
 
 
 def test_load_hf_repo_config_secrets_override_env() -> None:
+    """Test load hf repo config secrets override env.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     config = load_hf_repo_config(
         secrets={
             "VISU2_HF_REPO_ID": "secret/repo",
@@ -80,6 +171,22 @@ def test_load_hf_repo_config_secrets_override_env() -> None:
 
 
 def test_load_hf_repo_config_missing_required_values() -> None:
+    """Test load hf repo config missing required values.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     with pytest.raises(ValueError):
         load_hf_repo_config(environ={"VISU2_HF_REPO_ID": "org/repo"})
     with pytest.raises(ValueError):
@@ -92,10 +199,48 @@ def test_load_hf_repo_config_missing_required_values() -> None:
 
 
 def test_load_hf_repo_config_returns_none_without_repo_id() -> None:
+    """Test load hf repo config returns none without repo id.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     assert load_hf_repo_config(environ={}) is None
 
 
 def test_ensure_runtime_assets_from_hf_success(tmp_path, monkeypatch) -> None:
+    """Test ensure runtime assets from hf success.
+
+Parameters
+----------
+tmp_path : Any
+        Input parameter used by this routine.
+monkeypatch : Any
+        Input parameter used by this routine.
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     settings = _build_settings(tmp_path)
     config = HFRepoConfig(
         repo_id="org/repo",
@@ -106,6 +251,22 @@ def test_ensure_runtime_assets_from_hf_success(tmp_path, monkeypatch) -> None:
     )
 
     def fake_snapshot_download(**kwargs):
+        """Fake snapshot download.
+
+Parameters
+----------
+kwargs : Any
+            Input parameter used by this routine.
+
+Returns
+-------
+Any
+            Result produced by this routine.
+
+Notes
+-----
+        Behavior is intentionally documented for maintainability and traceability.
+"""
         assert kwargs["repo_id"] == "org/repo"
         assert kwargs["revision"] == "v1"
         _write_runtime_files(settings.root_dir, DEFAULT_RUNTIME_RELATIVE_PATHS)
@@ -120,6 +281,28 @@ def test_ensure_runtime_assets_from_hf_success(tmp_path, monkeypatch) -> None:
 
 
 def test_ensure_runtime_assets_from_hf_raises_on_missing_files(tmp_path, monkeypatch) -> None:
+    """Test ensure runtime assets from hf raises on missing files.
+
+Parameters
+----------
+tmp_path : Any
+        Input parameter used by this routine.
+monkeypatch : Any
+        Input parameter used by this routine.
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     settings = _build_settings(tmp_path)
     config = HFRepoConfig(
         repo_id="org/repo",
@@ -130,6 +313,22 @@ def test_ensure_runtime_assets_from_hf_raises_on_missing_files(tmp_path, monkeyp
     )
 
     def fake_snapshot_download(**kwargs):
+        """Fake snapshot download.
+
+Parameters
+----------
+kwargs : Any
+            Input parameter used by this routine.
+
+Returns
+-------
+Any
+            Result produced by this routine.
+
+Notes
+-----
+        Behavior is intentionally documented for maintainability and traceability.
+"""
         _write_runtime_files(settings.root_dir, DEFAULT_RUNTIME_RELATIVE_PATHS[:2])
         return str(settings.root_dir)
 

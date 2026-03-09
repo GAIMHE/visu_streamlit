@@ -1,8 +1,9 @@
+"""Streamlit page for the ZPDES dependency graph view."""
+
 from __future__ import annotations
 
 import math
 import sys
-from datetime import date
 from pathlib import Path
 
 import plotly.graph_objects as go
@@ -17,6 +18,8 @@ if str(SRC_DIR) not in sys.path:
 if str(APPS_DIR) not in sys.path:
     sys.path.insert(0, str(APPS_DIR))
 
+from runtime_bootstrap import bootstrap_runtime_assets
+
 from visu2.config import get_settings
 from visu2.zpdes_dependencies import (
     attach_overlay_metrics_to_nodes,
@@ -24,7 +27,6 @@ from visu2.zpdes_dependencies import (
     filter_dependency_graph_by_objectives,
     list_supported_module_codes_from_metadata,
 )
-from runtime_bootstrap import bootstrap_runtime_assets
 
 st.set_page_config(
     page_title="ZPDES Dependency Graph",
@@ -57,6 +59,24 @@ OVERLAY_OPTIONS = {
 
 
 def _truncate(text: str, max_chars: int = 44) -> str:
+    """Truncate.
+
+Parameters
+----------
+text : str
+        Input parameter used by this routine.
+max_chars : int
+        Input parameter used by this routine.
+
+Returns
+-------
+str
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     out = str(text or "").strip()
     if len(out) <= max_chars:
         return out
@@ -64,6 +84,24 @@ def _truncate(text: str, max_chars: int = 44) -> str:
 
 
 def _label_or_id(label: str | None, identifier: str | None) -> str:
+    """Label or id.
+
+Parameters
+----------
+label : str | None
+        Input parameter used by this routine.
+identifier : str | None
+        Input parameter used by this routine.
+
+Returns
+-------
+str
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     label_txt = str(label or "").strip()
     if label_txt:
         return label_txt
@@ -71,6 +109,22 @@ def _label_or_id(label: str | None, identifier: str | None) -> str:
 
 
 def _objective_sort_key(code: str | None) -> tuple[int, int, str]:
+    """Objective sort key.
+
+Parameters
+----------
+code : str | None
+        Input parameter used by this routine.
+
+Returns
+-------
+tuple[int, int, str]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     text = str(code or "")
     if text.startswith("M") and "O" in text:
         try:
@@ -83,6 +137,24 @@ def _objective_sort_key(code: str | None) -> tuple[int, int, str]:
 
 
 def _fmt_metric(metric_name: str, value: float | None) -> str:
+    """Fmt metric.
+
+Parameters
+----------
+metric_name : str
+        Input parameter used by this routine.
+value : float | None
+        Input parameter used by this routine.
+
+Returns
+-------
+str
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     if value is None:
         return "n/a"
     if isinstance(value, float) and math.isnan(value):
@@ -93,6 +165,22 @@ def _fmt_metric(metric_name: str, value: float | None) -> str:
 
 
 def _fmt_threshold(value: float | None) -> str:
+    """Fmt threshold.
+
+Parameters
+----------
+value : float | None
+        Input parameter used by this routine.
+
+Returns
+-------
+str
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     if value is None:
         return "n/a"
     return f"{float(value):.0%}"
@@ -103,6 +191,26 @@ def _collect_transitive_incoming_activation(
     seed_targets: set[str],
     objective_by_node: dict[str, str] | None = None,
 ) -> pl.DataFrame:
+    """Collect transitive incoming activation.
+
+Parameters
+----------
+edges : pl.DataFrame
+        Input parameter used by this routine.
+seed_targets : set[str]
+        Input parameter used by this routine.
+objective_by_node : dict[str, str] | None
+        Input parameter used by this routine.
+
+Returns
+-------
+pl.DataFrame
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     if edges.height == 0 or not seed_targets:
         return pl.DataFrame(
             {
@@ -172,6 +280,22 @@ def _collect_transitive_incoming_activation(
 
 
 def _extract_selection(event: object) -> dict[str, str] | None:
+    """Extract selection.
+
+Parameters
+----------
+event : object
+        Input parameter used by this routine.
+
+Returns
+-------
+dict[str, str] | None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     if not isinstance(event, dict):
         return None
     selection = event.get("selection")
@@ -194,6 +318,22 @@ def _extract_selection(event: object) -> dict[str, str] | None:
 
 
 def _polyline_length(points: list[tuple[float, float]]) -> float:
+    """Polyline length.
+
+Parameters
+----------
+points : list[tuple[float, float]]
+        Input parameter used by this routine.
+
+Returns
+-------
+float
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     total = 0.0
     for idx in range(len(points) - 1):
         x0, y0 = points[idx]
@@ -203,6 +343,24 @@ def _polyline_length(points: list[tuple[float, float]]) -> float:
 
 
 def _point_on_polyline(points: list[tuple[float, float]], distance: float) -> tuple[float, float]:
+    """Point on polyline.
+
+Parameters
+----------
+points : list[tuple[float, float]]
+        Input parameter used by this routine.
+distance : float
+        Input parameter used by this routine.
+
+Returns
+-------
+tuple[float, float]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     if not points:
         return (0.0, 0.0)
     if len(points) == 1:
@@ -223,6 +381,24 @@ def _point_on_polyline(points: list[tuple[float, float]], distance: float) -> tu
 
 
 def _trim_polyline(points: list[tuple[float, float]], keep_length: float) -> list[tuple[float, float]]:
+    """Trim polyline.
+
+Parameters
+----------
+points : list[tuple[float, float]]
+        Input parameter used by this routine.
+keep_length : float
+        Input parameter used by this routine.
+
+Returns
+-------
+list[tuple[float, float]]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     if not points:
         return []
     if len(points) == 1:
@@ -253,6 +429,28 @@ def _quadratic_curve_points(
     end: tuple[float, float],
     steps: int,
 ) -> list[tuple[float, float]]:
+    """Quadratic curve points.
+
+Parameters
+----------
+start : tuple[float, float]
+        Input parameter used by this routine.
+control : tuple[float, float]
+        Input parameter used by this routine.
+end : tuple[float, float]
+        Input parameter used by this routine.
+steps : int
+        Input parameter used by this routine.
+
+Returns
+-------
+list[tuple[float, float]]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     n = max(8, int(steps))
     out: list[tuple[float, float]] = []
     x0, y0 = start
@@ -276,6 +474,34 @@ def _build_graph(
     curve_intra_objective_edges: bool,
     focus_node_code: str | None = None,
 ) -> go.Figure:
+    """Build graph.
+
+Parameters
+----------
+nodes : pl.DataFrame
+        Input parameter used by this routine.
+edges : pl.DataFrame
+        Input parameter used by this routine.
+overlay_metric_col : str | None
+        Input parameter used by this routine.
+overlay_display : str
+        Input parameter used by this routine.
+show_ids : bool
+        Input parameter used by this routine.
+curve_intra_objective_edges : bool
+        Input parameter used by this routine.
+focus_node_code : str | None
+        Input parameter used by this routine.
+
+Returns
+-------
+go.Figure
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     if nodes.height == 0:
         return go.Figure()
 
@@ -542,6 +768,26 @@ def _build_graph(
     cmax = max(overlay_numeric_vals) if overlay_numeric_vals else None
 
     def _add_node_trace(subset_rows: list[dict[str, object]], faded: bool, show_colorbar: bool) -> None:
+        """Add node trace.
+
+Parameters
+----------
+subset_rows : list[dict[str, object]]
+            Input parameter used by this routine.
+faded : bool
+            Input parameter used by this routine.
+show_colorbar : bool
+            Input parameter used by this routine.
+
+Returns
+-------
+None
+            Result produced by this routine.
+
+Notes
+-----
+        Behavior is intentionally documented for maintainability and traceability.
+"""
         if not subset_rows:
             return
         if overlay_metric_col is None:
@@ -649,6 +895,22 @@ def _build_graph(
 
 @st.cache_data(show_spinner=False)
 def load_activity_daily(path: Path) -> pl.DataFrame:
+    """Load activity daily.
+
+Parameters
+----------
+path : Path
+        Input parameter used by this routine.
+
+Returns
+-------
+pl.DataFrame
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return pl.read_parquet(path)
 
 
@@ -658,6 +920,26 @@ def load_dependency_tables(
     learning_catalog_path: Path,
     zpdes_rules_path: Path,
 ) -> tuple[pl.DataFrame, pl.DataFrame, list[str]]:
+    """Load dependency tables.
+
+Parameters
+----------
+module_code : str
+        Input parameter used by this routine.
+learning_catalog_path : Path
+        Input parameter used by this routine.
+zpdes_rules_path : Path
+        Input parameter used by this routine.
+
+Returns
+-------
+tuple[pl.DataFrame, pl.DataFrame, list[str]]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return build_dependency_tables_from_metadata(
         module_code=module_code,
         learning_catalog_path=learning_catalog_path,
@@ -666,6 +948,18 @@ def load_dependency_tables(
 
 
 def main() -> None:
+    """Main.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     bootstrap_runtime_assets()
     settings = get_settings()
     activity_path = settings.artifacts_derived_dir / "agg_activity_daily.parquet"

@@ -1,3 +1,34 @@
+"""
+4_classroom_progression_replay.py
+
+Render classroom progression replay controls and animated matrix visualization.
+
+Dependencies
+------------
+- datetime
+- pathlib
+- polars
+- pyarrow
+- runtime_bootstrap
+- streamlit
+- sys
+- time
+- visu2
+
+Classes
+-------
+- None.
+
+Functions
+---------
+- _load_profiles: Utility for load profiles.
+- _load_replay_payload: Utility for load replay payload.
+- _format_classroom_option: Utility for format classroom option.
+- _mode_label: Utility for mode label.
+- _parquet_columns: Utility for parquet columns.
+- _default_date_range: Utility for default date range.
+- main: Utility for main.
+"""
 from __future__ import annotations
 
 import sys
@@ -17,6 +48,8 @@ if str(SRC_DIR) not in sys.path:
 if str(APPS_DIR) not in sys.path:
     sys.path.insert(0, str(APPS_DIR))
 
+from runtime_bootstrap import bootstrap_runtime_assets
+
 from visu2.classroom_progression import (
     VALID_MODE_SCOPES,
     build_classroom_mode_profiles,
@@ -25,7 +58,6 @@ from visu2.classroom_progression import (
     select_default_classroom,
 )
 from visu2.config import get_settings
-from runtime_bootstrap import bootstrap_runtime_assets
 
 st.set_page_config(
     page_title="Classroom Progression Replay",
@@ -63,6 +95,22 @@ MODE_OPTIONS = {
 
 @st.cache_data(show_spinner=False)
 def _load_profiles(fact_path: Path) -> pl.DataFrame:
+    """Load profiles.
+
+Parameters
+----------
+fact_path : Path
+        Input parameter used by this routine.
+
+Returns
+-------
+pl.DataFrame
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return build_classroom_mode_profiles(pl.scan_parquet(fact_path))
 
 
@@ -76,6 +124,34 @@ def _load_replay_payload(
     max_frames: int,
     step_size: int,
 ) -> dict:
+    """Load replay payload.
+
+Parameters
+----------
+fact_path : Path
+        Input parameter used by this routine.
+classroom_id : str
+        Input parameter used by this routine.
+mode_scope : str
+        Input parameter used by this routine.
+start_date : date
+        Input parameter used by this routine.
+end_date : date
+        Input parameter used by this routine.
+max_frames : int
+        Input parameter used by this routine.
+step_size : int
+        Input parameter used by this routine.
+
+Returns
+-------
+dict
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return build_replay_payload(
         fact=pl.scan_parquet(fact_path),
         classroom_id=classroom_id,
@@ -88,6 +164,22 @@ def _load_replay_payload(
 
 
 def _format_classroom_option(row: dict[str, object]) -> str:
+    """Format classroom option.
+
+Parameters
+----------
+row : dict[str, object]
+        Input parameter used by this routine.
+
+Returns
+-------
+str
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return (
         f"{row.get('classroom_id')}  "
         f"({row.get('students')} students, {row.get('activities')} activities, {row.get('attempts')} attempts)"
@@ -95,6 +187,22 @@ def _format_classroom_option(row: dict[str, object]) -> str:
 
 
 def _mode_label(mode_scope: str) -> str:
+    """Mode label.
+
+Parameters
+----------
+mode_scope : str
+        Input parameter used by this routine.
+
+Returns
+-------
+str
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     for label, value in MODE_OPTIONS.items():
         if value == mode_scope:
             return label
@@ -102,10 +210,42 @@ def _mode_label(mode_scope: str) -> str:
 
 
 def _parquet_columns(path: Path) -> list[str]:
+    """Parquet columns.
+
+Parameters
+----------
+path : Path
+        Input parameter used by this routine.
+
+Returns
+-------
+list[str]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return list(pq.ParquetFile(path).schema_arrow.names)
 
 
 def _default_date_range(row: dict[str, object]) -> tuple[date, date]:
+    """Default date range.
+
+Parameters
+----------
+row : dict[str, object]
+        Input parameter used by this routine.
+
+Returns
+-------
+tuple[date, date]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     first_ts = row.get("first_attempt_at")
     last_ts = row.get("last_attempt_at")
     if hasattr(first_ts, "date") and hasattr(last_ts, "date"):
@@ -115,6 +255,18 @@ def _default_date_range(row: dict[str, object]) -> tuple[date, date]:
 
 
 def main() -> None:
+    """Main.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     bootstrap_runtime_assets()
     settings = get_settings()
     fact_path = settings.artifacts_derived_dir / "fact_attempt_core.parquet"

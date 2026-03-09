@@ -1,3 +1,37 @@
+"""
+checks.py
+
+Run dataset consistency checks and compute metadata health metrics for reporting.
+
+Dependencies
+------------
+- config
+- contracts
+- datetime
+- loaders
+- pathlib
+- polars
+- pyarrow
+- typing
+
+Classes
+-------
+- None.
+
+Functions
+---------
+- _ts: Utility for ts.
+- _assert_equal: Utility for assert equal.
+- _sum_null_counts_from_rowgroup_stats: Utility for sum null counts from rowgroup stats.
+- _parquet_profile: Utility for parquet profile.
+- _catalog_integrity: Utility for catalog integrity.
+- _list_len: Utility for list len.
+- _dict_len: Utility for dict len.
+- _to_int: Utility for to int.
+- _pick: Utility for pick.
+- _metadata_health_metrics: Utility for metadata health metrics.
+- run_all_checks: Run all checks.
+"""
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -18,10 +52,42 @@ from .loaders import (
 
 
 def _ts() -> str:
+    """Ts.
+
+
+Returns
+-------
+str
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return datetime.now(UTC).isoformat()
 
 
 def _assert_equal(name: str, actual: Any, expected: Any) -> dict[str, Any]:
+    """Assert equal.
+
+Parameters
+----------
+name : str
+        Input parameter used by this routine.
+actual : Any
+        Input parameter used by this routine.
+expected : Any
+        Input parameter used by this routine.
+
+Returns
+-------
+dict[str, Any]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return {
         "name": name,
         "expected": expected,
@@ -31,6 +97,24 @@ def _assert_equal(name: str, actual: Any, expected: Any) -> dict[str, Any]:
 
 
 def _sum_null_counts_from_rowgroup_stats(parquet_path: Path, column: str) -> int:
+    """Sum null counts from rowgroup stats.
+
+Parameters
+----------
+parquet_path : Path
+        Input parameter used by this routine.
+column : str
+        Input parameter used by this routine.
+
+Returns
+-------
+int
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     parquet = pq.ParquetFile(parquet_path)
     schema_names = parquet.schema_arrow.names
     if column not in schema_names:
@@ -47,6 +131,22 @@ def _sum_null_counts_from_rowgroup_stats(parquet_path: Path, column: str) -> int
 
 
 def _parquet_profile(settings: Settings) -> dict[str, Any]:
+    """Parquet profile.
+
+Parameters
+----------
+settings : Settings
+        Input parameter used by this routine.
+
+Returns
+-------
+dict[str, Any]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     parquet = pq.ParquetFile(settings.parquet_path)
     schema_names = parquet.schema_arrow.names
     rows = int(parquet.metadata.num_rows)
@@ -84,6 +184,22 @@ def _parquet_profile(settings: Settings) -> dict[str, Any]:
 
 
 def _catalog_integrity(catalog_payload: dict[str, Any]) -> dict[str, Any]:
+    """Catalog integrity.
+
+Parameters
+----------
+catalog_payload : dict[str, Any]
+        Input parameter used by this routine.
+
+Returns
+-------
+dict[str, Any]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     frames = catalog_to_summary_frames(catalog_payload)
     module_objectives = frames.module_objectives
     objective_activities = frames.objective_activities
@@ -112,16 +228,70 @@ def _catalog_integrity(catalog_payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _list_len(payload: dict[str, Any], key: str) -> int:
+    """List len.
+
+Parameters
+----------
+payload : dict[str, Any]
+        Input parameter used by this routine.
+key : str
+        Input parameter used by this routine.
+
+Returns
+-------
+int
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     value = payload.get(key)
     return len(value) if isinstance(value, list) else 0
 
 
 def _dict_len(payload: dict[str, Any], key: str) -> int:
+    """Dict len.
+
+Parameters
+----------
+payload : dict[str, Any]
+        Input parameter used by this routine.
+key : str
+        Input parameter used by this routine.
+
+Returns
+-------
+int
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     value = payload.get(key)
     return len(value) if isinstance(value, dict) else 0
 
 
 def _to_int(value: object, default: int = 0) -> int:
+    """To int.
+
+Parameters
+----------
+value : object
+        Input parameter used by this routine.
+default : int
+        Input parameter used by this routine.
+
+Returns
+-------
+int
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     try:
         return int(value)
     except (TypeError, ValueError):
@@ -129,6 +299,24 @@ def _to_int(value: object, default: int = 0) -> int:
 
 
 def _pick(payload: dict[str, Any], *keys: str) -> object:
+    """Pick.
+
+Parameters
+----------
+payload : dict[str, Any]
+        Input parameter used by this routine.
+keys : str
+        Input parameter used by this routine.
+
+Returns
+-------
+object
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     for key in keys:
         if key in payload:
             return payload.get(key)
@@ -141,6 +329,28 @@ def _metadata_health_metrics(
     catalog_integrity: dict[str, Any],
     exercise_ids: set[str],
 ) -> dict[str, int]:
+    """Metadata health metrics.
+
+Parameters
+----------
+catalog_payload : dict[str, Any]
+        Input parameter used by this routine.
+zpdes_rules_payload : dict[str, Any]
+        Input parameter used by this routine.
+catalog_integrity : dict[str, Any]
+        Input parameter used by this routine.
+exercise_ids : set[str]
+        Input parameter used by this routine.
+
+Returns
+-------
+dict[str, int]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     conflicts = catalog_payload.get("conflicts")
     conflicts = conflicts if isinstance(conflicts, dict) else {}
 
@@ -219,6 +429,22 @@ def _metadata_health_metrics(
 
 
 def run_all_checks(settings: Settings) -> dict[str, Any]:
+    """Run all checks.
+
+Parameters
+----------
+settings : Settings
+        Input parameter used by this routine.
+
+Returns
+-------
+dict[str, Any]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     catalog_payload = load_learning_catalog(settings.learning_catalog_path)
     zpdes_rules_payload = load_zpdes_rules(settings.zpdes_rules_path)
     exercises_payload = load_exercises(settings.exercises_json_path)

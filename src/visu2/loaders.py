@@ -1,3 +1,33 @@
+"""
+loaders.py
+
+Load source metadata and derived artifacts into DataFrame-friendly structures.
+
+Dependencies
+------------
+- dataclasses
+- json
+- pathlib
+- polars
+
+Classes
+-------
+- SummaryFrames: Structured model for summary frames.
+- CatalogIndexFrames: Structured model for catalog index frames.
+
+Functions
+---------
+- load_json: Load json.
+- load_learning_catalog: Load learning catalog.
+- load_zpdes_rules: Load zpdes rules.
+- load_exercises: Load exercises.
+- _explode_ids: Utility for explode ids.
+- _summary_like_to_frames: Utility for summary like to frames.
+- _title_short_long: Utility for title short long.
+- catalog_to_summary_frames: Utility for catalog to summary frames.
+- catalog_id_index_frames: Utility for catalog id index frames.
+- zpdes_code_maps: Utility for zpdes code maps.
+"""
 from __future__ import annotations
 
 import json
@@ -9,6 +39,12 @@ import polars as pl
 
 @dataclass(frozen=True)
 class SummaryFrames:
+    """Summary frames.
+
+Notes
+-----
+This class is documented in NumPy style for consistency across the codebase.
+"""
     modules: pl.DataFrame
     objectives: pl.DataFrame
     activities: pl.DataFrame
@@ -21,6 +57,12 @@ class SummaryFrames:
 
 @dataclass(frozen=True)
 class CatalogIndexFrames:
+    """Catalog index frames.
+
+Notes
+-----
+This class is documented in NumPy style for consistency across the codebase.
+"""
     index: pl.DataFrame
     modules: pl.DataFrame
     objectives: pl.DataFrame
@@ -29,11 +71,43 @@ class CatalogIndexFrames:
 
 
 def load_json(path: Path) -> dict:
+    """Load json.
+
+Parameters
+----------
+path : Path
+        Input parameter used by this routine.
+
+Returns
+-------
+dict
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
 
 
 def load_learning_catalog(path: Path) -> dict:
+    """Load learning catalog.
+
+Parameters
+----------
+path : Path
+        Input parameter used by this routine.
+
+Returns
+-------
+dict
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     payload = load_json(path)
     required = {"meta", "id_label_index", "modules", "exercise_to_hierarchy"}
     missing = required - set(payload.keys())
@@ -43,6 +117,22 @@ def load_learning_catalog(path: Path) -> dict:
 
 
 def load_zpdes_rules(path: Path) -> dict:
+    """Load zpdes rules.
+
+Parameters
+----------
+path : Path
+        Input parameter used by this routine.
+
+Returns
+-------
+dict
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     payload = load_json(path)
     required = {"meta", "module_rules", "map_id_code", "links_to_catalog", "unresolved_links"}
     missing = required - set(payload.keys())
@@ -52,6 +142,22 @@ def load_zpdes_rules(path: Path) -> dict:
 
 
 def load_exercises(path: Path) -> dict:
+    """Load exercises.
+
+Parameters
+----------
+path : Path
+        Input parameter used by this routine.
+
+Returns
+-------
+dict
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     payload = load_json(path)
     if "exercises" not in payload:
         raise ValueError("exercises.json missing key: exercises")
@@ -59,6 +165,26 @@ def load_exercises(path: Path) -> dict:
 
 
 def _explode_ids(df: pl.DataFrame, list_col: str, out_col: str) -> pl.DataFrame:
+    """Explode ids.
+
+Parameters
+----------
+df : pl.DataFrame
+        Input parameter used by this routine.
+list_col : str
+        Input parameter used by this routine.
+out_col : str
+        Input parameter used by this routine.
+
+Returns
+-------
+pl.DataFrame
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return (
         df.select([c for c in df.columns if c != list_col] + [list_col])
         .explode(list_col)
@@ -67,6 +193,22 @@ def _explode_ids(df: pl.DataFrame, list_col: str, out_col: str) -> pl.DataFrame:
 
 
 def _summary_like_to_frames(summary: dict) -> SummaryFrames:
+    """Summary like to frames.
+
+Parameters
+----------
+summary : dict
+        Input parameter used by this routine.
+
+Returns
+-------
+SummaryFrames
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     modules = pl.DataFrame(
         [
             {
@@ -168,6 +310,22 @@ def _summary_like_to_frames(summary: dict) -> SummaryFrames:
 
 
 def _title_short_long(title_obj: object) -> tuple[str | None, str | None]:
+    """Title short long.
+
+Parameters
+----------
+title_obj : object
+        Input parameter used by this routine.
+
+Returns
+-------
+tuple[str | None, str | None]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     if not isinstance(title_obj, dict):
         return None, None
     short = title_obj.get("short")
@@ -179,6 +337,22 @@ def _title_short_long(title_obj: object) -> tuple[str | None, str | None]:
 
 
 def catalog_to_summary_frames(catalog: dict) -> SummaryFrames:
+    """Catalog to summary frames.
+
+Parameters
+----------
+catalog : dict
+        Input parameter used by this routine.
+
+Returns
+-------
+SummaryFrames
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     modules_rows: list[dict[str, object]] = []
     objectives_rows: list[dict[str, object]] = []
     activities_rows: list[dict[str, object]] = []
@@ -266,6 +440,22 @@ def catalog_to_summary_frames(catalog: dict) -> SummaryFrames:
 
 
 def catalog_id_index_frames(catalog: dict) -> CatalogIndexFrames:
+    """Catalog id index frames.
+
+Parameters
+----------
+catalog : dict
+        Input parameter used by this routine.
+
+Returns
+-------
+CatalogIndexFrames
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     raw_index = catalog.get("id_label_index")
     if not isinstance(raw_index, dict):
         raise ValueError("learning_catalog.id_label_index must be an object")
@@ -295,6 +485,22 @@ def catalog_id_index_frames(catalog: dict) -> CatalogIndexFrames:
             index = index.with_columns(pl.col(column).cast(pl.Utf8))
 
     def _typed_frame(type_name: str) -> pl.DataFrame:
+        """Typed frame.
+
+Parameters
+----------
+type_name : str
+            Input parameter used by this routine.
+
+Returns
+-------
+pl.DataFrame
+            Result produced by this routine.
+
+Notes
+-----
+        Behavior is intentionally documented for maintainability and traceability.
+"""
         if index.height == 0:
             return index
         return index.filter(pl.col("type") == type_name)
@@ -309,6 +515,22 @@ def catalog_id_index_frames(catalog: dict) -> CatalogIndexFrames:
 
 
 def zpdes_code_maps(zpdes_rules: dict) -> dict[str, dict[str, object]]:
+    """Zpdes code maps.
+
+Parameters
+----------
+zpdes_rules : dict
+        Input parameter used by this routine.
+
+Returns
+-------
+dict[str, dict[str, object]]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     raw = zpdes_rules.get("map_id_code")
     if not isinstance(raw, dict):
         raise ValueError("zpdes_rules.map_id_code must be an object")

@@ -66,3 +66,6 @@ Desktop.ini
 
 # .env file for environment variables
 .env
+
+# Extra ressources
+ressources/figures/

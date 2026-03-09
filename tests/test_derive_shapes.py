@@ -1,3 +1,34 @@
+"""
+test_derive_shapes.py
+
+Validate derived table shapes and required columns after build.
+
+Dependencies
+------------
+- datetime
+- polars
+- visu2
+
+Classes
+-------
+- None.
+
+Functions
+---------
+- _sample_fact: Utility for sample fact.
+- test_activity_agg_shape: Test scenario for activity agg shape.
+- test_activity_agg_first_attempt_success_rate_is_computed_correctly: Test scenario for activity agg first attempt success rate is computed correctly.
+- test_objective_agg_shape: Test scenario for objective agg shape.
+- test_student_module_agg_shape: Test scenario for student module agg shape.
+- test_module_usage_daily_shape_and_keys: Test scenario for module usage daily shape and keys.
+- test_playlist_module_usage_shape_and_keys: Test scenario for playlist module usage shape and keys.
+- test_playlist_usage_drops_null_module_row_when_mapped_exists: Test scenario for playlist usage drops null module row when mapped exists.
+- test_module_activity_usage_shape_and_keys: Test scenario for module activity usage shape and keys.
+- test_exercise_daily_shape_and_keys: Test scenario for exercise daily shape and keys.
+- test_exercise_elo_shape_and_keys: Test scenario for exercise elo shape and keys.
+- test_activity_elo_shape_and_keys: Test scenario for activity elo shape and keys.
+- test_student_elo_events_and_profiles_shape: Test scenario for student elo events and profiles shape.
+"""
 from __future__ import annotations
 
 from datetime import datetime
@@ -20,6 +51,18 @@ from visu2.derive import (
 
 
 def _sample_fact() -> pl.DataFrame:
+    """Sample fact.
+
+
+Returns
+-------
+pl.DataFrame
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return pl.DataFrame(
         {
             "created_at": [
@@ -53,6 +96,22 @@ def _sample_fact() -> pl.DataFrame:
 
 
 def test_activity_agg_shape() -> None:
+    """Test activity agg shape.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     agg = build_agg_activity_daily_from_fact(_sample_fact())
     assert agg.height >= 2
     assert {
@@ -66,6 +125,22 @@ def test_activity_agg_shape() -> None:
 
 
 def test_activity_agg_first_attempt_success_rate_is_computed_correctly() -> None:
+    """Test activity agg first attempt success rate is computed correctly.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     fact = pl.DataFrame(
         {
             "created_at": [
@@ -99,12 +174,44 @@ def test_activity_agg_first_attempt_success_rate_is_computed_correctly() -> None
 
 
 def test_objective_agg_shape() -> None:
+    """Test objective agg shape.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     agg = build_agg_objective_daily_from_fact(_sample_fact())
     assert agg.height >= 2
     assert {"date_utc", "objective_id", "attempts", "unique_students"}.issubset(set(agg.columns))
 
 
 def test_student_module_agg_shape() -> None:
+    """Test student module agg shape.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     agg = build_agg_student_module_progress_from_fact(_sample_fact())
     assert agg.height >= 2
     assert {"date_utc", "user_id", "module_id", "attempts", "last_attempt_at"}.issubset(
@@ -113,12 +220,44 @@ def test_student_module_agg_shape() -> None:
 
 
 def test_module_usage_daily_shape_and_keys() -> None:
+    """Test module usage daily shape and keys.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     agg = build_agg_module_usage_daily_from_fact(_sample_fact())
     assert {"date_utc", "module_code", "attempts", "unique_students"}.issubset(set(agg.columns))
     assert agg.group_by(["date_utc", "module_code"]).len().filter(pl.col("len") > 1).height == 0
 
 
 def test_playlist_module_usage_shape_and_keys() -> None:
+    """Test playlist module usage shape and keys.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     agg = build_agg_playlist_module_usage_from_fact(_sample_fact())
     assert {"playlist_or_module_id", "module_code", "work_mode", "attempts", "unique_activities"}.issubset(
         set(agg.columns)
@@ -131,6 +270,22 @@ def test_playlist_module_usage_shape_and_keys() -> None:
 
 
 def test_playlist_usage_drops_null_module_row_when_mapped_exists() -> None:
+    """Test playlist usage drops null module row when mapped exists.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     fact = pl.DataFrame(
         {
             "created_at": [
@@ -162,6 +317,22 @@ def test_playlist_usage_drops_null_module_row_when_mapped_exists() -> None:
 
 
 def test_module_activity_usage_shape_and_keys() -> None:
+    """Test module activity usage shape and keys.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     agg = build_agg_module_activity_usage_from_fact(_sample_fact())
     assert {"module_code", "activity_id", "attempts", "activity_share_within_module"}.issubset(
         set(agg.columns)
@@ -170,6 +341,22 @@ def test_module_activity_usage_shape_and_keys() -> None:
 
 
 def test_exercise_daily_shape_and_keys() -> None:
+    """Test exercise daily shape and keys.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     from visu2.config import get_settings
 
     agg = build_agg_exercise_daily_from_fact(_sample_fact(), settings=get_settings())
@@ -197,6 +384,22 @@ def test_exercise_daily_shape_and_keys() -> None:
 
 
 def test_exercise_elo_shape_and_keys() -> None:
+    """Test exercise elo shape and keys.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     from visu2.config import get_settings
 
     agg = build_agg_exercise_elo_from_fact(_sample_fact(), settings=get_settings())
@@ -211,6 +414,22 @@ def test_exercise_elo_shape_and_keys() -> None:
 
 
 def test_activity_elo_shape_and_keys() -> None:
+    """Test activity elo shape and keys.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     from visu2.config import get_settings
 
     exercise_elo = build_agg_exercise_elo_from_fact(_sample_fact(), settings=get_settings())
@@ -225,6 +444,22 @@ def test_activity_elo_shape_and_keys() -> None:
 
 
 def test_student_elo_events_and_profiles_shape() -> None:
+    """Test student elo events and profiles shape.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     from visu2.config import get_settings
 
     exercise_elo = build_agg_exercise_elo_from_fact(_sample_fact(), settings=get_settings())

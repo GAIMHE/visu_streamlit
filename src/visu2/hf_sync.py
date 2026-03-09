@@ -1,15 +1,42 @@
+"""
+hf_sync.py
+
+Synchronize runtime data assets from Hugging Face repositories into local paths.
+
+Dependencies
+------------
+- collections
+- config
+- dataclasses
+- huggingface_hub
+- inspect
+- json
+- os
+
+Classes
+-------
+- HFRepoConfig: Structured model for hfrepo config.
+- SyncResult: Structured model for sync result.
+
+Functions
+---------
+- _read_key: Utility for read key.
+- _parse_allow_patterns: Utility for parse allow patterns.
+- load_hf_repo_config: Load hf repo config.
+- local_only_sync_result: Utility for local only sync result.
+- ensure_runtime_assets_from_hf: Utility for ensure runtime assets from hf.
+"""
 from __future__ import annotations
 
 import json
 import os
-from inspect import signature
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Mapping, Sequence
+from inspect import signature
 
 from huggingface_hub import snapshot_download
 
 from .config import Settings, ensure_artifact_directories
-
 
 DEFAULT_RUNTIME_RELATIVE_PATHS: tuple[str, ...] = (
     "data/learning_catalog.json",
@@ -35,6 +62,12 @@ DEFAULT_RUNTIME_RELATIVE_PATHS: tuple[str, ...] = (
 
 @dataclass(frozen=True)
 class HFRepoConfig:
+    """Hfrepo config.
+
+Notes
+-----
+This class is documented in NumPy style for consistency across the codebase.
+"""
     repo_id: str
     revision: str
     repo_type: str
@@ -44,6 +77,12 @@ class HFRepoConfig:
 
 @dataclass(frozen=True)
 class SyncResult:
+    """Sync result.
+
+Notes
+-----
+This class is documented in NumPy style for consistency across the codebase.
+"""
     mode: str
     repo_id: str | None
     revision: str | None
@@ -59,6 +98,26 @@ def _read_key(
     secrets: Mapping[str, object] | None,
     environ: Mapping[str, str],
 ) -> str | None:
+    """Read key.
+
+Parameters
+----------
+key : str
+        Input parameter used by this routine.
+secrets : Mapping[str, object] | None
+        Input parameter used by this routine.
+environ : Mapping[str, str]
+        Input parameter used by this routine.
+
+Returns
+-------
+str | None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     if secrets is not None and key in secrets:
         value = secrets.get(key)
         if value is not None:
@@ -73,6 +132,22 @@ def _read_key(
 
 
 def _parse_allow_patterns(raw: object) -> tuple[str, ...]:
+    """Parse allow patterns.
+
+Parameters
+----------
+raw : object
+        Input parameter used by this routine.
+
+Returns
+-------
+tuple[str, ...]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     if raw is None:
         return DEFAULT_RUNTIME_RELATIVE_PATHS
 
@@ -101,6 +176,26 @@ def load_hf_repo_config(
     environ: Mapping[str, str] | None = None,
     allow_patterns_override: Sequence[str] | None = None,
 ) -> HFRepoConfig | None:
+    """Load hf repo config.
+
+Parameters
+----------
+secrets : Mapping[str, object] | None
+        Input parameter used by this routine.
+environ : Mapping[str, str] | None
+        Input parameter used by this routine.
+allow_patterns_override : Sequence[str] | None
+        Input parameter used by this routine.
+
+Returns
+-------
+HFRepoConfig | None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     env = dict(os.environ) if environ is None else dict(environ)
     repo_id = _read_key("VISU2_HF_REPO_ID", secrets=secrets, environ=env)
     if not repo_id:
@@ -145,6 +240,18 @@ def load_hf_repo_config(
 
 
 def local_only_sync_result() -> SyncResult:
+    """Local only sync result.
+
+
+Returns
+-------
+SyncResult
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return SyncResult(
         mode="local_only",
         repo_id=None,
@@ -157,6 +264,24 @@ def local_only_sync_result() -> SyncResult:
 
 
 def ensure_runtime_assets_from_hf(settings: Settings, config: HFRepoConfig) -> SyncResult:
+    """Ensure runtime assets from hf.
+
+Parameters
+----------
+settings : Settings
+        Input parameter used by this routine.
+config : HFRepoConfig
+        Input parameter used by this routine.
+
+Returns
+-------
+SyncResult
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     ensure_artifact_directories(settings)
     kwargs: dict[str, object] = {
         "repo_id": config.repo_id,

@@ -1,9 +1,42 @@
+"""
+transitions.py
+
+Build ordered activity transition edges from attempt-level fact data.
+
+Dependencies
+------------
+- polars
+
+Classes
+-------
+- None.
+
+Functions
+---------
+- build_transition_edges_from_fact: Build transition edges from fact.
+"""
 from __future__ import annotations
 
 import polars as pl
 
 
 def build_transition_edges_from_fact(fact: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame:
+    """Build transition edges from fact.
+
+Parameters
+----------
+fact : pl.DataFrame | pl.LazyFrame
+        Input parameter used by this routine.
+
+Returns
+-------
+pl.DataFrame
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     lf = fact.lazy() if isinstance(fact, pl.DataFrame) else fact
     sequenced = (
         lf.sort(["user_id", "created_at"])

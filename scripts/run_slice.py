@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""CLI entrypoint for running or smoke-checking the Streamlit app."""
+
 from __future__ import annotations
 
 import argparse
@@ -16,6 +18,7 @@ from visu2.config import get_settings
 
 
 def _required_artifacts(settings_root: Path) -> list[Path]:
+    """Return the runtime files required before the app can start."""
     return [
         settings_root / "artifacts" / "reports" / "consistency_report.json",
         settings_root / "artifacts" / "derived" / "fact_attempt_core.parquet",
@@ -35,6 +38,7 @@ def _required_artifacts(settings_root: Path) -> list[Path]:
 
 
 def _smoke_import(app_path: Path) -> None:
+    """Import the app module to catch import-time failures during smoke checks."""
     spec = importlib.util.spec_from_file_location("streamlit_app", app_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Unable to create import spec for {app_path}")
@@ -43,6 +47,7 @@ def _smoke_import(app_path: Path) -> None:
 
 
 def main() -> int:
+    """Run the app in Streamlit or perform a local smoke validation."""
     parser = argparse.ArgumentParser(description="Run or smoke-check the Streamlit thin slice app.")
     parser.add_argument(
         "--port",

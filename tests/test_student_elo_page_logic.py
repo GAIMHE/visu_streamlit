@@ -1,3 +1,28 @@
+"""
+test_student_elo_page_logic.py
+
+Validate student Elo page selection defaults and replay payload stepping.
+
+Dependencies
+------------
+- datetime
+- polars
+- visu2
+
+Classes
+-------
+- None.
+
+Functions
+---------
+- _profiles: Utility for profiles.
+- _events: Utility for events.
+- test_select_default_students_uses_percentile_defaults: Test scenario for select default students uses percentile defaults.
+- test_select_default_students_keeps_single_eligible_student: Test scenario for select default students keeps single eligible student.
+- test_build_student_elo_payload_respects_step_size_and_final_point: Test scenario for build student elo payload respects step size and final point.
+- test_build_student_elo_payload_keeps_single_student_valid: Test scenario for build student elo payload keeps single student valid.
+- test_build_student_elo_figure_uses_synchronized_cutoff: Test scenario for build student elo figure uses synchronized cutoff.
+"""
 from __future__ import annotations
 
 from datetime import datetime
@@ -12,6 +37,18 @@ from visu2.student_elo import (
 
 
 def _profiles() -> pl.DataFrame:
+    """Profiles.
+
+
+Returns
+-------
+pl.DataFrame
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return pl.DataFrame(
         {
             "user_id": ["u2", "u1", "u3"],
@@ -36,6 +73,18 @@ def _profiles() -> pl.DataFrame:
 
 
 def _events() -> pl.DataFrame:
+    """Events.
+
+
+Returns
+-------
+pl.DataFrame
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return pl.DataFrame(
         {
             "user_id": ["u1", "u1", "u1", "u2", "u2"],
@@ -63,28 +112,108 @@ def _events() -> pl.DataFrame:
 
 
 def test_select_default_students_uses_percentile_defaults() -> None:
+    """Test select default students uses percentile defaults.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     selected = select_default_students(_profiles(), min_attempts=100, max_students=2)
     assert selected == ["u1", "u2"]
 
 
 def test_select_default_students_keeps_single_eligible_student() -> None:
+    """Test select default students keeps single eligible student.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     selected = select_default_students(_profiles(), min_attempts=200, max_students=2)
     assert selected == ["u1"]
 
 
 def test_build_student_elo_payload_respects_step_size_and_final_point() -> None:
+    """Test build student elo payload respects step size and final point.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     payload = build_student_elo_payload(_events(), ["u1", "u2"], step_size=2)
     assert payload["frame_cutoffs"] == [0, 2, 3]
     assert payload["max_attempts"] == 3
 
 
 def test_build_student_elo_payload_keeps_single_student_valid() -> None:
+    """Test build student elo payload keeps single student valid.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     payload = build_student_elo_payload(_events(), ["u2"], step_size=10)
     assert payload["student_ids"] == ["u2"]
     assert payload["frame_cutoffs"] == [0, 2]
 
 
 def test_build_student_elo_figure_uses_synchronized_cutoff() -> None:
+    """Test build student elo figure uses synchronized cutoff.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     payload = build_student_elo_payload(_events(), ["u1", "u2"], step_size=2)
     figure = build_student_elo_figure(payload, frame_idx=1)
 

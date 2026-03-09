@@ -1,3 +1,37 @@
+"""
+test_objective_activity_matrix.py
+
+Validate matrix cell construction, formatting, and drilldown behavior.
+
+Dependencies
+------------
+- datetime
+- polars
+- visu2
+
+Classes
+-------
+- None.
+
+Functions
+---------
+- _summary_payload: Utility for summary payload.
+- _activity_daily_sample: Utility for activity daily sample.
+- _exercise_daily_sample: Utility for exercise daily sample.
+- _activity_elo_sample: Utility for activity elo sample.
+- _exercise_elo_sample: Utility for exercise elo sample.
+- test_weighted_metrics_and_attempt_sums_are_correct: Test scenario for weighted metrics and attempt sums are correct.
+- test_exercise_balanced_success_rate_is_correct: Test scenario for exercise balanced success rate is correct.
+- test_exercise_balanced_success_rate_requires_exercise_source: Test scenario for exercise balanced success rate requires exercise source.
+- test_activity_mean_exercise_elo_uses_dedicated_source: Test scenario for activity mean exercise elo uses dedicated source.
+- test_summary_first_order_with_deterministic_fallback_ordering: Test scenario for summary first order with deterministic fallback ordering.
+- test_weighted_first_attempt_success_rate_is_correct: Test scenario for weighted first attempt success rate is correct.
+- test_ragged_matrix_payload_is_unique_and_padded: Test scenario for ragged matrix payload is unique and padded.
+- test_label_fallback_and_objective_row_disambiguation: Test scenario for label fallback and objective row disambiguation.
+- test_exercise_drilldown_weighting_and_sorting: Test scenario for exercise drilldown weighting and sorting.
+- test_exercise_drilldown_returns_empty_when_no_rows: Test scenario for exercise drilldown returns empty when no rows.
+- test_exercise_drilldown_for_activity_elo_uses_elo_rows: Test scenario for exercise drilldown for activity elo uses elo rows.
+"""
 from __future__ import annotations
 
 from datetime import date
@@ -13,6 +47,18 @@ from visu2.objective_activity_matrix import (
 
 
 def _summary_payload() -> dict:
+    """Summary payload.
+
+
+Returns
+-------
+dict
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return {
         "modules": [
             {
@@ -43,6 +89,18 @@ def _summary_payload() -> dict:
 
 
 def _activity_daily_sample() -> pl.DataFrame:
+    """Activity daily sample.
+
+
+Returns
+-------
+pl.DataFrame
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return pl.DataFrame(
         {
             "date_utc": [
@@ -90,6 +148,18 @@ def _activity_daily_sample() -> pl.DataFrame:
 
 
 def _exercise_daily_sample() -> pl.DataFrame:
+    """Exercise daily sample.
+
+
+Returns
+-------
+pl.DataFrame
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return pl.DataFrame(
         {
             "date_utc": [
@@ -127,6 +197,18 @@ def _exercise_daily_sample() -> pl.DataFrame:
 
 
 def _activity_elo_sample() -> pl.DataFrame:
+    """Activity elo sample.
+
+
+Returns
+-------
+pl.DataFrame
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return pl.DataFrame(
         {
             "module_id": ["m1", "m1", "m2"],
@@ -145,6 +227,18 @@ def _activity_elo_sample() -> pl.DataFrame:
 
 
 def _exercise_elo_sample() -> pl.DataFrame:
+    """Exercise elo sample.
+
+
+Returns
+-------
+pl.DataFrame
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return pl.DataFrame(
         {
             "exercise_id": ["e1", "e2", "e3"],
@@ -166,6 +260,22 @@ def _exercise_elo_sample() -> pl.DataFrame:
 
 
 def test_weighted_metrics_and_attempt_sums_are_correct() -> None:
+    """Test weighted metrics and attempt sums are correct.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     frame = _activity_daily_sample()
     summary_payload = _summary_payload()
 
@@ -211,6 +321,22 @@ def test_weighted_metrics_and_attempt_sums_are_correct() -> None:
 
 
 def test_exercise_balanced_success_rate_is_correct() -> None:
+    """Test exercise balanced success rate is correct.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     frame = _activity_daily_sample()
     exercise_frame = _exercise_daily_sample()
     summary_payload = _summary_payload()
@@ -235,6 +361,22 @@ def test_exercise_balanced_success_rate_is_correct() -> None:
 
 
 def test_exercise_balanced_success_rate_requires_exercise_source() -> None:
+    """Test exercise balanced success rate requires exercise source.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     frame = _activity_daily_sample()
     try:
         build_objective_activity_cells(
@@ -252,6 +394,22 @@ def test_exercise_balanced_success_rate_requires_exercise_source() -> None:
 
 
 def test_activity_mean_exercise_elo_uses_dedicated_source() -> None:
+    """Test activity mean exercise elo uses dedicated source.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     cells = build_objective_activity_cells(
         agg_activity_daily=_activity_daily_sample(),
         module_code="M1",
@@ -270,6 +428,22 @@ def test_activity_mean_exercise_elo_uses_dedicated_source() -> None:
 
 
 def test_summary_first_order_with_deterministic_fallback_ordering() -> None:
+    """Test summary first order with deterministic fallback ordering.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     frame = _activity_daily_sample()
     cells = build_objective_activity_cells(
         agg_activity_daily=frame,
@@ -304,6 +478,22 @@ def test_summary_first_order_with_deterministic_fallback_ordering() -> None:
 
 
 def test_weighted_first_attempt_success_rate_is_correct() -> None:
+    """Test weighted first attempt success rate is correct.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     cells = build_objective_activity_cells(
         agg_activity_daily=_activity_daily_sample(),
         module_code="M1",
@@ -320,6 +510,22 @@ def test_weighted_first_attempt_success_rate_is_correct() -> None:
 
 
 def test_ragged_matrix_payload_is_unique_and_padded() -> None:
+    """Test ragged matrix payload is unique and padded.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     cells = build_objective_activity_cells(
         agg_activity_daily=_activity_daily_sample(),
         module_code="M1",
@@ -351,6 +557,22 @@ def test_ragged_matrix_payload_is_unique_and_padded() -> None:
 
 
 def test_label_fallback_and_objective_row_disambiguation() -> None:
+    """Test label fallback and objective row disambiguation.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     frame = pl.DataFrame(
         {
             "date_utc": [date(2025, 1, 1), date(2025, 1, 1), date(2025, 1, 1)],
@@ -391,6 +613,22 @@ def test_label_fallback_and_objective_row_disambiguation() -> None:
 
 
 def test_exercise_drilldown_weighting_and_sorting() -> None:
+    """Test exercise drilldown weighting and sorting.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     frame = pl.DataFrame(
         {
             "date_utc": [date(2025, 1, 1), date(2025, 1, 2), date(2025, 1, 1)],
@@ -440,6 +678,22 @@ def test_exercise_drilldown_weighting_and_sorting() -> None:
 
 
 def test_exercise_drilldown_returns_empty_when_no_rows() -> None:
+    """Test exercise drilldown returns empty when no rows.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     frame = pl.DataFrame(
         {
             "date_utc": [date(2025, 1, 1)],
@@ -471,6 +725,22 @@ def test_exercise_drilldown_returns_empty_when_no_rows() -> None:
 
 
 def test_exercise_drilldown_for_activity_elo_uses_elo_rows() -> None:
+    """Test exercise drilldown for activity elo uses elo rows.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     drilldown = build_exercise_drilldown_frame(
         agg_exercise_daily=_exercise_daily_sample(),
         module_code="M1",

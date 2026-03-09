@@ -1,3 +1,31 @@
+"""
+student_elo.py
+
+Prepare student Elo replay payloads and Plotly traces for page-level rendering.
+
+Dependencies
+------------
+- bisect
+- math
+- pathlib
+- plotly
+- polars
+- typing
+
+Classes
+-------
+- None.
+
+Functions
+---------
+- load_student_elo_profiles: Load student elo profiles.
+- load_student_elo_events: Load student elo events.
+- _as_lazy: Utility for as lazy.
+- select_default_students: Select default students.
+- _empty_payload: Utility for empty payload.
+- build_student_elo_payload: Build student elo payload.
+- build_student_elo_figure: Build student elo figure.
+"""
 from __future__ import annotations
 
 from bisect import bisect_right
@@ -10,14 +38,62 @@ import polars as pl
 
 
 def load_student_elo_profiles(path: Path) -> pl.DataFrame:
+    """Load student elo profiles.
+
+Parameters
+----------
+path : Path
+        Input parameter used by this routine.
+
+Returns
+-------
+pl.DataFrame
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return pl.read_parquet(path)
 
 
 def load_student_elo_events(path: Path) -> pl.LazyFrame:
+    """Load student elo events.
+
+Parameters
+----------
+path : Path
+        Input parameter used by this routine.
+
+Returns
+-------
+pl.LazyFrame
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return pl.scan_parquet(path)
 
 
 def _as_lazy(frame: pl.DataFrame | pl.LazyFrame) -> pl.LazyFrame:
+    """As lazy.
+
+Parameters
+----------
+frame : pl.DataFrame | pl.LazyFrame
+        Input parameter used by this routine.
+
+Returns
+-------
+pl.LazyFrame
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return frame if isinstance(frame, pl.LazyFrame) else frame.lazy()
 
 
@@ -26,6 +102,26 @@ def select_default_students(
     min_attempts: int,
     max_students: int = 2,
 ) -> list[str]:
+    """Select default students.
+
+Parameters
+----------
+profiles : pl.DataFrame
+        Input parameter used by this routine.
+min_attempts : int
+        Input parameter used by this routine.
+max_students : int
+        Input parameter used by this routine.
+
+Returns
+-------
+list[str]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     if profiles.height == 0:
         return []
     limit = max(1, int(max_students))
@@ -46,6 +142,22 @@ def select_default_students(
     max_index = filtered.height - 1
 
     def _nearest_available(target_idx: int) -> int:
+        """Nearest available.
+
+Parameters
+----------
+target_idx : int
+            Input parameter used by this routine.
+
+Returns
+-------
+int
+            Result produced by this routine.
+
+Notes
+-----
+        Behavior is intentionally documented for maintainability and traceability.
+"""
         if target_idx not in selected_indices:
             return target_idx
         for offset in range(1, filtered.height):
@@ -78,6 +190,24 @@ def select_default_students(
 
 
 def _empty_payload(user_ids: list[str], step_size: int) -> dict[str, Any]:
+    """Empty payload.
+
+Parameters
+----------
+user_ids : list[str]
+        Input parameter used by this routine.
+step_size : int
+        Input parameter used by this routine.
+
+Returns
+-------
+dict[str, Any]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return {
         "student_ids": user_ids,
         "frame_cutoffs": [0],
@@ -92,6 +222,26 @@ def build_student_elo_payload(
     user_ids: list[str],
     step_size: int,
 ) -> dict[str, Any]:
+    """Build student elo payload.
+
+Parameters
+----------
+events : pl.DataFrame | pl.LazyFrame
+        Input parameter used by this routine.
+user_ids : list[str]
+        Input parameter used by this routine.
+step_size : int
+        Input parameter used by this routine.
+
+Returns
+-------
+dict[str, Any]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     normalized_user_ids = []
     for user_id in user_ids:
         text = str(user_id or "").strip()
@@ -192,6 +342,24 @@ def build_student_elo_payload(
 
 
 def build_student_elo_figure(payload: dict[str, Any], frame_idx: int) -> go.Figure:
+    """Build student elo figure.
+
+Parameters
+----------
+payload : dict[str, Any]
+        Input parameter used by this routine.
+frame_idx : int
+        Input parameter used by this routine.
+
+Returns
+-------
+go.Figure
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     student_ids = [str(user_id) for user_id in payload.get("student_ids") or []]
     frame_cutoffs = payload.get("frame_cutoffs") or [0]
     current_frame_idx = min(max(0, int(frame_idx)), len(frame_cutoffs) - 1)

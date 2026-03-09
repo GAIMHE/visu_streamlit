@@ -1,3 +1,29 @@
+"""
+test_elo_metrics.py
+
+Validate Elo calibration, aggregation, and replay formulas.
+
+Dependencies
+------------
+- datetime
+- json
+- pathlib
+- polars
+- visu2
+
+Classes
+-------
+- None.
+
+Functions
+---------
+- _build_settings: Utility for build settings.
+- _fact: Utility for fact.
+- test_stage_a_single_correct_answer_updates_exercise_elo_symmetrically: Test scenario for stage a single correct answer updates exercise elo symmetrically.
+- test_activity_elo_excludes_uncalibrated_exercises: Test scenario for activity elo excludes uncalibrated exercises.
+- test_stage_b_student_replay_updates_ordinal_and_rating: Test scenario for stage b student replay updates ordinal and rating.
+- test_student_profiles_aggregate_from_events: Test scenario for student profiles aggregate from events.
+"""
 from __future__ import annotations
 
 import json
@@ -16,6 +42,22 @@ from visu2.derive import (
 
 
 def _build_settings(tmp_path: Path) -> Settings:
+    """Build settings.
+
+Parameters
+----------
+tmp_path : Path
+        Input parameter used by this routine.
+
+Returns
+-------
+Settings
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     data_dir = tmp_path / "data"
     artifacts_dir = tmp_path / "artifacts"
     derived_dir = artifacts_dir / "derived"
@@ -84,10 +126,46 @@ def _build_settings(tmp_path: Path) -> Settings:
 
 
 def _fact(rows: list[dict[str, object]]) -> pl.DataFrame:
+    """Fact.
+
+Parameters
+----------
+rows : list[dict[str, object]]
+        Input parameter used by this routine.
+
+Returns
+-------
+pl.DataFrame
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return pl.DataFrame(rows)
 
 
 def test_stage_a_single_correct_answer_updates_exercise_elo_symmetrically(tmp_path: Path) -> None:
+    """Test stage a single correct answer updates exercise elo symmetrically.
+
+Parameters
+----------
+tmp_path : Path
+        Input parameter used by this routine.
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     settings = _build_settings(tmp_path)
     fact = _fact(
         [
@@ -123,6 +201,26 @@ def test_stage_a_single_correct_answer_updates_exercise_elo_symmetrically(tmp_pa
 
 
 def test_activity_elo_excludes_uncalibrated_exercises(tmp_path: Path) -> None:
+    """Test activity elo excludes uncalibrated exercises.
+
+Parameters
+----------
+tmp_path : Path
+        Input parameter used by this routine.
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     settings = _build_settings(tmp_path)
     fact = _fact(
         [
@@ -160,6 +258,26 @@ def test_activity_elo_excludes_uncalibrated_exercises(tmp_path: Path) -> None:
 
 
 def test_stage_b_student_replay_updates_ordinal_and_rating(tmp_path: Path) -> None:
+    """Test stage b student replay updates ordinal and rating.
+
+Parameters
+----------
+tmp_path : Path
+        Input parameter used by this routine.
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     settings = _build_settings(tmp_path)
     fact = _fact(
         [
@@ -242,6 +360,26 @@ def test_stage_b_student_replay_updates_ordinal_and_rating(tmp_path: Path) -> No
 
 
 def test_student_profiles_aggregate_from_events(tmp_path: Path) -> None:
+    """Test student profiles aggregate from events.
+
+Parameters
+----------
+tmp_path : Path
+        Input parameter used by this routine.
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     settings = _build_settings(tmp_path)
     fact = _fact(
         [

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""CLI entrypoint for prefetching runtime files from Hugging Face."""
+
 from __future__ import annotations
 
 import argparse
@@ -17,6 +19,7 @@ from visu2.hf_sync import ensure_runtime_assets_from_hf, load_hf_repo_config
 
 
 def main() -> int:
+    """Resolve sync config, download runtime files, and print a JSON summary."""
     parser = argparse.ArgumentParser(
         description="Prefetch runtime assets from a Hugging Face dataset repository."
     )

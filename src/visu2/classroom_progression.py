@@ -1,3 +1,37 @@
+"""
+classroom_progression.py
+
+Build classroom replay payloads and Plotly heatmap frames for synchronized progression playback.
+
+Dependencies
+------------
+- datetime
+- math
+- plotly
+- polars
+- typing
+
+Classes
+-------
+- None.
+
+Functions
+---------
+- _as_lazy: Utility for as lazy.
+- _valid_classroom_filter: Utility for valid classroom filter.
+- _assert_required_columns: Utility for assert required columns.
+- _empty_profiles: Utility for empty profiles.
+- _empty_payload: Utility for empty payload.
+- _build_frame_step_counts: Utility for build frame step counts.
+- _serialize_timestamp: Utility for serialize timestamp.
+- _matrix_rate_snapshot: Utility for matrix rate snapshot.
+- _matrix_attempt_snapshot: Utility for matrix attempt snapshot.
+- _clip_threshold: Utility for clip threshold.
+- build_classroom_mode_profiles: Build classroom mode profiles.
+- select_default_classroom: Select default classroom.
+- build_replay_payload: Build replay payload.
+- build_heatmap_figure: Build heatmap figure.
+"""
 from __future__ import annotations
 
 import math
@@ -38,14 +72,60 @@ _REPLAY_REQUIRED_COLUMNS = [
 
 
 def _as_lazy(frame: pl.DataFrame | pl.LazyFrame) -> pl.LazyFrame:
+    """As lazy.
+
+Parameters
+----------
+frame : pl.DataFrame | pl.LazyFrame
+        Input parameter used by this routine.
+
+Returns
+-------
+pl.LazyFrame
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return frame if isinstance(frame, pl.LazyFrame) else frame.lazy()
 
 
 def _valid_classroom_filter() -> pl.Expr:
+    """Valid classroom filter.
+
+
+Returns
+-------
+pl.Expr
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return pl.col("classroom_id").is_not_null() & (pl.col("classroom_id").cast(pl.Utf8) != "None")
 
 
 def _assert_required_columns(frame: pl.DataFrame | pl.LazyFrame, required: list[str]) -> None:
+    """Assert required columns.
+
+Parameters
+----------
+frame : pl.DataFrame | pl.LazyFrame
+        Input parameter used by this routine.
+required : list[str]
+        Input parameter used by this routine.
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     columns = frame.collect_schema().names() if isinstance(frame, pl.LazyFrame) else frame.columns
     missing = [column for column in required if column not in columns]
     if missing:
@@ -53,12 +133,46 @@ def _assert_required_columns(frame: pl.DataFrame | pl.LazyFrame, required: list[
 
 
 def _empty_profiles() -> pl.DataFrame:
+    """Empty profiles.
+
+
+Returns
+-------
+pl.DataFrame
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return pl.DataFrame(
         {name: pl.Series(name=name, values=[], dtype=dtype) for name, dtype in _PROFILE_SCHEMA.items()}
     )
 
 
 def _empty_payload(classroom_id: str, mode_scope: str, start_date: date, end_date: date) -> dict[str, Any]:
+    """Empty payload.
+
+Parameters
+----------
+classroom_id : str
+        Input parameter used by this routine.
+mode_scope : str
+        Input parameter used by this routine.
+start_date : date
+        Input parameter used by this routine.
+end_date : date
+        Input parameter used by this routine.
+
+Returns
+-------
+dict[str, Any]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return {
         "classroom_id": classroom_id,
         "mode_scope": mode_scope,
@@ -86,6 +200,24 @@ def _empty_payload(classroom_id: str, mode_scope: str, start_date: date, end_dat
 
 
 def _build_frame_step_counts(total_steps: int, effective_step: int) -> list[int]:
+    """Build frame step counts.
+
+Parameters
+----------
+total_steps : int
+        Input parameter used by this routine.
+effective_step : int
+        Input parameter used by this routine.
+
+Returns
+-------
+list[int]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     if total_steps <= 0:
         return [0]
     counts = [0]
@@ -99,6 +231,22 @@ def _build_frame_step_counts(total_steps: int, effective_step: int) -> list[int]
 
 
 def _serialize_timestamp(value: object) -> str | None:
+    """Serialize timestamp.
+
+Parameters
+----------
+value : object
+        Input parameter used by this routine.
+
+Returns
+-------
+str | None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     if value is None:
         return None
     if hasattr(value, "isoformat"):
@@ -111,6 +259,24 @@ def _matrix_rate_snapshot(
     success_matrix: list[list[int]],
     attempt_matrix: list[list[int]],
 ) -> list[list[float | None]]:
+    """Matrix rate snapshot.
+
+Parameters
+----------
+success_matrix : list[list[int]]
+        Input parameter used by this routine.
+attempt_matrix : list[list[int]]
+        Input parameter used by this routine.
+
+Returns
+-------
+list[list[float | None]]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     out: list[list[float | None]] = []
     for activity_idx in range(len(attempt_matrix)):
         row: list[float | None] = []
@@ -126,10 +292,42 @@ def _matrix_rate_snapshot(
 
 
 def _matrix_attempt_snapshot(attempt_matrix: list[list[int]]) -> list[list[int]]:
+    """Matrix attempt snapshot.
+
+Parameters
+----------
+attempt_matrix : list[list[int]]
+        Input parameter used by this routine.
+
+Returns
+-------
+list[list[int]]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return [row[:] for row in attempt_matrix]
 
 
 def _clip_threshold(threshold: float) -> float:
+    """Clip threshold.
+
+Parameters
+----------
+threshold : float
+        Input parameter used by this routine.
+
+Returns
+-------
+float
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return min(1.0, max(0.0, float(threshold)))
 
 
@@ -416,6 +614,28 @@ def build_heatmap_figure(
     threshold: float,
     show_values: bool,
 ) -> go.Figure:
+    """Build heatmap figure.
+
+Parameters
+----------
+payload : dict[str, Any]
+        Input parameter used by this routine.
+frame_idx : int
+        Input parameter used by this routine.
+threshold : float
+        Input parameter used by this routine.
+show_values : bool
+        Input parameter used by this routine.
+
+Returns
+-------
+go.Figure
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     rate_frames = payload.get("rate_frames") or []
     attempt_frames = payload.get("attempt_frames") or []
     student_ids = [str(value) for value in payload.get("student_ids") or []]

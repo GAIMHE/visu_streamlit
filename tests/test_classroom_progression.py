@@ -1,3 +1,27 @@
+"""
+test_classroom_progression.py
+
+Validate classroom replay profile selection, payload generation, and frame semantics.
+
+Dependencies
+------------
+- datetime
+- polars
+- visu2
+
+Classes
+-------
+- None.
+
+Functions
+---------
+- _base_fact_fixture: Utility for base fact fixture.
+- test_build_classroom_mode_profiles_excludes_invalid_classroom_ids: Test scenario for build classroom mode profiles excludes invalid classroom ids.
+- test_select_default_classroom_uses_zpdes_eligibility_then_ranking: Test scenario for select default classroom uses zpdes eligibility then ranking.
+- test_build_replay_payload_has_empty_initial_frame_and_cumulative_updates: Test scenario for build replay payload has empty initial frame and cumulative updates.
+- test_build_replay_payload_applies_frame_cap_with_effective_step: Test scenario for build replay payload applies frame cap with effective step.
+- test_build_replay_payload_sync_step_counts_for_uneven_students: Test scenario for build replay payload sync step counts for uneven students.
+"""
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
@@ -12,6 +36,18 @@ from visu2.classroom_progression import (
 
 
 def _base_fact_fixture() -> pl.DataFrame:
+    """Base fact fixture.
+
+
+Returns
+-------
+pl.DataFrame
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     ts0 = datetime(2025, 1, 1, 9, 0, tzinfo=UTC)
     rows: list[dict[str, object]] = []
 
@@ -27,6 +63,40 @@ def _base_fact_fixture() -> pl.DataFrame:
         data_correct: int,
         activity_label: str | None = None,
     ) -> dict[str, object]:
+        """Row.
+
+Parameters
+----------
+minutes : int
+            Input parameter used by this routine.
+classroom_id : str | None
+            Input parameter used by this routine.
+work_mode : str
+            Input parameter used by this routine.
+user_id : str
+            Input parameter used by this routine.
+activity_id : str
+            Input parameter used by this routine.
+objective_id : str
+            Input parameter used by this routine.
+module_code : str
+            Input parameter used by this routine.
+exercise_id : str
+            Input parameter used by this routine.
+data_correct : int
+            Input parameter used by this routine.
+activity_label : str | None
+            Input parameter used by this routine.
+
+Returns
+-------
+dict[str, object]
+            Result produced by this routine.
+
+Notes
+-----
+        Behavior is intentionally documented for maintainability and traceability.
+"""
         created_at = ts0 + timedelta(minutes=minutes)
         return {
             "created_at": created_at,
@@ -68,6 +138,22 @@ def _base_fact_fixture() -> pl.DataFrame:
 
 
 def test_build_classroom_mode_profiles_excludes_invalid_classroom_ids() -> None:
+    """Test build classroom mode profiles excludes invalid classroom ids.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     fact = _base_fact_fixture()
     profiles = build_classroom_mode_profiles(fact)
     assert profiles.height > 0
@@ -82,6 +168,22 @@ def test_build_classroom_mode_profiles_excludes_invalid_classroom_ids() -> None:
 
 
 def test_select_default_classroom_uses_zpdes_eligibility_then_ranking() -> None:
+    """Test select default classroom uses zpdes eligibility then ranking.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     profiles = pl.DataFrame(
         {
             "mode_scope": ["zpdes", "zpdes", "zpdes", "all"],
@@ -101,6 +203,22 @@ def test_select_default_classroom_uses_zpdes_eligibility_then_ranking() -> None:
 
 
 def test_build_replay_payload_has_empty_initial_frame_and_cumulative_updates() -> None:
+    """Test build replay payload has empty initial frame and cumulative updates.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     fact = _base_fact_fixture()
     payload = build_replay_payload(
         fact=fact,
@@ -152,6 +270,22 @@ def test_build_replay_payload_has_empty_initial_frame_and_cumulative_updates() -
 
 
 def test_build_replay_payload_applies_frame_cap_with_effective_step() -> None:
+    """Test build replay payload applies frame cap with effective step.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     ts0 = datetime(2025, 1, 1, 9, 0, tzinfo=UTC)
     rows: list[dict[str, object]] = []
     for idx in range(10):
@@ -200,6 +334,22 @@ def test_build_replay_payload_applies_frame_cap_with_effective_step() -> None:
 
 
 def test_build_replay_payload_sync_step_counts_for_uneven_students() -> None:
+    """Test build replay payload sync step counts for uneven students.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     ts0 = datetime(2025, 1, 1, 9, 0, tzinfo=UTC)
     rows = [
         {

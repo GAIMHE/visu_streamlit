@@ -1,3 +1,5 @@
+"""Main Streamlit overview page for the learning analytics dashboard."""
+
 from __future__ import annotations
 
 import json
@@ -18,17 +20,17 @@ if str(SRC_DIR) not in sys.path:
 if str(APPS_DIR) not in sys.path:
     sys.path.insert(0, str(APPS_DIR))
 
+from runtime_bootstrap import bootstrap_runtime_assets
+
 from visu2.bottleneck import apply_bottleneck_filters, build_bottleneck_frame
+from visu2.config import get_settings
 from visu2.contracts import (
     ACTIVE_CANONICAL_MODULE_CODES,
     DERIVED_SCHEMA_VERSION,
     RUNTIME_CORE_COLUMNS,
     RUNTIME_LABEL_COLUMNS,
 )
-from visu2.config import get_settings
 from visu2.reporting import load_derived_manifest
-from runtime_bootstrap import bootstrap_runtime_assets
-
 
 st.set_page_config(
     page_title="Learning Analytics Overview",
@@ -80,12 +82,44 @@ div, p, label {
 
 @st.cache_data(show_spinner=False)
 def load_report(path: Path) -> dict:
+    """Load report.
+
+Parameters
+----------
+path : Path
+        Input parameter used by this routine.
+
+Returns
+-------
+dict
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
 
 
 @st.cache_data(show_spinner=False)
 def load_aggregates(derived_dir: Path) -> dict[str, pl.DataFrame]:
+    """Load aggregates.
+
+Parameters
+----------
+derived_dir : Path
+        Input parameter used by this routine.
+
+Returns
+-------
+dict[str, pl.DataFrame]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return {
         "activity": pl.read_parquet(derived_dir / "agg_activity_daily.parquet"),
         "objective": pl.read_parquet(derived_dir / "agg_objective_daily.parquet"),
@@ -110,6 +144,34 @@ def load_top_transition_edges(
     top_n: int,
     has_same_objective_rate: bool,
 ) -> pl.DataFrame:
+    """Load top transition edges.
+
+Parameters
+----------
+transition_path : Path
+        Input parameter used by this routine.
+start_date : date
+        Input parameter used by this routine.
+end_date : date
+        Input parameter used by this routine.
+module_code : str | None
+        Input parameter used by this routine.
+activity_id : str | None
+        Input parameter used by this routine.
+top_n : int
+        Input parameter used by this routine.
+has_same_objective_rate : bool
+        Input parameter used by this routine.
+
+Returns
+-------
+pl.DataFrame
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     edge_group_cols = [
         "from_activity_id",
         "to_activity_id",
@@ -134,6 +196,22 @@ def load_top_transition_edges(
 
 
 def _parquet_columns(path: Path) -> list[str]:
+    """Parquet columns.
+
+Parameters
+----------
+path : Path
+        Input parameter used by this routine.
+
+Returns
+-------
+list[str]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return list(pq.ParquetFile(path).schema_arrow.names)
 
 
@@ -141,6 +219,24 @@ def _collect_runtime_compatibility(
     table_columns: dict[str, list[str]],
     manifest_path: Path,
 ) -> dict[str, object]:
+    """Collect runtime compatibility.
+
+Parameters
+----------
+table_columns : dict[str, list[str]]
+        Input parameter used by this routine.
+manifest_path : Path
+        Input parameter used by this routine.
+
+Returns
+-------
+dict[str, object]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     missing_core_by_table: dict[str, list[str]] = {}
     missing_labels_by_table: dict[str, list[str]] = {}
     manifest_messages: list[str] = []
@@ -204,6 +300,22 @@ def _collect_runtime_compatibility(
 
 
 def _format_missing_table_columns(missing_by_table: dict[str, list[str]]) -> str:
+    """Format missing table columns.
+
+Parameters
+----------
+missing_by_table : dict[str, list[str]]
+        Input parameter used by this routine.
+
+Returns
+-------
+str
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     if not missing_by_table:
         return "None"
     lines = []
@@ -214,12 +326,48 @@ def _format_missing_table_columns(missing_by_table: dict[str, list[str]]) -> str
 
 
 def _label_or_id(label: str | None, identifier: str | None) -> str:
+    """Label or id.
+
+Parameters
+----------
+label : str | None
+        Input parameter used by this routine.
+identifier : str | None
+        Input parameter used by this routine.
+
+Returns
+-------
+str
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     if isinstance(label, str) and label.strip():
         return label.strip()
     return str(identifier or "")
 
 
 def _format_option(label: str | None, identifier: str | None) -> str:
+    """Format option.
+
+Parameters
+----------
+label : str | None
+        Input parameter used by this routine.
+identifier : str | None
+        Input parameter used by this routine.
+
+Returns
+-------
+str
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     base = _label_or_id(label, identifier)
     if isinstance(identifier, str) and identifier:
         return f"{base} [{identifier}]"
@@ -227,6 +375,24 @@ def _format_option(label: str | None, identifier: str | None) -> str:
 
 
 def format_axis_label(text: str | None, max_chars: int = 48) -> str:
+    """Format axis label.
+
+Parameters
+----------
+text : str | None
+        Input parameter used by this routine.
+max_chars : int
+        Input parameter used by this routine.
+
+Returns
+-------
+str
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     normalized = str(text or "").strip()
     if not normalized:
         return "(unlabeled)"
@@ -236,6 +402,26 @@ def format_axis_label(text: str | None, max_chars: int = 48) -> str:
 
 
 def compose_hover_label(full_label: str | None, identifier: str | None, show_ids: bool) -> str:
+    """Compose hover label.
+
+Parameters
+----------
+full_label : str | None
+        Input parameter used by this routine.
+identifier : str | None
+        Input parameter used by this routine.
+show_ids : bool
+        Input parameter used by this routine.
+
+Returns
+-------
+str
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     normalized = str(full_label or "").strip()
     if not normalized:
         normalized = str(identifier or "(unlabeled)")
@@ -248,6 +434,24 @@ def _ensure_label_columns(
     frame: pl.DataFrame,
     label_to_fallback: dict[str, str],
 ) -> tuple[pl.DataFrame, list[str]]:
+    """Ensure label columns.
+
+Parameters
+----------
+frame : pl.DataFrame
+        Input parameter used by this routine.
+label_to_fallback : dict[str, str]
+        Input parameter used by this routine.
+
+Returns
+-------
+tuple[pl.DataFrame, list[str]]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     missing: list[str] = []
     normalized = frame
     for label_col, fallback_col in label_to_fallback.items():
@@ -279,6 +483,32 @@ def build_fact_query(
     objective_id: str | None,
     activity_id: str | None,
 ) -> pl.LazyFrame:
+    """Build fact query.
+
+Parameters
+----------
+fact_path : Path
+        Input parameter used by this routine.
+start_date : date
+        Input parameter used by this routine.
+end_date : date
+        Input parameter used by this routine.
+module_code : str | None
+        Input parameter used by this routine.
+objective_id : str | None
+        Input parameter used by this routine.
+activity_id : str | None
+        Input parameter used by this routine.
+
+Returns
+-------
+pl.LazyFrame
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     lf = pl.scan_parquet(fact_path).filter(
         (pl.col("date_utc") >= pl.lit(start_date)) & (pl.col("date_utc") <= pl.lit(end_date))
     )
@@ -301,6 +531,36 @@ def apply_filters(
     activity_from_col: str = "activity_id",
     module_col: str = "module_code",
 ) -> pl.DataFrame:
+    """Apply filters.
+
+Parameters
+----------
+frame : pl.DataFrame
+        Input parameter used by this routine.
+start_date : date
+        Input parameter used by this routine.
+end_date : date
+        Input parameter used by this routine.
+module_code : str | None
+        Input parameter used by this routine.
+objective_id : str | None
+        Input parameter used by this routine.
+activity_id : str | None
+        Input parameter used by this routine.
+activity_from_col : str
+        Input parameter used by this routine.
+module_col : str
+        Input parameter used by this routine.
+
+Returns
+-------
+pl.DataFrame
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     filtered = frame.filter(
         (pl.col("date_utc") >= pl.lit(start_date)) & (pl.col("date_utc") <= pl.lit(end_date))
     )
@@ -314,6 +574,18 @@ def apply_filters(
 
 
 def main() -> None:
+    """Main.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     bootstrap_runtime_assets()
     settings = get_settings()
     derived_dir = settings.artifacts_derived_dir
@@ -482,9 +754,6 @@ def main() -> None:
     )
     show_ids = bool(st.sidebar.checkbox("Show IDs in hover", value=False))
 
-    filtered_activity = apply_filters(
-        activity, start_date, end_date, module_filter, objective_filter, activity_filter
-    )
     fact_query = build_fact_query(
         fact_path=fact_path,
         start_date=start_date,

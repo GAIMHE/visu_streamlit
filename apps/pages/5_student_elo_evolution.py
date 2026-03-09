@@ -1,3 +1,30 @@
+"""
+5_student_elo_evolution.py
+
+Render student Elo trajectory selection, replay controls, and chart output.
+
+Dependencies
+------------
+- pathlib
+- polars
+- pyarrow
+- runtime_bootstrap
+- streamlit
+- sys
+- time
+- visu2
+
+Classes
+-------
+- None.
+
+Functions
+---------
+- _load_profiles: Utility for load profiles.
+- _load_payload: Utility for load payload.
+- _parquet_columns: Utility for parquet columns.
+- main: Utility for main.
+"""
 from __future__ import annotations
 
 import sys
@@ -17,6 +44,7 @@ if str(APPS_DIR) not in sys.path:
     sys.path.insert(0, str(APPS_DIR))
 
 from runtime_bootstrap import bootstrap_runtime_assets
+
 from visu2.config import get_settings
 from visu2.contracts import RUNTIME_CORE_COLUMNS
 from visu2.student_elo import (
@@ -26,7 +54,6 @@ from visu2.student_elo import (
     load_student_elo_profiles,
     select_default_students,
 )
-
 
 st.set_page_config(
     page_title="Student Elo Evolution",
@@ -57,19 +84,83 @@ div, p, label {
 
 @st.cache_data(show_spinner=False)
 def _load_profiles(path: Path):
+    """Load profiles.
+
+Parameters
+----------
+path : Path
+        Input parameter used by this routine.
+
+Returns
+-------
+Any
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return load_student_elo_profiles(path)
 
 
 @st.cache_data(show_spinner=False)
 def _load_payload(path: Path, user_ids: tuple[str, ...], step_size: int):
+    """Load payload.
+
+Parameters
+----------
+path : Path
+        Input parameter used by this routine.
+user_ids : tuple[str, ...]
+        Input parameter used by this routine.
+step_size : int
+        Input parameter used by this routine.
+
+Returns
+-------
+Any
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return build_student_elo_payload(load_student_elo_events(path), list(user_ids), step_size)
 
 
 def _parquet_columns(path: Path) -> list[str]:
+    """Parquet columns.
+
+Parameters
+----------
+path : Path
+        Input parameter used by this routine.
+
+Returns
+-------
+list[str]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return list(pq.ParquetFile(path).schema_arrow.names)
 
 
 def main() -> None:
+    """Main.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     bootstrap_runtime_assets()
     settings = get_settings()
     profiles_path = settings.artifacts_derived_dir / "student_elo_profiles.parquet"

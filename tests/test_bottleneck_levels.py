@@ -1,3 +1,25 @@
+"""
+test_bottleneck_levels.py
+
+Validate bottleneck aggregation levels and ranking behavior.
+
+Dependencies
+------------
+- datetime
+- polars
+- visu2
+
+Classes
+-------
+- None.
+
+Functions
+---------
+- _sample_activity_daily: Utility for sample activity daily.
+- test_build_bottleneck_frame_is_id_safe_and_plot_labels_are_unique: Test scenario for build bottleneck frame is id safe and plot labels are unique.
+- test_apply_bottleneck_filters_context_aware_by_level: Test scenario for apply bottleneck filters context aware by level.
+- test_apply_bottleneck_filters_enforces_canonical_module_scope: Test scenario for apply bottleneck filters enforces canonical module scope.
+"""
 from __future__ import annotations
 
 from datetime import date
@@ -8,6 +30,18 @@ from visu2.bottleneck import apply_bottleneck_filters, build_bottleneck_frame
 
 
 def _sample_activity_daily() -> pl.DataFrame:
+    """Sample activity daily.
+
+
+Returns
+-------
+pl.DataFrame
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return pl.DataFrame(
         {
             "date_utc": [
@@ -65,6 +99,22 @@ def _sample_activity_daily() -> pl.DataFrame:
 
 
 def test_build_bottleneck_frame_is_id_safe_and_plot_labels_are_unique() -> None:
+    """Test build bottleneck frame is id safe and plot labels are unique.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     source = _sample_activity_daily()
     for level in ("Module", "Objective", "Activity"):
         frame = build_bottleneck_frame(
@@ -79,6 +129,22 @@ def test_build_bottleneck_frame_is_id_safe_and_plot_labels_are_unique() -> None:
 
 
 def test_apply_bottleneck_filters_context_aware_by_level() -> None:
+    """Test apply bottleneck filters context aware by level.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     source = _sample_activity_daily()
     start = date(2025, 1, 1)
     end = date(2025, 1, 2)
@@ -118,6 +184,22 @@ def test_apply_bottleneck_filters_context_aware_by_level() -> None:
 
 
 def test_apply_bottleneck_filters_enforces_canonical_module_scope() -> None:
+    """Test apply bottleneck filters enforces canonical module scope.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     source = _sample_activity_daily()
     start = date(2025, 1, 1)
     end = date(2025, 1, 2)

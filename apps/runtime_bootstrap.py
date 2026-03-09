@@ -1,3 +1,24 @@
+"""
+runtime_bootstrap.py
+
+Bootstrap runtime asset synchronization before page logic executes.
+
+Dependencies
+------------
+- collections
+- streamlit
+- visu2
+
+Classes
+-------
+- None.
+
+Functions
+---------
+- _secrets_mapping: Utility for secrets mapping.
+- _cached_runtime_sync: Utility for cached runtime sync.
+- bootstrap_runtime_assets: Utility for bootstrap runtime assets.
+"""
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -15,6 +36,18 @@ from visu2.hf_sync import (
 
 
 def _secrets_mapping() -> Mapping[str, object] | None:
+    """Secrets mapping.
+
+
+Returns
+-------
+Mapping[str, object] | None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     try:
         return dict(st.secrets)
     except Exception:
@@ -23,6 +56,22 @@ def _secrets_mapping() -> Mapping[str, object] | None:
 
 @st.cache_resource(show_spinner=False)
 def _cached_runtime_sync(config: HFRepoConfig | None) -> SyncResult:
+    """Cached runtime sync.
+
+Parameters
+----------
+config : HFRepoConfig | None
+        Input parameter used by this routine.
+
+Returns
+-------
+SyncResult
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     if config is None:
         return local_only_sync_result()
     settings = get_settings()
@@ -30,6 +79,18 @@ def _cached_runtime_sync(config: HFRepoConfig | None) -> SyncResult:
 
 
 def bootstrap_runtime_assets() -> SyncResult:
+    """Bootstrap runtime assets.
+
+
+Returns
+-------
+SyncResult
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     secrets = _secrets_mapping()
     try:
         config = load_hf_repo_config(secrets=secrets)

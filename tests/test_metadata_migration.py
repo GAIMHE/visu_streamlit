@@ -1,10 +1,33 @@
+"""
+test_metadata_migration.py
+
+Validate standalone metadata migration and sanitization behavior.
+
+Dependencies
+------------
+- json
+- polars
+- visu2
+
+Classes
+-------
+- None.
+
+Functions
+---------
+- _write_json: Utility for write json.
+- test_catalog_to_summary_frames_from_learning_catalog: Test scenario for catalog to summary frames from learning catalog.
+- test_zpdes_metadata_module_listing_respects_observed_filter: Test scenario for zpdes metadata module listing respects observed filter.
+- test_dependency_tables_from_metadata_prefers_topology_snapshot: Test scenario for dependency tables from metadata prefers topology snapshot.
+- test_dependency_tables_from_metadata_fallback_rules_parsing: Test scenario for dependency tables from metadata fallback rules parsing.
+"""
 from __future__ import annotations
 
 import json
 
 import polars as pl
 
-from visu2.loaders import catalog_to_summary_frames, load_learning_catalog, load_zpdes_rules
+from visu2.loaders import catalog_to_summary_frames, load_learning_catalog
 from visu2.zpdes_dependencies import (
     build_dependency_tables_from_metadata,
     list_supported_module_codes_from_metadata,
@@ -12,10 +35,48 @@ from visu2.zpdes_dependencies import (
 
 
 def _write_json(path, payload: dict) -> None:
+    """Write json.
+
+Parameters
+----------
+path : Any
+        Input parameter used by this routine.
+payload : dict
+        Input parameter used by this routine.
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     path.write_text(json.dumps(payload), encoding="utf-8")
 
 
 def test_catalog_to_summary_frames_from_learning_catalog(tmp_path) -> None:
+    """Test catalog to summary frames from learning catalog.
+
+Parameters
+----------
+tmp_path : Any
+        Input parameter used by this routine.
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     catalog_path = tmp_path / "learning_catalog.json"
     payload = {
         "meta": {},
@@ -61,6 +122,26 @@ def test_catalog_to_summary_frames_from_learning_catalog(tmp_path) -> None:
 
 
 def test_zpdes_metadata_module_listing_respects_observed_filter(tmp_path) -> None:
+    """Test zpdes metadata module listing respects observed filter.
+
+Parameters
+----------
+tmp_path : Any
+        Input parameter used by this routine.
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     rules_path = tmp_path / "zpdes_rules.json"
     catalog_path = tmp_path / "learning_catalog.json"
     _write_json(
@@ -97,6 +178,26 @@ def test_zpdes_metadata_module_listing_respects_observed_filter(tmp_path) -> Non
 
 
 def test_dependency_tables_from_metadata_prefers_topology_snapshot(tmp_path) -> None:
+    """Test dependency tables from metadata prefers topology snapshot.
+
+Parameters
+----------
+tmp_path : Any
+        Input parameter used by this routine.
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     catalog_path = tmp_path / "learning_catalog.json"
     rules_path = tmp_path / "zpdes_rules.json"
     _write_json(
@@ -169,6 +270,26 @@ def test_dependency_tables_from_metadata_prefers_topology_snapshot(tmp_path) -> 
 
 
 def test_dependency_tables_from_metadata_fallback_rules_parsing(tmp_path) -> None:
+    """Test dependency tables from metadata fallback rules parsing.
+
+Parameters
+----------
+tmp_path : Any
+        Input parameter used by this routine.
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     catalog_path = tmp_path / "learning_catalog.json"
     rules_path = tmp_path / "zpdes_rules.json"
     _write_json(

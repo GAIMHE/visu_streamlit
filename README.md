@@ -56,6 +56,16 @@ uv run python scripts/run_slice.py --port 8501
 uv run python scripts/run_slice.py --smoke
 ```
 
+6. Optional lint check:
+```bash
+uv run ruff check apps src scripts tests
+```
+
+7. Optional schema snapshot export (for database docs maintenance):
+```bash
+uv run python scripts/export_schema_snapshot.py --strict
+```
+
 Expected outputs after checks/build:
 - `artifacts/reports/consistency_report.json`
 - `artifacts/reports/derived_manifest.json`
@@ -162,3 +172,8 @@ It helps inspect pace synchronization, divergence, and emerging bottlenecks in c
 
 ## Further Reading
 - `ressources/README_HF.md`
+- `ressources/STREAMLIT_FIGURES_GUIDE.md`
+- `ressources/figures/README.md`
+- `ressources/DATA_HANDLING.md`
+- `ressources/database/README.md`
+- `ressources/DOCSTRING_CONVENTIONS.md`

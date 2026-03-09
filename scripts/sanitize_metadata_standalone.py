@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Rewrite metadata payloads into the standalone 4-file distribution contract."""
+
 from __future__ import annotations
 
 import argparse
@@ -79,6 +81,7 @@ VALUE_RENAMES_EXACT = {
 
 
 def _load_json(path: Path) -> dict[str, Any]:
+    """Load a JSON object from disk and enforce an object root."""
     with path.open("r", encoding="utf-8") as handle:
         payload = json.load(handle)
     if not isinstance(payload, dict):
@@ -87,12 +90,14 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
+    """Write JSON to disk with stable UTF-8 pretty formatting."""
     with path.open("w", encoding="utf-8") as handle:
         json.dump(payload, handle, ensure_ascii=False, indent=2)
         handle.write("\n")
 
 
 def _source_file_entries(data_dir: Path) -> list[dict[str, Any]]:
+    """Build the canonical `meta.source_files` entries for standalone metadata."""
     entries: list[dict[str, Any]] = []
     for filename in STANDALONE_PACKAGE_FILES:
         file_path = data_dir / filename
@@ -107,6 +112,7 @@ def _source_file_entries(data_dir: Path) -> list[dict[str, Any]]:
 
 
 def _drop_unwanted_keys(obj: Any) -> Any:
+    """Recursively remove provenance-only keys that should not ship."""
     if isinstance(obj, dict):
         return {
             key: _drop_unwanted_keys(value)
@@ -119,6 +125,7 @@ def _drop_unwanted_keys(obj: Any) -> Any:
 
 
 def _rename_legacy_keys(obj: Any) -> Any:
+    """Recursively rename legacy contract keys to standalone-neutral names."""
     if isinstance(obj, dict):
         out: dict[str, Any] = {}
         for key, value in obj.items():
@@ -132,6 +139,7 @@ def _rename_legacy_keys(obj: Any) -> Any:
 
 
 def _sanitize_legacy_source_strings(obj: Any) -> Any:
+    """Normalize legacy provenance values to the standalone vocabulary."""
     if isinstance(obj, str):
         exact = VALUE_RENAMES_EXACT.get(obj)
         if exact is not None:
@@ -159,6 +167,7 @@ def _sanitize_legacy_source_strings(obj: Any) -> Any:
 
 
 def _normalized_sources(sources: object, fallback_tag: str = "catalog") -> list[str]:
+    """Normalize `sources` tags to the standalone `catalog`/`rules` values."""
     tags: set[str] = set()
     if isinstance(sources, list):
         for source in sources:
@@ -184,6 +193,7 @@ def _sanitize_learning_catalog(
     payload: dict[str, Any],
     source_entries: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    """Apply standalone cleanup rules to `learning_catalog.json`."""
     sanitized = _sanitize_legacy_source_strings(
         _rename_legacy_keys(_drop_unwanted_keys(payload))
     )
@@ -218,6 +228,7 @@ def _sanitize_zpdes_rules(
     payload: dict[str, Any],
     source_entries: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    """Apply standalone cleanup rules to `zpdes_rules.json`."""
     sanitized = _sanitize_legacy_source_strings(
         _rename_legacy_keys(_drop_unwanted_keys(payload))
     )
@@ -254,6 +265,24 @@ def _sanitize_zpdes_rules(
 
 
 def _collect_forbidden_value_paths(obj: Any, prefix: str = "$") -> list[tuple[str, str]]:
+    """Collect forbidden value paths.
+
+Parameters
+----------
+obj : Any
+        Input parameter used by this routine.
+prefix : str
+        Input parameter used by this routine.
+
+Returns
+-------
+list[tuple[str, str]]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     found: list[tuple[str, str]] = []
     if isinstance(obj, str):
         lower = obj.lower()
@@ -274,6 +303,24 @@ def _collect_forbidden_value_paths(obj: Any, prefix: str = "$") -> list[tuple[st
 
 
 def _collect_forbidden_key_paths(obj: Any, prefix: str = "$") -> list[tuple[str, str]]:
+    """Collect forbidden key paths.
+
+Parameters
+----------
+obj : Any
+        Input parameter used by this routine.
+prefix : str
+        Input parameter used by this routine.
+
+Returns
+-------
+list[tuple[str, str]]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     found: list[tuple[str, str]] = []
     if isinstance(obj, dict):
         for key, value in obj.items():
@@ -290,6 +337,18 @@ def _collect_forbidden_key_paths(obj: Any, prefix: str = "$") -> list[tuple[str,
 
 
 def main() -> int:
+    """Main.
+
+
+Returns
+-------
+int
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     parser = argparse.ArgumentParser(
         description="Sanitize learning_catalog/zpdes_rules to a standalone 4-file metadata contract."
     )

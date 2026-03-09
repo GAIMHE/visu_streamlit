@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""CLI entrypoint for validating standalone metadata payload contracts."""
+
 from __future__ import annotations
 
 import argparse
@@ -43,10 +45,31 @@ STANDALONE_PACKAGE_PATHS = {
 
 
 def _fail(errors: list[str], message: str) -> None:
+    """Append one validation error message to the mutable error list."""
     errors.append(message)
 
 
 def _validate_source_files(meta: dict[str, Any], errors: list[str], owner: str) -> None:
+    """Validate source files.
+
+Parameters
+----------
+meta : dict[str, Any]
+        Input parameter used by this routine.
+errors : list[str]
+        Input parameter used by this routine.
+owner : str
+        Input parameter used by this routine.
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     source_files = meta.get("source_files")
     if not isinstance(source_files, list):
         _fail(errors, f"{owner}.meta.source_files must be a list")
@@ -67,6 +90,24 @@ def _validate_source_files(meta: dict[str, Any], errors: list[str], owner: str) 
 
 
 def _collect_forbidden_value_paths(obj: Any, prefix: str = "$") -> list[tuple[str, str]]:
+    """Collect forbidden value paths.
+
+Parameters
+----------
+obj : Any
+        Input parameter used by this routine.
+prefix : str
+        Input parameter used by this routine.
+
+Returns
+-------
+list[tuple[str, str]]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     found: list[tuple[str, str]] = []
     if isinstance(obj, str):
         lower = obj.lower()
@@ -85,6 +126,24 @@ def _collect_forbidden_value_paths(obj: Any, prefix: str = "$") -> list[tuple[st
 
 
 def _collect_forbidden_key_paths(obj: Any, prefix: str = "$") -> list[tuple[str, str]]:
+    """Collect forbidden key paths.
+
+Parameters
+----------
+obj : Any
+        Input parameter used by this routine.
+prefix : str
+        Input parameter used by this routine.
+
+Returns
+-------
+list[tuple[str, str]]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     found: list[tuple[str, str]] = []
     if isinstance(obj, dict):
         for key, value in obj.items():
@@ -102,6 +161,24 @@ def _collect_forbidden_key_paths(obj: Any, prefix: str = "$") -> list[tuple[str,
 
 
 def _collect_forbidden_provenance_key_paths(obj: Any, prefix: str = "$") -> list[tuple[str, str]]:
+    """Collect forbidden provenance key paths.
+
+Parameters
+----------
+obj : Any
+        Input parameter used by this routine.
+prefix : str
+        Input parameter used by this routine.
+
+Returns
+-------
+list[tuple[str, str]]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     found: list[tuple[str, str]] = []
     if isinstance(obj, dict):
         forbidden = {k.lower() for k in FORBIDDEN_PROVENANCE_KEYS}
@@ -120,6 +197,24 @@ def _collect_forbidden_provenance_key_paths(obj: Any, prefix: str = "$") -> list
 
 
 def _validate_learning_catalog(payload: dict[str, Any], errors: list[str]) -> dict[str, int]:
+    """Validate learning catalog.
+
+Parameters
+----------
+payload : dict[str, Any]
+        Input parameter used by this routine.
+errors : list[str]
+        Input parameter used by this routine.
+
+Returns
+-------
+dict[str, int]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     required = {"meta", "id_label_index", "modules", "exercise_to_hierarchy", "conflicts", "orphans"}
     missing = sorted(required - set(payload.keys()))
     if missing:
@@ -242,6 +337,24 @@ def _validate_learning_catalog(payload: dict[str, Any], errors: list[str]) -> di
 
 
 def _validate_zpdes_rules(payload: dict[str, Any], errors: list[str]) -> dict[str, int]:
+    """Validate zpdes rules.
+
+Parameters
+----------
+payload : dict[str, Any]
+        Input parameter used by this routine.
+errors : list[str]
+        Input parameter used by this routine.
+
+Returns
+-------
+dict[str, int]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     required = {"meta", "module_rules", "map_id_code", "links_to_catalog", "unresolved_links"}
     missing = sorted(required - set(payload.keys()))
     if missing:
@@ -327,6 +440,18 @@ def _validate_zpdes_rules(payload: dict[str, Any], errors: list[str]) -> dict[st
 
 
 def main() -> int:
+    """Main.
+
+
+Returns
+-------
+int
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     parser = argparse.ArgumentParser(description="Validate learning_catalog/zpdes_rules contract shape.")
     parser.add_argument(
         "--learning-catalog",

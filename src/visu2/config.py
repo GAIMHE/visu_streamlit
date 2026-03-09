@@ -1,3 +1,22 @@
+"""
+config.py
+
+Define runtime path settings and artifact directory bootstrap helpers.
+
+Dependencies
+------------
+- dataclasses
+- pathlib
+
+Classes
+-------
+- Settings: Structured model for settings.
+
+Functions
+---------
+- get_settings: Utility for get settings.
+- ensure_artifact_directories: Utility for ensure artifact directories.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -6,6 +25,12 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class Settings:
+    """Settings.
+
+Notes
+-----
+This class is documented in NumPy style for consistency across the codebase.
+"""
     root_dir: Path
     data_dir: Path
     resources_dir: Path
@@ -21,6 +46,18 @@ class Settings:
 
 
 def get_settings() -> Settings:
+    """Get settings.
+
+
+Returns
+-------
+Settings
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     root = Path(__file__).resolve().parents[2]
     data_dir = root / "data"
     artifacts_dir = root / "artifacts"
@@ -44,6 +81,22 @@ def get_settings() -> Settings:
 
 
 def ensure_artifact_directories(settings: Settings) -> None:
+    """Ensure artifact directories.
+
+Parameters
+----------
+settings : Settings
+        Input parameter used by this routine.
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     settings.artifacts_dir.mkdir(parents=True, exist_ok=True)
     settings.artifacts_derived_dir.mkdir(parents=True, exist_ok=True)
     settings.artifacts_reports_dir.mkdir(parents=True, exist_ok=True)

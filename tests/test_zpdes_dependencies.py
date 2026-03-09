@@ -1,3 +1,24 @@
+"""
+test_zpdes_dependencies.py
+
+Validate ZPDES dependency parsing and filtering logic.
+
+Dependencies
+------------
+- datetime
+- polars
+- visu2
+
+Classes
+-------
+- None.
+
+Functions
+---------
+- test_parse_dependency_tokens_with_percent_and_multivalue: Test scenario for parse dependency tokens with percent and multivalue.
+- test_attach_overlay_metrics_is_weighted_for_objectives_and_activities: Test scenario for attach overlay metrics is weighted for objectives and activities.
+- test_filter_dependency_graph_by_objectives_keeps_internal_edges_only: Test scenario for filter dependency graph by objectives keeps internal edges only.
+"""
 from __future__ import annotations
 
 from datetime import date
@@ -12,6 +33,22 @@ from visu2.zpdes_dependencies import (
 
 
 def test_parse_dependency_tokens_with_percent_and_multivalue() -> None:
+    """Test parse dependency tokens with percent and multivalue.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     tokens = parse_dependency_tokens("M31O1A1, M31O1A2(75%), M31O2")
     assert [t["code"] for t in tokens] == ["M31O1A1", "M31O1A2", "M31O2"]
     assert tokens[0]["threshold"] is None
@@ -20,6 +57,22 @@ def test_parse_dependency_tokens_with_percent_and_multivalue() -> None:
 
 
 def test_attach_overlay_metrics_is_weighted_for_objectives_and_activities() -> None:
+    """Test attach overlay metrics is weighted for objectives and activities.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     nodes = pl.DataFrame(
         {
             "module_code": ["M31", "M31", "M31"],
@@ -70,6 +123,22 @@ def test_attach_overlay_metrics_is_weighted_for_objectives_and_activities() -> N
 
 
 def test_filter_dependency_graph_by_objectives_keeps_internal_edges_only() -> None:
+    """Test filter dependency graph by objectives keeps internal edges only.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     nodes = pl.DataFrame(
         {
             "module_code": ["M31", "M31", "M31", "M31"],

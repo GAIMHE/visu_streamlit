@@ -1,3 +1,37 @@
+"""
+2_objective_activity_matrix.py
+
+Render the objective-activity matrix page and interactive drilldown panels.
+
+Dependencies
+------------
+- pathlib
+- plotly
+- polars
+- runtime_bootstrap
+- streamlit
+- sys
+- visu2
+
+Classes
+-------
+- None.
+
+Functions
+---------
+- load_activity_daily: Load activity daily.
+- load_exercise_daily: Load exercise daily.
+- load_activity_elo: Load activity elo.
+- load_exercise_elo: Load exercise elo.
+- load_catalog_payload: Load catalog payload.
+- _label_or_id: Utility for label or id.
+- _format_option: Utility for format option.
+- _truncate_axis_label: Utility for truncate axis label.
+- _dedupe_labels: Utility for dedupe labels.
+- _ensure_label_columns: Utility for ensure label columns.
+- _extract_selected_cell: Utility for extract selected cell.
+- main: Utility for main.
+"""
 from __future__ import annotations
 
 import sys
@@ -15,6 +49,8 @@ if str(SRC_DIR) not in sys.path:
 if str(APPS_DIR) not in sys.path:
     sys.path.insert(0, str(APPS_DIR))
 
+from runtime_bootstrap import bootstrap_runtime_assets
+
 from visu2.config import get_settings
 from visu2.contracts import RUNTIME_CORE_COLUMNS
 from visu2.loaders import load_learning_catalog
@@ -24,7 +60,6 @@ from visu2.objective_activity_matrix import (
     build_objective_activity_cells,
     build_ragged_matrix_payload,
 )
-from runtime_bootstrap import bootstrap_runtime_assets
 
 st.set_page_config(
     page_title="Objective Activity Matrix",
@@ -61,36 +96,152 @@ METRIC_LABELS = {
 
 @st.cache_data(show_spinner=False)
 def load_activity_daily(path: Path) -> pl.DataFrame:
+    """Load activity daily.
+
+Parameters
+----------
+path : Path
+        Input parameter used by this routine.
+
+Returns
+-------
+pl.DataFrame
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return pl.read_parquet(path)
 
 
 @st.cache_data(show_spinner=False)
 def load_exercise_daily(path: Path) -> pl.DataFrame:
+    """Load exercise daily.
+
+Parameters
+----------
+path : Path
+        Input parameter used by this routine.
+
+Returns
+-------
+pl.DataFrame
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return pl.read_parquet(path)
 
 
 @st.cache_data(show_spinner=False)
 def load_activity_elo(path: Path) -> pl.DataFrame:
+    """Load activity elo.
+
+Parameters
+----------
+path : Path
+        Input parameter used by this routine.
+
+Returns
+-------
+pl.DataFrame
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return pl.read_parquet(path)
 
 
 @st.cache_data(show_spinner=False)
 def load_exercise_elo(path: Path) -> pl.DataFrame:
+    """Load exercise elo.
+
+Parameters
+----------
+path : Path
+        Input parameter used by this routine.
+
+Returns
+-------
+pl.DataFrame
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return pl.read_parquet(path)
 
 
 @st.cache_data(show_spinner=False)
 def load_catalog_payload(path: Path) -> dict:
+    """Load catalog payload.
+
+Parameters
+----------
+path : Path
+        Input parameter used by this routine.
+
+Returns
+-------
+dict
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return load_learning_catalog(path)
 
 
 def _label_or_id(label: str | None, identifier: str | None) -> str:
+    """Label or id.
+
+Parameters
+----------
+label : str | None
+        Input parameter used by this routine.
+identifier : str | None
+        Input parameter used by this routine.
+
+Returns
+-------
+str
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     if isinstance(label, str) and label.strip():
         return label.strip()
     return str(identifier or "")
 
 
 def _format_option(label: str | None, identifier: str | None) -> str:
+    """Format option.
+
+Parameters
+----------
+label : str | None
+        Input parameter used by this routine.
+identifier : str | None
+        Input parameter used by this routine.
+
+Returns
+-------
+str
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     base = _label_or_id(label, identifier)
     if isinstance(identifier, str) and identifier:
         return f"{base} [{identifier}]"
@@ -98,6 +249,24 @@ def _format_option(label: str | None, identifier: str | None) -> str:
 
 
 def _truncate_axis_label(text: str, max_chars: int = 48) -> str:
+    """Truncate axis label.
+
+Parameters
+----------
+text : str
+        Input parameter used by this routine.
+max_chars : int
+        Input parameter used by this routine.
+
+Returns
+-------
+str
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     normalized = str(text or "").strip()
     if len(normalized) <= max_chars:
         return normalized
@@ -105,6 +274,22 @@ def _truncate_axis_label(text: str, max_chars: int = 48) -> str:
 
 
 def _dedupe_labels(labels: list[str]) -> list[str]:
+    """Dedupe labels.
+
+Parameters
+----------
+labels : list[str]
+        Input parameter used by this routine.
+
+Returns
+-------
+list[str]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     counts: dict[str, int] = {}
     output: list[str] = []
     for label in labels:
@@ -117,6 +302,22 @@ def _dedupe_labels(labels: list[str]) -> list[str]:
 
 
 def _ensure_label_columns(frame: pl.DataFrame) -> tuple[pl.DataFrame, list[str]]:
+    """Ensure label columns.
+
+Parameters
+----------
+frame : pl.DataFrame
+        Input parameter used by this routine.
+
+Returns
+-------
+tuple[pl.DataFrame, list[str]]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     missing: list[str] = []
     normalized = frame
 
@@ -149,6 +350,28 @@ def _extract_selected_cell(
     x_labels: list[str] | None = None,
     y_labels: list[str] | None = None,
 ) -> dict[str, str] | None:
+    """Extract selected cell.
+
+Parameters
+----------
+event : object
+        Input parameter used by this routine.
+cell_lookup : dict[tuple[str, str], dict[str, str]] | None
+        Input parameter used by this routine.
+x_labels : list[str] | None
+        Input parameter used by this routine.
+y_labels : list[str] | None
+        Input parameter used by this routine.
+
+Returns
+-------
+dict[str, str] | None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     if not isinstance(event, dict):
         return None
     selection = event.get("selection")
@@ -216,6 +439,18 @@ def _extract_selected_cell(
 
 
 def main() -> None:
+    """Main.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     bootstrap_runtime_assets()
     settings = get_settings()
     activity_path = settings.artifacts_derived_dir / "agg_activity_daily.parquet"

@@ -1,3 +1,36 @@
+"""
+1_usage_playlist_engagement.py
+
+Disabled Streamlit page for usage and playlist engagement analyses (kept for rollback).
+
+Dependencies
+------------
+- datetime
+- pathlib
+- plotly
+- polars
+- pyarrow
+- runtime_bootstrap
+- streamlit
+- sys
+- visu2
+
+Classes
+-------
+- None.
+
+Functions
+---------
+- load_tables: Load tables.
+- _collect_lazy: Utility for collect lazy.
+- load_classroom_values: Load classroom values.
+- _parquet_columns: Utility for parquet columns.
+- _label_or_id: Utility for label or id.
+- _format_option: Utility for format option.
+- _compatibility_status: Utility for compatibility status.
+- _build_filtered_fact: Utility for build filtered fact.
+- main: Utility for main.
+"""
 from __future__ import annotations
 
 import sys
@@ -17,10 +50,11 @@ if str(SRC_DIR) not in sys.path:
 if str(APPS_DIR) not in sys.path:
     sys.path.insert(0, str(APPS_DIR))
 
+from runtime_bootstrap import bootstrap_runtime_assets
+
 from visu2.config import get_settings
 from visu2.contracts import DERIVED_SCHEMA_VERSION, RUNTIME_CORE_COLUMNS
 from visu2.reporting import load_derived_manifest
-from runtime_bootstrap import bootstrap_runtime_assets
 
 st.set_page_config(
     page_title="Usage Playlist Engagement",
@@ -51,6 +85,22 @@ div, p, label {
 
 @st.cache_data(show_spinner=False)
 def load_tables(derived_dir: Path) -> dict[str, pl.DataFrame]:
+    """Load tables.
+
+Parameters
+----------
+derived_dir : Path
+        Input parameter used by this routine.
+
+Returns
+-------
+dict[str, pl.DataFrame]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return {
         "module_daily": pl.read_parquet(derived_dir / "agg_module_usage_daily.parquet"),
         "playlist_module": pl.read_parquet(derived_dir / "agg_playlist_module_usage.parquet"),
@@ -73,6 +123,28 @@ def load_classroom_values(
     end_date: date,
     module_code: str | None,
 ) -> list[str]:
+    """Load classroom values.
+
+Parameters
+----------
+fact_path : Path
+        Input parameter used by this routine.
+start_date : date
+        Input parameter used by this routine.
+end_date : date
+        Input parameter used by this routine.
+module_code : str | None
+        Input parameter used by this routine.
+
+Returns
+-------
+list[str]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     lf = pl.scan_parquet(fact_path).filter(
         (pl.col("date_utc") >= pl.lit(start_date)) & (pl.col("date_utc") <= pl.lit(end_date))
     )
@@ -89,16 +161,68 @@ def load_classroom_values(
 
 
 def _parquet_columns(path: Path) -> list[str]:
+    """Parquet columns.
+
+Parameters
+----------
+path : Path
+        Input parameter used by this routine.
+
+Returns
+-------
+list[str]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     return list(pq.ParquetFile(path).schema_arrow.names)
 
 
 def _label_or_id(label: str | None, identifier: str | None) -> str:
+    """Label or id.
+
+Parameters
+----------
+label : str | None
+        Input parameter used by this routine.
+identifier : str | None
+        Input parameter used by this routine.
+
+Returns
+-------
+str
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     if isinstance(label, str) and label.strip():
         return label.strip()
     return str(identifier or "")
 
 
 def _format_option(label: str | None, identifier: str | None) -> str:
+    """Format option.
+
+Parameters
+----------
+label : str | None
+        Input parameter used by this routine.
+identifier : str | None
+        Input parameter used by this routine.
+
+Returns
+-------
+str
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     base = _label_or_id(label, identifier)
     if isinstance(identifier, str) and identifier:
         return f"{base} [{identifier}]"
@@ -109,6 +233,24 @@ def _compatibility_status(
     table_columns: dict[str, list[str]],
     manifest_path: Path,
 ) -> tuple[str, dict[str, list[str]], list[str], str]:
+    """Compatibility status.
+
+Parameters
+----------
+table_columns : dict[str, list[str]]
+        Input parameter used by this routine.
+manifest_path : Path
+        Input parameter used by this routine.
+
+Returns
+-------
+tuple[str, dict[str, list[str]], list[str], str]
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     missing_core: dict[str, list[str]] = {}
     messages: list[str] = []
     schema_version = "missing"
@@ -158,6 +300,32 @@ def _build_filtered_fact(
     classroom_id: str | None,
     playlist_id: str | None,
 ) -> pl.LazyFrame:
+    """Build filtered fact.
+
+Parameters
+----------
+fact_path : Path
+        Input parameter used by this routine.
+start_date : date
+        Input parameter used by this routine.
+end_date : date
+        Input parameter used by this routine.
+module_code : str | None
+        Input parameter used by this routine.
+classroom_id : str | None
+        Input parameter used by this routine.
+playlist_id : str | None
+        Input parameter used by this routine.
+
+Returns
+-------
+pl.LazyFrame
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     lf = pl.scan_parquet(fact_path).filter(
         (pl.col("date_utc") >= pl.lit(start_date)) & (pl.col("date_utc") <= pl.lit(end_date))
     )
@@ -171,6 +339,18 @@ def _build_filtered_fact(
 
 
 def main() -> None:
+    """Main.
+
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     bootstrap_runtime_assets()
     settings = get_settings()
     derived_dir = settings.artifacts_derived_dir

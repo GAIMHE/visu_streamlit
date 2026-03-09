@@ -1,3 +1,24 @@
+"""
+test_fact_playlist_backfill.py
+
+Validate playlist/module backfill behavior on fact table construction.
+
+Dependencies
+------------
+- datetime
+- json
+- polars
+- visu2
+
+Classes
+-------
+- None.
+
+Functions
+---------
+- _build_settings: Utility for build settings.
+- test_playlist_placeholder_ids_are_backfilled_from_exercise_summary: Test scenario for playlist placeholder ids are backfilled from exercise summary.
+"""
 from __future__ import annotations
 
 import json
@@ -10,6 +31,22 @@ from visu2.derive import build_fact_attempt_core
 
 
 def _build_settings(tmp_path) -> Settings:
+    """Build settings.
+
+Parameters
+----------
+tmp_path : Any
+        Input parameter used by this routine.
+
+Returns
+-------
+Settings
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+"""
     data_dir = tmp_path / "data"
     artifacts_dir = tmp_path / "artifacts"
     derived_dir = artifacts_dir / "derived"
@@ -38,6 +75,26 @@ def _build_settings(tmp_path) -> Settings:
 
 
 def test_playlist_placeholder_ids_are_backfilled_from_exercise_summary(tmp_path) -> None:
+    """Test playlist placeholder ids are backfilled from exercise summary.
+
+Parameters
+----------
+tmp_path : Any
+        Input parameter used by this routine.
+
+Returns
+-------
+None
+        Result produced by this routine.
+
+Notes
+-----
+    Behavior is intentionally documented for maintainability and traceability.
+
+Examples
+--------
+    This function is validated through the test suite execution path.
+"""
     settings = _build_settings(tmp_path)
 
     raw = pl.DataFrame(
