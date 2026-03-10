@@ -18,6 +18,7 @@ if str(SRC_DIR) not in sys.path:
 if str(APPS_DIR) not in sys.path:
     sys.path.insert(0, str(APPS_DIR))
 
+from figure_info import render_figure_info
 from runtime_bootstrap import bootstrap_runtime_assets
 
 from visu2.config import get_settings
@@ -1005,16 +1006,7 @@ Notes
         st.stop()
 
     st.title("ZPDES Dependency Graph")
-    st.caption(
-        "Objective lanes with activity-level dependency edges. Solid blue = activation, dashed red = deactivation."
-    )
-    st.caption(
-        "Structure is sourced from `learning_catalog.json` + `zpdes_rules.json` (or `dependency_topology` when present)."
-    )
-    st.caption(
-        "Unlock conditions apply to the source node of each edge: if the source is an activity code, "
-        "the rule targets activity-level mastery; if the source is an objective code, it targets objective-level mastery."
-    )
+    render_figure_info("zpdes_dependency_graph")
 
     st.sidebar.header("ZPDES Controls")
     selected_module = st.sidebar.selectbox("Module", module_codes, index=0)
@@ -1131,17 +1123,8 @@ Notes
     if show_debug:
         st.sidebar.write(event)
 
-    st.markdown("**Legend**")
-    st.markdown(
-        "- Node shapes: square objective, circle activity, diamond-outline ghost reference.\n"
-        "- Between-objective edges: solid blue activation, dashed red deactivation.\n"
-        "- Intra-objective edges: curved green (dashed if deactivation), alternating above/below for readability.\n"
-        "- Click a node to focus its dependency neighborhood (unrelated nodes/edges fade).\n"
-        "- `Init open = yes` means activity/objective is available at start (`init_open = Y`).\n"
-        f"- Overlay: **{overlay_name}** (toggle in sidebar)."
-    )
-
     st.subheader("Rule Detail")
+    render_figure_info("zpdes_rule_detail_panel")
     selected_item = st.session_state.get(selection_key)
     if not isinstance(selected_item, dict):
         st.info("Click a node in the graph to inspect dependency rules for that unit.")
@@ -1239,6 +1222,7 @@ Notes
             st.info("Click a node in the graph to inspect dependency rules for that unit.")
 
     with st.expander("Dependency Audit Table", expanded=False):
+        render_figure_info("zpdes_dependency_audit_table")
         node_label_map = {
             str(row.get("node_code") or ""): _label_or_id(row.get("label"), row.get("node_code"))
             for row in filtered_nodes.to_dicts()

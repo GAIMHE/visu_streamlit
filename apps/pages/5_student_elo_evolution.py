@@ -43,6 +43,7 @@ if str(SRC_DIR) not in sys.path:
 if str(APPS_DIR) not in sys.path:
     sys.path.insert(0, str(APPS_DIR))
 
+from figure_info import render_figure_info
 from runtime_bootstrap import bootstrap_runtime_assets
 
 from visu2.config import get_settings
@@ -200,10 +201,6 @@ Notes
         st.stop()
 
     st.title("Student Elo Evolution")
-    st.caption(
-        "Replay one or two student trajectories against fixed exercise difficulty. "
-        "Exercise Elo is frozen; only the student rating changes over time."
-    )
 
     st.sidebar.header("Selection")
     min_attempts = int(
@@ -280,6 +277,8 @@ Notes
         st.session_state[playing_key] = False
 
     selected_profiles = profiles.filter(pl.col("user_id").is_in(student_ids))
+    st.markdown("**Student Summary Cards**")
+    render_figure_info("student_elo_summary_cards")
     summary_cols = st.columns(max(1, len(student_ids)))
     for idx, user_id in enumerate(student_ids):
         row = selected_profiles.filter(pl.col("user_id") == user_id).to_dicts()
@@ -296,6 +295,8 @@ Notes
                 f"{entry.get('first_attempt_at')} -> {entry.get('last_attempt_at')}"
             )
 
+    st.markdown("**Elo Replay Chart**")
+    render_figure_info("student_elo_replay_chart")
     c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
     with c1:
         if st.button("Play" if not st.session_state[playing_key] else "Pause", width="stretch"):

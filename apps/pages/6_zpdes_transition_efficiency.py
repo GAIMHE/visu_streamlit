@@ -17,6 +17,7 @@ if str(SRC_DIR) not in sys.path:
 if str(APPS_DIR) not in sys.path:
     sys.path.insert(0, str(APPS_DIR))
 
+from figure_info import render_figure_info
 from runtime_bootstrap import bootstrap_runtime_assets
 
 from visu2.config import get_settings
@@ -168,15 +169,7 @@ def main() -> None:
         st.stop()
 
     st.title("ZPDES Transition Efficiency")
-    st.caption(
-        "Structural ZPDES lanes with hover-based before/after/in-activity cohort summaries on each activity."
-    )
-    st.caption(
-        "Each cohort is computed on first attempts of new exercises, using only earlier attempts from the same module and work mode."
-    )
-    st.caption(
-        'The `after` cohort uses a strict minimum count of prior later-activity attempts; the `in-activity` cohort captures first attempts on new exercises after prior work in the same activity.'
-    )
+    render_figure_info("zpdes_transition_efficiency_graph")
 
     st.sidebar.header("Cohort Controls")
     selected_module = st.sidebar.selectbox("Module", module_codes, index=0)
@@ -287,23 +280,11 @@ def main() -> None:
         config={"modeBarButtonsToRemove": ["select2d", "lasso2d"]},
     )
 
-    st.markdown("**Legend**")
-    st.markdown(
-        "- Objective squares stay structural.\n"
-        "- Activity circles are colored by the selected node metric.\n"
-        f"- Hover metrics use only `{selected_work_mode}` exercise first-attempt events.\n"
-        f"- When `First-attempt success` is selected, the node color also uses `{selected_work_mode}` first-attempt events.\n"
-        f"- The `after` cohort requires at least `{later_attempt_threshold}` prior later-activity attempt(s).\n"
-        "- Events with no prior attempts stay excluded; `in-activity` requires prior work in the same activity."
-    )
     if metric == "activity_mean_exercise_elo":
         st.info(
             "Activity mean exercise Elo is globally calibrated and does not change with the date filter. "
             "The date filter still applies to the exercise progression cohort metrics shown in node hover."
         )
-    st.caption(
-        "The date filter applies to the exercise first-attempt event date. Earlier history used for cohort classification may precede the selected window."
-    )
 
     if warnings:
         with st.expander("Metadata warnings", expanded=False):

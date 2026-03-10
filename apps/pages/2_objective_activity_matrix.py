@@ -49,6 +49,7 @@ if str(SRC_DIR) not in sys.path:
 if str(APPS_DIR) not in sys.path:
     sys.path.insert(0, str(APPS_DIR))
 
+from figure_info import render_figure_info
 from runtime_bootstrap import bootstrap_runtime_assets
 
 from visu2.config import get_settings
@@ -525,12 +526,7 @@ Notes
         module_code_to_display[str(module_code)] = module_display
 
     st.title("Objective-Activity Matrix Heatmap")
-    st.caption(
-        "Rows are objectives from one selected module. Columns are objective-local activity positions (A1..An)."
-    )
-    st.caption(
-        "Color and optional cell text encode the selected metric across the selected date range."
-    )
+    render_figure_info("matrix_objective_activity_heatmap")
     if missing_labels:
         st.warning(
             "Some label columns are missing in derived artifacts and were rebuilt from IDs: "
@@ -967,6 +963,7 @@ Notes
         st.sidebar.write(event)
 
     st.subheader("Exercise Drilldown")
+    render_figure_info("matrix_exercise_drilldown_table")
     requires_exercise_daily = metric != "activity_mean_exercise_elo"
     if requires_exercise_daily and exercise_daily_status == "missing":
         st.info(
@@ -1153,6 +1150,8 @@ Notes
     selected_instruction = str(selected_exercise.get("exercise_label") or "").strip()
     placeholder_image_path = ROOT_DIR / "images" / "placeholder_exo.png"
 
+    st.markdown("**Instruction Panel**")
+    render_figure_info("matrix_exercise_instruction_panel")
     st.markdown(f"**Instruction - Exercise `{selected_exercise_short}`**")
     if selected_instruction:
         st.write(selected_instruction)

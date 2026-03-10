@@ -21,6 +21,7 @@ if str(SRC_DIR) not in sys.path:
 if str(APPS_DIR) not in sys.path:
     sys.path.insert(0, str(APPS_DIR))
 
+from figure_info import render_figure_info
 from runtime_bootstrap import bootstrap_runtime_assets
 
 from visu2.bottleneck import apply_bottleneck_filters, build_bottleneck_frame
@@ -634,7 +635,6 @@ Notes
     )
 
     st.title("Learning Analytics Overview")
-    st.caption("Interactive exploration of progression, bottlenecks, and learning paths.")
     status = str(compatibility["status"])
     missing_core_by_table = compatibility["missing_core_by_table"]
     if status == "incompatible":
@@ -773,6 +773,8 @@ Notes
         else 0.0
     )
 
+    st.markdown("**Overview KPIs**")
+    render_figure_info("overview_kpi_cards")
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Attempts", f"{int(kpi['attempts']):,}")
     c2.metric("Unique Students", f"{int(kpi['unique_students']):,}")
@@ -781,10 +783,6 @@ Notes
     c5.metric("Success Rate (exercise-balanced)", f"{kpi_exercise_balanced_value * 100:.2f}%")
 
     st.subheader("Work Mode Performance")
-    st.caption(
-        "Success and exploration metrics below compare work modes for the active date/module/objective/activity filters. "
-        "Two success definitions are shown: attempt-weighted and exercise-balanced."
-    )
     work_mode_summary = (
         fact_query.filter(pl.col("work_mode").is_not_null())
         .group_by("work_mode")
@@ -848,6 +846,7 @@ Notes
                 st.info("No rows available for the selected work modes.")
             else:
                 st.markdown("**Success Rate by Work Mode (selected period)**")
+                render_figure_info("overview_work_mode_success_table")
                 success_table = (
                     selected_work_mode_summary.select(
                         [
@@ -881,10 +880,7 @@ Notes
                 )
 
                 st.markdown("**Work Mode Footprint and Depth**")
-                st.caption(
-                    "Width describes unique modules/objectives/activities explored. "
-                    "Depth uses median attempts per activity plus repeat-attempt rate."
-                )
+                render_figure_info("overview_work_mode_footprint_depth_chart")
                 width_plot = selected_work_mode_summary.select(
                     [
                         "work_mode",
@@ -929,6 +925,8 @@ Notes
                 fig_width.update_yaxes(showgrid=True, gridcolor="rgba(23,34,27,0.14)")
                 st.plotly_chart(fig_width, width='stretch')
 
+                st.markdown("**Work Mode Summary Table**")
+                render_figure_info("overview_work_mode_summary_table")
                 summary_table = selected_work_mode_summary.select(
                     [
                         "work_mode",
@@ -983,21 +981,13 @@ Notes
                 )
 
     st.subheader("Bottleneck Candidates")
+    render_figure_info("overview_bottleneck_candidates_chart")
     bottleneck_level = st.radio(
         "Bottleneck level",
         options=["Module", "Objective", "Activity"],
         horizontal=True,
         index=2,
     )
-    st.caption(
-        f"This view ranks {bottleneck_level.lower()} entities where learners struggle most, combining failure frequency and repeat-attempt signals."
-    )
-    if bottleneck_level == "Module":
-        st.caption("Module level applies date + module filters and ignores objective/activity filters.")
-    elif bottleneck_level == "Objective":
-        st.caption("Objective level applies date + module + objective filters and ignores activity filter.")
-    else:
-        st.caption("Activity level applies date + module + objective + activity filters.")
     bottleneck_source = apply_bottleneck_filters(
         frame=activity,
         start_date=start_date,
@@ -1089,9 +1079,7 @@ Notes
         st.plotly_chart(fig_bottleneck, width='stretch')
 
     st.subheader("Path Transitions")
-    st.caption(
-        "This view shows the most common activity-to-activity paths across different objectives in the selected period."
-    )
+    render_figure_info("overview_path_transitions_chart")
     transition_edges = load_top_transition_edges(
         transition_path=transition_path,
         start_date=start_date,
@@ -1212,7 +1200,7 @@ Notes
         st.plotly_chart(fig_edges, width='stretch')
 
     st.subheader("Data Quality Panel")
-    st.caption("Contract and consistency checks from the latest build are shown below.")
+    render_figure_info("overview_data_quality_panel")
     status = report.get("status", "unknown")
     if status == "pass":
         st.success("Consistency status: PASS")

@@ -48,6 +48,7 @@ if str(SRC_DIR) not in sys.path:
 if str(APPS_DIR) not in sys.path:
     sys.path.insert(0, str(APPS_DIR))
 
+from figure_info import render_figure_info
 from runtime_bootstrap import bootstrap_runtime_assets
 
 from visu2.classroom_progression import (
@@ -303,10 +304,7 @@ Notes
         st.stop()
 
     st.title("Classroom Progression Replay")
-    st.caption(
-        "Replay cumulative student success by activity with synchronized steps. "
-        "At each step, every student advances by the same number of local attempts while preserving their own chronology."
-    )
+    render_figure_info("classroom_progression_replay_heatmap")
 
     st.sidebar.header("Scope")
     mode_label = st.sidebar.selectbox("Work mode scope", list(MODE_OPTIONS.keys()), index=0)
