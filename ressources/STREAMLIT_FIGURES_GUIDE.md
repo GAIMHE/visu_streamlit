@@ -154,21 +154,28 @@ Important note:
 **What it shows**
 - The same structural ZPDES lane layout as the dependency page.
 - Activity circles are colored either by:
-  - first-attempt success rate, or
+  - first-attempt success rate in the selected work mode, or
   - activity mean exercise Elo
+- Hover always shows first-attempt success and event counts for all four work modes:
+  - `adaptive-test`
+  - `initial-test`
+  - `playlist`
+  - `zpdes`
 - A dedicated selector restricts the cohort analysis to either:
   - `zpdes` attempts, or
   - `playlist` attempts
-- A threshold input defines how many prior later-activity attempts are required for the `after` cohort
+- A typed threshold input defines how many prior later-activity attempts are required for the `after` cohort
 - Hover on one activity shows:
-  - `before` cohort success rate, student count, and total previous attempts
-  - `after` cohort success rate, student count, and total previous attempts
+  - all-work-mode first-attempt success and event counts
+  - `before` cohort success rate, eligible event count, unique-student count, and total previous attempts
+  - `after` cohort success rate, eligible event count, unique-student count, and total previous attempts
+  - `in-activity` cohort success rate, eligible event count, unique-student count, and total previous attempts
 
 **Question it can answer**
-- Do students first arriving from strictly earlier content perform differently from students who already explored later content?
+- Do students attempting a new exercise from strictly earlier content perform differently from students who already explored later content?
 - Does this contrast change between `zpdes` and `playlist` usage?
-- Which activities attract many students who are already \"ahead\" in the module ordering?
-- Are weak outcomes concentrated among these `after` cohorts?
+- Which activities attract many event-level `after` or `in-activity` attempts?
+- Are weak outcomes concentrated among these `after` or `in-activity` cohorts?
 
 ---
 

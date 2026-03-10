@@ -25,11 +25,11 @@ from visu2.zpdes_dependencies import (
     list_supported_module_codes_from_metadata,
 )
 from visu2.zpdes_transition_efficiency import (
-    ARRIVAL_EVENT_COLUMNS,
     NODE_METRIC_LABELS,
     NODE_METRIC_OPTIONS,
+    PROGRESSION_EVENT_COLUMNS,
     TRANSITION_WORK_MODE_OPTIONS,
-    attach_arrival_cohort_metrics_to_nodes,
+    attach_progression_cohort_metrics_to_nodes,
     attach_transition_metric_to_nodes,
     build_transition_efficiency_figure,
     objective_sort_key,
@@ -80,8 +80,8 @@ def _load_activity_elo(path: Path) -> pl.DataFrame:
 
 
 @st.cache_data(show_spinner=False)
-def _load_arrival_events(path: Path) -> pl.DataFrame:
-    """Load first-arrival cohort events."""
+def _load_progression_events(path: Path) -> pl.DataFrame:
+    """Load exercise-level progression events."""
     return pl.read_parquet(path)
 
 
@@ -105,7 +105,7 @@ def main() -> None:
     settings = get_settings()
     activity_path = settings.artifacts_derived_dir / "agg_activity_daily.parquet"
     activity_elo_path = settings.artifacts_derived_dir / "agg_activity_elo.parquet"
-    arrival_path = settings.artifacts_derived_dir / "zpdes_first_arrival_events.parquet"
+    arrival_path = settings.artifacts_derived_dir / "zpdes_exercise_progression_events.parquet"
 
     required_paths = [activity_path, activity_elo_path, arrival_path]
     missing = [path for path in required_paths if not path.exists()]
@@ -131,7 +131,7 @@ def main() -> None:
     missing_activity_elo = sorted(
         {"module_code", "activity_id", "activity_mean_exercise_elo"} - activity_elo_columns
     )
-    missing_arrivals = sorted(set(ARRIVAL_EVENT_COLUMNS) - arrival_columns)
+    missing_arrivals = sorted(set(PROGRESSION_EVENT_COLUMNS) - arrival_columns)
     if missing_activity or missing_activity_elo or missing_arrivals:
         st.error("Transition-efficiency page artifacts are incompatible with the current runtime contract.")
         if missing_activity:
@@ -139,13 +139,13 @@ def main() -> None:
         if missing_activity_elo:
             st.markdown("- `agg_activity_elo`: " + ", ".join(missing_activity_elo))
         if missing_arrivals:
-            st.markdown("- `zpdes_first_arrival_events`: " + ", ".join(missing_arrivals))
+            st.markdown("- `zpdes_exercise_progression_events`: " + ", ".join(missing_arrivals))
         st.code("uv run python scripts/build_derived.py --strict-checks")
         st.stop()
 
     activity = _load_activity_daily(activity_path)
     activity_elo = _load_activity_elo(activity_elo_path)
-    arrival_events = _load_arrival_events(arrival_path)
+    progression_events = _load_progression_events(arrival_path)
 
     observed_modules = {
         str(code)
@@ -161,21 +161,21 @@ def main() -> None:
         st.error("No modules available for ZPDES transition analysis.")
         st.stop()
 
-    min_date = arrival_events["date_utc"].min()
-    max_date = arrival_events["date_utc"].max()
+    min_date = progression_events["date_utc"].min()
+    max_date = progression_events["date_utc"].max()
     if min_date is None or max_date is None:
-        st.info("No first-arrival cohort data is available.")
+        st.info("No exercise progression cohort data is available.")
         st.stop()
 
     st.title("ZPDES Transition Efficiency")
     st.caption(
-        "Structural ZPDES lanes with hover-based before/after cohort summaries on each activity."
+        "Structural ZPDES lanes with hover-based before/after/in-activity cohort summaries on each activity."
     )
     st.caption(
-        "The `before` cohort contains students whose prior history in the same module and work mode is strictly earlier than the destination activity."
+        "Each cohort is computed on first attempts of new exercises, using only earlier attempts from the same module and work mode."
     )
     st.caption(
-        "The `after` cohort contains students whose prior history includes at least the selected number of later-activity attempts before their first arrival on the destination activity."
+        'The `after` cohort uses a strict minimum count of prior later-activity attempts; the `in-activity` cohort captures first attempts on new exercises after prior work in the same activity.'
     )
 
     st.sidebar.header("Cohort Controls")
@@ -199,10 +199,9 @@ def main() -> None:
     )
     selected_work_mode = TRANSITION_WORK_MODE_OPTIONS[transition_population_label]
     later_attempt_threshold = int(
-        st.sidebar.slider(
+        st.sidebar.number_input(
             'Minimum prior later attempts for "after" cohort',
             min_value=1,
-            max_value=20,
             value=1,
             step=1,
         )
@@ -227,14 +226,16 @@ def main() -> None:
         nodes=all_nodes,
         agg_activity_daily=activity,
         agg_activity_elo=activity_elo,
+        progression_events=progression_events,
         module_code=selected_module,
         start_date=start_date,
         end_date=end_date,
         metric=metric,
+        work_mode=selected_work_mode,
     )
-    nodes_with_cohorts = attach_arrival_cohort_metrics_to_nodes(
+    nodes_with_cohorts = attach_progression_cohort_metrics_to_nodes(
         nodes=nodes_with_metric,
-        arrival_events=arrival_events,
+        progression_events=progression_events,
         module_code=selected_module,
         start_date=start_date,
         end_date=end_date,
@@ -290,17 +291,18 @@ def main() -> None:
     st.markdown(
         "- Objective squares stay structural.\n"
         "- Activity circles are colored by the selected node metric.\n"
-        f"- Hover metrics use only `{selected_work_mode}` first-arrival events.\n"
+        f"- Hover metrics use only `{selected_work_mode}` exercise first-attempt events.\n"
+        f"- When `First-attempt success` is selected, the node color also uses `{selected_work_mode}` first-attempt events.\n"
         f"- The `after` cohort requires at least `{later_attempt_threshold}` prior later-activity attempt(s).\n"
-        "- Students with no prior attempts, or with fewer later attempts than the threshold, are excluded from both hover cohorts."
+        "- Events with no prior attempts stay excluded; `in-activity` requires prior work in the same activity."
     )
     if metric == "activity_mean_exercise_elo":
         st.info(
             "Activity mean exercise Elo is globally calibrated and does not change with the date filter. "
-            "The date filter still applies to the first-arrival cohort metrics shown in node hover."
+            "The date filter still applies to the exercise progression cohort metrics shown in node hover."
         )
     st.caption(
-        "The date filter applies to the first-arrival event date. Earlier history used for cohort classification may precede the selected window."
+        "The date filter applies to the exercise first-attempt event date. Earlier history used for cohort classification may precede the selected window."
     )
 
     if warnings:

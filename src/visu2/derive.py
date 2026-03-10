@@ -24,7 +24,7 @@ from .derive_elo import (
     build_student_elo_profiles_from_events,
 )
 from .derive_fact import build_fact_attempt_core
-from .derive_zpdes import build_zpdes_first_arrival_events_from_fact
+from .derive_zpdes import build_zpdes_exercise_progression_events_from_fact
 from .transitions import build_transition_edges_from_fact
 
 
@@ -55,7 +55,8 @@ def write_derived_tables(settings: Settings, sample_rows: int | None = None) -> 
         "agg_activity_elo": settings.artifacts_derived_dir / "agg_activity_elo.parquet",
         "student_elo_events": settings.artifacts_derived_dir / "student_elo_events.parquet",
         "student_elo_profiles": settings.artifacts_derived_dir / "student_elo_profiles.parquet",
-        "zpdes_first_arrival_events": settings.artifacts_derived_dir / "zpdes_first_arrival_events.parquet",
+        "zpdes_exercise_progression_events": settings.artifacts_derived_dir
+        / "zpdes_exercise_progression_events.parquet",
     }
 
     fact = build_fact_attempt_core(settings, sample_rows=sample_rows)
@@ -84,7 +85,10 @@ def write_derived_tables(settings: Settings, sample_rows: int | None = None) -> 
     student_elo_events = build_student_elo_events_from_fact(fact, agg_exercise_elo)
     write_frame("student_elo_events", student_elo_events)
     write_frame("student_elo_profiles", build_student_elo_profiles_from_events(student_elo_events))
-    write_frame("zpdes_first_arrival_events", build_zpdes_first_arrival_events_from_fact(fact, settings=settings))
+    write_frame(
+        "zpdes_exercise_progression_events",
+        build_zpdes_exercise_progression_events_from_fact(fact, settings=settings),
+    )
 
     return outputs
 
@@ -102,6 +106,6 @@ __all__ = [
     "build_agg_activity_elo_from_exercise_elo",
     "build_student_elo_events_from_fact",
     "build_student_elo_profiles_from_events",
-    "build_zpdes_first_arrival_events_from_fact",
+    "build_zpdes_exercise_progression_events_from_fact",
     "write_derived_tables",
 ]

@@ -18,7 +18,7 @@ Functions
 from __future__ import annotations
 
 DERIVED_MANIFEST_VERSION = "1.0"
-DERIVED_SCHEMA_VERSION = "phase0_thin_slice_v5_zpdes_arrivals"
+DERIVED_SCHEMA_VERSION = "phase0_thin_slice_v6_zpdes_exercise_progression"
 ACTIVE_CANONICAL_MODULE_CODES = ("M1", "M31", "M32", "M33", "M41", "M42", "M43")
 
 EXPECTED_BASELINE = {
@@ -237,7 +237,7 @@ REQUIRED_AGG_COLUMNS = {
         "final_student_elo",
         "eligible_for_replay",
     ],
-    "zpdes_first_arrival_events": [
+    "zpdes_exercise_progression_events": [
         "user_id",
         "created_at",
         "date_utc",
@@ -248,13 +248,14 @@ REQUIRED_AGG_COLUMNS = {
         "objective_label",
         "activity_id",
         "activity_label",
+        "exercise_id",
         "work_mode",
         "destination_rank",
-        "first_arrival_outcome",
+        "exercise_first_attempt_outcome",
         "prior_attempt_count",
-        "prior_before_attempt_count",
-        "prior_later_attempt_count",
-        "arrival_bucket_base",
+        "prior_before_activity_attempt_count",
+        "prior_same_activity_attempt_count",
+        "prior_later_activity_attempt_count",
     ],
 }
 
@@ -389,20 +390,21 @@ RUNTIME_CORE_COLUMNS = {
         "final_student_elo",
         "eligible_for_replay",
     ],
-    "zpdes_first_arrival_events": [
+    "zpdes_exercise_progression_events": [
         "user_id",
         "created_at",
         "date_utc",
         "module_code",
         "objective_id",
         "activity_id",
+        "exercise_id",
         "work_mode",
         "destination_rank",
-        "first_arrival_outcome",
+        "exercise_first_attempt_outcome",
         "prior_attempt_count",
-        "prior_before_attempt_count",
-        "prior_later_attempt_count",
-        "arrival_bucket_base",
+        "prior_before_activity_attempt_count",
+        "prior_same_activity_attempt_count",
+        "prior_later_activity_attempt_count",
     ],
 }
 
@@ -453,7 +455,7 @@ RUNTIME_LABEL_COLUMNS = {
         "objective_label",
         "activity_label",
     ],
-    "zpdes_first_arrival_events": [
+    "zpdes_exercise_progression_events": [
         "module_label",
         "objective_label",
         "activity_label",

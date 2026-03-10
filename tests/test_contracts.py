@@ -152,7 +152,7 @@ Examples
         "agg_activity_elo",
         "student_elo_events",
         "student_elo_profiles",
-        "zpdes_first_arrival_events",
+        "zpdes_exercise_progression_events",
     }
     assert expected_tables.issubset(set(REQUIRED_AGG_COLUMNS.keys()))
 

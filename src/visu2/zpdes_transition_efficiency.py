@@ -23,10 +23,14 @@ NODE_METRIC_LABELS = {
     "activity_mean_exercise_elo": "Activity mean exercise Elo",
 }
 
-ARRIVAL_BUCKET_BEFORE = "before"
-ARRIVAL_BUCKET_AFTER_CANDIDATE = "after_candidate"
+WORK_MODE_HOVER_LABELS = {
+    "adaptive-test": "Adaptive-test mode",
+    "initial-test": "Initial-test mode",
+    "playlist": "Playlist mode",
+    "zpdes": "ZPDES mode",
+}
 
-ARRIVAL_EVENT_COLUMNS = [
+PROGRESSION_EVENT_COLUMNS = [
     "created_at",
     "date_utc",
     "user_id",
@@ -37,13 +41,14 @@ ARRIVAL_EVENT_COLUMNS = [
     "objective_label",
     "activity_id",
     "activity_label",
+    "exercise_id",
     "work_mode",
     "destination_rank",
-    "first_arrival_outcome",
+    "exercise_first_attempt_outcome",
     "prior_attempt_count",
-    "prior_before_attempt_count",
-    "prior_later_attempt_count",
-    "arrival_bucket_base",
+    "prior_before_activity_attempt_count",
+    "prior_same_activity_attempt_count",
+    "prior_later_activity_attempt_count",
 ]
 
 
@@ -100,6 +105,71 @@ def format_metric_value(metric: str, value: float | None) -> str:
     return format_rate(value)
 
 
+def _empty_work_mode_first_attempt_frame() -> pl.DataFrame:
+    """Return an empty all-work-mode first-attempt summary with the full expected schema."""
+    schema: dict[str, pl.DataType] = {"node_id": pl.Utf8}
+    for work_mode in WORK_MODE_HOVER_LABELS:
+        prefix = work_mode.replace("-", "_")
+        schema[f"{prefix}_first_attempt_success_rate"] = pl.Float64
+        schema[f"{prefix}_first_attempt_event_count"] = pl.Int64
+    return pl.DataFrame(schema=schema)
+
+
+def _all_work_mode_first_attempt_frame(
+    progression_events: pl.DataFrame | pl.LazyFrame,
+    module_code: str,
+    start_date: date,
+    end_date: date,
+) -> pl.DataFrame:
+    """Aggregate activity first-attempt success and event counts for each work mode."""
+    progression_frame = (
+        progression_events.collect()
+        if isinstance(progression_events, pl.LazyFrame)
+        else progression_events
+    )
+    required_columns = {
+        "module_code",
+        "date_utc",
+        "activity_id",
+        "work_mode",
+        "exercise_first_attempt_outcome",
+    }
+    if progression_frame.is_empty() or not required_columns.issubset(set(progression_frame.columns)):
+        return _empty_work_mode_first_attempt_frame()
+    scoped = progression_frame.filter(
+        (pl.col("module_code") == module_code)
+        & (pl.col("date_utc") >= pl.lit(start_date))
+        & (pl.col("date_utc") <= pl.lit(end_date))
+    )
+    if scoped.height == 0:
+        return _empty_work_mode_first_attempt_frame()
+
+    work_mode_frames: list[pl.DataFrame] = []
+    for work_mode, label in WORK_MODE_HOVER_LABELS.items():
+        prefix = work_mode.replace("-", "_")
+        mode_frame = (
+            scoped.filter(pl.col("work_mode") == work_mode)
+            .group_by("activity_id")
+            .agg(
+                pl.len().cast(pl.Int64).alias(f"{prefix}_first_attempt_event_count"),
+                pl.col("exercise_first_attempt_outcome")
+                .cast(pl.Float64)
+                .mean()
+                .alias(f"{prefix}_first_attempt_success_rate"),
+            )
+            .rename({"activity_id": "node_id"})
+        )
+        work_mode_frames.append(mode_frame)
+
+    if not work_mode_frames:
+        return _empty_work_mode_first_attempt_frame()
+
+    summary = work_mode_frames[0]
+    for frame in work_mode_frames[1:]:
+        summary = summary.join(frame, on="node_id", how="full", coalesce=True)
+    return summary
+
+
 def _quadratic_curve_points(
     start: tuple[float, float],
     control: tuple[float, float],
@@ -125,13 +195,21 @@ def attach_transition_metric_to_nodes(
     nodes: pl.DataFrame,
     agg_activity_daily: pl.DataFrame | pl.LazyFrame,
     agg_activity_elo: pl.DataFrame | pl.LazyFrame,
+    progression_events: pl.DataFrame | pl.LazyFrame,
     module_code: str,
     start_date: date,
     end_date: date,
     metric: str,
+    work_mode: str,
 ) -> pl.DataFrame:
     """Attach the selected activity metric to ZPDES activity nodes."""
     nodes_frame = nodes.clone()
+    work_mode_summary_frame = _all_work_mode_first_attempt_frame(
+        progression_events=progression_events,
+        module_code=module_code,
+        start_date=start_date,
+        end_date=end_date,
+    )
     if metric == "activity_mean_exercise_elo":
         elo_frame = agg_activity_elo.collect() if isinstance(agg_activity_elo, pl.LazyFrame) else agg_activity_elo
         metric_frame = (
@@ -144,61 +222,116 @@ def attach_transition_metric_to_nodes(
                 }
             )
         )
-    elif metric == "first_attempt_success_rate":
-        activity_frame = (
-            agg_activity_daily.collect() if isinstance(agg_activity_daily, pl.LazyFrame) else agg_activity_daily
+        mode_metric_frame = work_mode_summary_frame.select(
+            [
+                "node_id",
+                pl.lit(None, dtype=pl.Float64).alias("selected_mode_first_attempt_success_rate"),
+                pl.lit(None, dtype=pl.Int64).alias("selected_mode_first_attempt_event_count"),
+            ]
         )
-        metric_frame = (
-            activity_frame.filter(
+    elif metric == "first_attempt_success_rate":
+        mode_metric_frame = (
+            (
+                progression_events.collect()
+                if isinstance(progression_events, pl.LazyFrame)
+                else progression_events
+            ).filter(
                 (pl.col("module_code") == module_code)
                 & (pl.col("date_utc") >= pl.lit(start_date))
                 & (pl.col("date_utc") <= pl.lit(end_date))
+                & (pl.col("work_mode") == work_mode)
             )
             .group_by("activity_id")
             .agg(
-                pl.sum("first_attempt_count").cast(pl.Float64).alias("_weight"),
-                (
-                    pl.col("first_attempt_success_rate").fill_null(0.0)
-                    * pl.col("first_attempt_count").cast(pl.Float64)
-                )
-                .sum()
+                pl.len().cast(pl.Int64).alias("selected_mode_first_attempt_event_count"),
+                pl.col("exercise_first_attempt_outcome")
                 .cast(pl.Float64)
-                .alias("_weighted_success"),
-            )
-            .with_columns(
-                pl.when(pl.col("_weight") > 0)
-                .then(pl.col("_weighted_success") / pl.col("_weight"))
-                .otherwise(pl.lit(None, dtype=pl.Float64))
-                .alias("transition_metric_value")
+                .mean()
+                .alias("selected_mode_first_attempt_success_rate"),
             )
             .rename({"activity_id": "node_id"})
-            .select(["node_id", "transition_metric_value"])
+        )
+        metric_frame = mode_metric_frame.select(
+            [
+                "node_id",
+                pl.col("selected_mode_first_attempt_success_rate").alias("transition_metric_value"),
+            ]
         )
     else:
         raise ValueError(f"Unsupported transition node metric: {metric}")
 
     return (
         nodes_frame.join(metric_frame, on="node_id", how="left")
+        .join(mode_metric_frame, on="node_id", how="left")
+        .join(work_mode_summary_frame, on="node_id", how="left")
         .with_columns(
             pl.when(pl.col("node_type") == "activity")
             .then(pl.col("transition_metric_value"))
             .otherwise(pl.lit(None, dtype=pl.Float64))
-            .alias("transition_metric_value")
+            .alias("transition_metric_value"),
+            pl.when(pl.col("node_type") == "activity")
+            .then(pl.col("selected_mode_first_attempt_success_rate"))
+            .otherwise(pl.lit(None, dtype=pl.Float64))
+            .alias("selected_mode_first_attempt_success_rate"),
+            pl.when(pl.col("node_type") == "activity")
+            .then(pl.col("selected_mode_first_attempt_event_count"))
+            .otherwise(pl.lit(None, dtype=pl.Int64))
+            .alias("selected_mode_first_attempt_event_count"),
+            *[
+                pl.when(pl.col("node_type") == "activity")
+                .then(pl.col(f"{work_mode.replace('-', '_')}_first_attempt_success_rate"))
+                .otherwise(pl.lit(None, dtype=pl.Float64))
+                .alias(f"{work_mode.replace('-', '_')}_first_attempt_success_rate")
+                for work_mode in WORK_MODE_HOVER_LABELS
+            ],
+            *[
+                pl.when(pl.col("node_type") == "activity")
+                .then(pl.col(f"{work_mode.replace('-', '_')}_first_attempt_event_count"))
+                .otherwise(pl.lit(None, dtype=pl.Int64))
+                .alias(f"{work_mode.replace('-', '_')}_first_attempt_event_count")
+                for work_mode in WORK_MODE_HOVER_LABELS
+            ],
         )
     )
 
 
-def attach_arrival_cohort_metrics_to_nodes(
+def _cohort_metrics(
+    scoped_events: pl.DataFrame,
+    condition: pl.Expr,
+    prefix: str,
+) -> pl.DataFrame:
+    """Aggregate event-based cohort metrics for one destination activity."""
+    return (
+        scoped_events.filter(condition)
+        .group_by("activity_id")
+        .agg(
+            pl.len().cast(pl.Int64).alias(f"{prefix}_event_count"),
+            pl.col("user_id").drop_nulls().n_unique().cast(pl.Int64).alias(f"{prefix}_unique_students"),
+            pl.col("exercise_first_attempt_outcome")
+            .cast(pl.Float64)
+            .mean()
+            .alias(f"{prefix}_success_rate"),
+            pl.sum("prior_attempt_count").cast(pl.Int64).alias(f"{prefix}_previous_attempts"),
+        )
+        .rename({"activity_id": "node_id"})
+    )
+
+
+def attach_progression_cohort_metrics_to_nodes(
     nodes: pl.DataFrame,
-    arrival_events: pl.DataFrame | pl.LazyFrame,
+    progression_events: pl.DataFrame | pl.LazyFrame,
     module_code: str,
     start_date: date,
     end_date: date,
     work_mode: str,
     later_attempt_threshold: int,
 ) -> pl.DataFrame:
-    """Attach before/after first-arrival cohort metrics to activity nodes."""
-    events_frame = arrival_events.collect() if isinstance(arrival_events, pl.LazyFrame) else arrival_events
+    """Attach event-based before/after/in-activity cohort metrics to activity nodes."""
+    events_frame = (
+        progression_events.collect()
+        if isinstance(progression_events, pl.LazyFrame)
+        else progression_events
+    )
     scoped = events_frame.filter(
         (pl.col("module_code") == module_code)
         & (pl.col("date_utc") >= pl.lit(start_date))
@@ -207,47 +340,57 @@ def attach_arrival_cohort_metrics_to_nodes(
     )
     if scoped.height == 0:
         return nodes.with_columns(
-            pl.lit(None, dtype=pl.Int64).alias("before_students"),
+            pl.lit(None, dtype=pl.Int64).alias("before_event_count"),
+            pl.lit(None, dtype=pl.Int64).alias("before_unique_students"),
             pl.lit(None, dtype=pl.Float64).alias("before_success_rate"),
             pl.lit(None, dtype=pl.Int64).alias("before_previous_attempts"),
-            pl.lit(None, dtype=pl.Int64).alias("after_students"),
+            pl.lit(None, dtype=pl.Int64).alias("after_event_count"),
+            pl.lit(None, dtype=pl.Int64).alias("after_unique_students"),
             pl.lit(None, dtype=pl.Float64).alias("after_success_rate"),
             pl.lit(None, dtype=pl.Int64).alias("after_previous_attempts"),
+            pl.lit(None, dtype=pl.Int64).alias("in_activity_event_count"),
+            pl.lit(None, dtype=pl.Int64).alias("in_activity_unique_students"),
+            pl.lit(None, dtype=pl.Float64).alias("in_activity_success_rate"),
+            pl.lit(None, dtype=pl.Int64).alias("in_activity_previous_attempts"),
         )
 
-    before_metrics = (
-        scoped.filter(pl.col("arrival_bucket_base") == ARRIVAL_BUCKET_BEFORE)
-        .group_by("activity_id")
-        .agg(
-            pl.len().cast(pl.Int64).alias("before_students"),
-            pl.col("first_arrival_outcome").cast(pl.Float64).mean().alias("before_success_rate"),
-            pl.sum("prior_attempt_count").cast(pl.Int64).alias("before_previous_attempts"),
-        )
-        .rename({"activity_id": "node_id"})
-    )
     threshold = max(1, int(later_attempt_threshold))
-    after_metrics = (
-        scoped.filter(
-            (pl.col("arrival_bucket_base") == ARRIVAL_BUCKET_AFTER_CANDIDATE)
-            & (pl.col("prior_later_attempt_count") >= threshold)
-        )
-        .group_by("activity_id")
-        .agg(
-            pl.len().cast(pl.Int64).alias("after_students"),
-            pl.col("first_arrival_outcome").cast(pl.Float64).mean().alias("after_success_rate"),
-            pl.sum("prior_attempt_count").cast(pl.Int64).alias("after_previous_attempts"),
-        )
-        .rename({"activity_id": "node_id"})
+    before_metrics = _cohort_metrics(
+        scoped_events=scoped,
+        condition=(
+            (pl.col("prior_same_activity_attempt_count") == 0)
+            & (pl.col("prior_before_activity_attempt_count") > 0)
+            & (pl.col("prior_later_activity_attempt_count") == 0)
+        ),
+        prefix="before",
+    )
+    after_metrics = _cohort_metrics(
+        scoped_events=scoped,
+        condition=pl.col("prior_later_activity_attempt_count") >= threshold,
+        prefix="after",
+    )
+    in_activity_metrics = _cohort_metrics(
+        scoped_events=scoped,
+        condition=(
+            (pl.col("prior_same_activity_attempt_count") > 0)
+            & (pl.col("prior_later_activity_attempt_count") < threshold)
+        ),
+        prefix="in_activity",
     )
 
     return (
         nodes.join(before_metrics, on="node_id", how="left")
         .join(after_metrics, on="node_id", how="left")
+        .join(in_activity_metrics, on="node_id", how="left")
         .with_columns(
             pl.when(pl.col("node_type") == "activity")
-            .then(pl.col("before_students"))
+            .then(pl.col("before_event_count"))
             .otherwise(pl.lit(None, dtype=pl.Int64))
-            .alias("before_students"),
+            .alias("before_event_count"),
+            pl.when(pl.col("node_type") == "activity")
+            .then(pl.col("before_unique_students"))
+            .otherwise(pl.lit(None, dtype=pl.Int64))
+            .alias("before_unique_students"),
             pl.when(pl.col("node_type") == "activity")
             .then(pl.col("before_success_rate"))
             .otherwise(pl.lit(None, dtype=pl.Float64))
@@ -257,9 +400,13 @@ def attach_arrival_cohort_metrics_to_nodes(
             .otherwise(pl.lit(None, dtype=pl.Int64))
             .alias("before_previous_attempts"),
             pl.when(pl.col("node_type") == "activity")
-            .then(pl.col("after_students"))
+            .then(pl.col("after_event_count"))
             .otherwise(pl.lit(None, dtype=pl.Int64))
-            .alias("after_students"),
+            .alias("after_event_count"),
+            pl.when(pl.col("node_type") == "activity")
+            .then(pl.col("after_unique_students"))
+            .otherwise(pl.lit(None, dtype=pl.Int64))
+            .alias("after_unique_students"),
             pl.when(pl.col("node_type") == "activity")
             .then(pl.col("after_success_rate"))
             .otherwise(pl.lit(None, dtype=pl.Float64))
@@ -268,6 +415,22 @@ def attach_arrival_cohort_metrics_to_nodes(
             .then(pl.col("after_previous_attempts"))
             .otherwise(pl.lit(None, dtype=pl.Int64))
             .alias("after_previous_attempts"),
+            pl.when(pl.col("node_type") == "activity")
+            .then(pl.col("in_activity_event_count"))
+            .otherwise(pl.lit(None, dtype=pl.Int64))
+            .alias("in_activity_event_count"),
+            pl.when(pl.col("node_type") == "activity")
+            .then(pl.col("in_activity_unique_students"))
+            .otherwise(pl.lit(None, dtype=pl.Int64))
+            .alias("in_activity_unique_students"),
+            pl.when(pl.col("node_type") == "activity")
+            .then(pl.col("in_activity_success_rate"))
+            .otherwise(pl.lit(None, dtype=pl.Float64))
+            .alias("in_activity_success_rate"),
+            pl.when(pl.col("node_type") == "activity")
+            .then(pl.col("in_activity_previous_attempts"))
+            .otherwise(pl.lit(None, dtype=pl.Int64))
+            .alias("in_activity_previous_attempts"),
         )
     )
 
@@ -301,7 +464,11 @@ def build_transition_efficiency_figure(
     node_rows = nodes.to_dicts()
     edge_rows = edges.to_dicts()
     objective_codes = sorted(
-        {str(row.get("objective_code") or "") for row in node_rows if str(row.get("objective_code") or "").strip()},
+        {
+            str(row.get("objective_code") or "")
+            for row in node_rows
+            if str(row.get("objective_code") or "").strip()
+        },
         key=objective_sort_key,
     )
     if not objective_codes:
@@ -325,11 +492,7 @@ def build_transition_efficiency_figure(
 
     fig = go.Figure()
     same_lane_edge_rank: dict[float, int] = {}
-    structural_legend_added = {
-        "activation": False,
-        "deactivation": False,
-        "intra": False,
-    }
+    structural_legend_added = {"activation": False, "deactivation": False, "intra": False}
 
     for edge in edge_rows:
         from_code = str(edge.get("from_node_code") or "")
@@ -426,19 +589,35 @@ def build_transition_efficiency_figure(
         + "Code: %{customdata[0]}<br>"
         + "Objective lane: %{customdata[5]}<br>"
         + f"{metric_label}: %{{customdata[6]}}<br>"
-        + "Before success: %{customdata[7]}<br>"
-        + "Before students: %{customdata[8]}<br>"
-        + "Before previous attempts: %{customdata[9]}<br>"
-        + f"After success (>={later_attempt_threshold} later attempts): %{{customdata[10]}}<br>"
-        + f"After students (>={later_attempt_threshold} later attempts): %{{customdata[11]}}<br>"
-        + f"After previous attempts (>={later_attempt_threshold} later attempts): %{{customdata[12]}}"
+        + "Adaptive-test mode first-attempt success / events: %{customdata[7]} / %{customdata[8]}<br>"
+        + "Initial-test mode first-attempt success / events: %{customdata[9]} / %{customdata[10]}<br>"
+        + "Playlist mode first-attempt success / events: %{customdata[11]} / %{customdata[12]}<br>"
+        + "ZPDES mode first-attempt success / events: %{customdata[13]} / %{customdata[14]}<br>"
+        + "Before success: %{customdata[15]}<br>"
+        + "Before eligible events: %{customdata[16]}<br>"
+        + "Before unique students: %{customdata[17]}<br>"
+        + "Before previous attempts: %{customdata[18]}<br>"
+        + f'After success (>={later_attempt_threshold} later attempts): %{{customdata[19]}}<br>'
+        + f'After eligible events (>={later_attempt_threshold} later attempts): %{{customdata[20]}}<br>'
+        + f'After unique students (>={later_attempt_threshold} later attempts): %{{customdata[21]}}<br>'
+        + f'After previous attempts (>={later_attempt_threshold} later attempts): %{{customdata[22]}}<br>'
+        + "In-activity success: %{customdata[23]}<br>"
+        + "In-activity eligible events: %{customdata[24]}<br>"
+        + "In-activity unique students: %{customdata[25]}<br>"
+        + "In-activity previous attempts: %{customdata[26]}"
         + "<extra></extra>"
     )
     activity_marker: dict[str, object] = {
         "size": 14,
         "symbol": ["diamond-open" if bool(row.get("is_ghost")) else "circle" for row in activity_rows],
         "line": {"width": 1.5, "color": "#1b1d22"},
-        "color": [row.get("transition_metric_value") for row in activity_rows],
+        "color": [
+            float(row.get("transition_metric_value"))
+            if row.get("transition_metric_value") is not None
+            and not _is_missing(row.get("transition_metric_value"))
+            else float("nan")
+            for row in activity_rows
+        ],
         "colorscale": colorscale,
         "showscale": True,
         "colorbar": {"title": metric_label},
@@ -461,12 +640,26 @@ def build_transition_efficiency_figure(
                     str(row.get("node_id") or ""),
                     str(row.get("objective_code") or ""),
                     format_metric_value(metric, row.get("transition_metric_value")),
+                    format_rate(row.get("adaptive_test_first_attempt_success_rate")),
+                    format_int(row.get("adaptive_test_first_attempt_event_count")),
+                    format_rate(row.get("initial_test_first_attempt_success_rate")),
+                    format_int(row.get("initial_test_first_attempt_event_count")),
+                    format_rate(row.get("playlist_first_attempt_success_rate")),
+                    format_int(row.get("playlist_first_attempt_event_count")),
+                    format_rate(row.get("zpdes_first_attempt_success_rate")),
+                    format_int(row.get("zpdes_first_attempt_event_count")),
                     format_rate(row.get("before_success_rate")),
-                    format_int(row.get("before_students")),
+                    format_int(row.get("before_event_count")),
+                    format_int(row.get("before_unique_students")),
                     format_int(row.get("before_previous_attempts")),
                     format_rate(row.get("after_success_rate")),
-                    format_int(row.get("after_students")),
+                    format_int(row.get("after_event_count")),
+                    format_int(row.get("after_unique_students")),
                     format_int(row.get("after_previous_attempts")),
+                    format_rate(row.get("in_activity_success_rate")),
+                    format_int(row.get("in_activity_event_count")),
+                    format_int(row.get("in_activity_unique_students")),
+                    format_int(row.get("in_activity_previous_attempts")),
                 ]
                 for row in activity_rows
             ],
