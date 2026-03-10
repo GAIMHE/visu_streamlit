@@ -12,6 +12,8 @@
   - `fact_attempt_core`
 - `apps/pages/5_student_elo_evolution.py`
   - `student_elo_events`, `student_elo_profiles`
+- `apps/pages/6_zpdes_transition_efficiency.py`
+  - `zpdes_rules.json`, `learning_catalog.json`, `agg_activity_daily`, `agg_activity_elo`, `zpdes_first_arrival_events`
 
 ## Hidden Page (Not in current navigation)
 

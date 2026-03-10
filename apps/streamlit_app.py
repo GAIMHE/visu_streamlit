@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Sequence
 from datetime import date
 from pathlib import Path
 
@@ -36,6 +37,14 @@ st.set_page_config(
     page_title="Learning Analytics Overview",
     page_icon=":bar_chart:",
     layout="wide",
+)
+
+
+OVERVIEW_RUNTIME_TABLES: tuple[str, ...] = (
+    "fact_attempt_core",
+    "agg_activity_daily",
+    "agg_objective_daily",
+    "agg_transition_edges",
 )
 
 
@@ -218,37 +227,41 @@ Notes
 def _collect_runtime_compatibility(
     table_columns: dict[str, list[str]],
     manifest_path: Path,
+    required_tables: Sequence[str] | None = None,
 ) -> dict[str, object]:
-    """Collect runtime compatibility.
+    """Evaluate runtime compatibility for the tables required by this page.
 
-Parameters
-----------
-table_columns : dict[str, list[str]]
-        Input parameter used by this routine.
-manifest_path : Path
-        Input parameter used by this routine.
+    Parameters
+    ----------
+    table_columns : dict[str, list[str]]
+        Mapping from table name to available parquet columns.
+    manifest_path : Path
+        Path to the derived manifest used for schema/version checks.
+    required_tables : Sequence[str] | None, optional
+        Subset of runtime tables to validate. When omitted, the function checks
+        the tables present in ``table_columns``.
 
-Returns
--------
-dict[str, object]
-        Result produced by this routine.
-
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
-"""
+    Returns
+    -------
+    dict[str, object]
+        Compatibility summary containing status, missing core/label columns,
+        and manifest messages.
+    """
     missing_core_by_table: dict[str, list[str]] = {}
     missing_labels_by_table: dict[str, list[str]] = {}
     manifest_messages: list[str] = []
     manifest_schema_version: str | None = None
+    compatibility_tables = tuple(required_tables or table_columns.keys())
 
-    for table_name, required_cols in RUNTIME_CORE_COLUMNS.items():
+    for table_name in compatibility_tables:
+        required_cols = RUNTIME_CORE_COLUMNS.get(table_name, [])
         actual_cols = set(table_columns.get(table_name, []))
         missing = [col for col in required_cols if col not in actual_cols]
         if missing:
             missing_core_by_table[table_name] = missing
 
-    for table_name, label_cols in RUNTIME_LABEL_COLUMNS.items():
+    for table_name in compatibility_tables:
+        label_cols = RUNTIME_LABEL_COLUMNS.get(table_name, [])
         actual_cols = set(table_columns.get(table_name, []))
         missing = [col for col in label_cols if col not in actual_cols]
         if missing:
@@ -264,11 +277,12 @@ Notes
 
         manifest_tables = manifest.get("tables") if isinstance(manifest, dict) else None
         if isinstance(manifest_tables, dict):
-            required_manifest_tables = set(RUNTIME_CORE_COLUMNS.keys())
+            required_manifest_tables = set(compatibility_tables)
             for table_name in sorted(required_manifest_tables):
                 if table_name not in manifest_tables:
                     manifest_messages.append(f"Manifest missing required table entry: {table_name}.")
-            for table_name, actual_cols in table_columns.items():
+            for table_name in compatibility_tables:
+                actual_cols = table_columns.get(table_name, [])
                 entry = manifest_tables.get(table_name)
                 if not isinstance(entry, dict):
                     manifest_messages.append(f"Manifest missing table entry: {table_name}.")
@@ -593,27 +607,10 @@ Notes
     manifest_path = settings.derived_manifest_path
     fact_path = derived_dir / "fact_attempt_core.parquet"
     transition_path = derived_dir / "agg_transition_edges.parquet"
-    module_usage_daily_path = derived_dir / "agg_module_usage_daily.parquet"
-    playlist_module_usage_path = derived_dir / "agg_playlist_module_usage.parquet"
-    module_activity_usage_path = derived_dir / "agg_module_activity_usage.parquet"
-    exercise_daily_path = derived_dir / "agg_exercise_daily.parquet"
-    exercise_elo_path = derived_dir / "agg_exercise_elo.parquet"
-    activity_elo_path = derived_dir / "agg_activity_elo.parquet"
-    student_elo_events_path = derived_dir / "student_elo_events.parquet"
-    student_elo_profiles_path = derived_dir / "student_elo_profiles.parquet"
-
     required = [
         derived_dir / "agg_activity_daily.parquet",
         derived_dir / "agg_objective_daily.parquet",
         transition_path,
-        module_usage_daily_path,
-        playlist_module_usage_path,
-        module_activity_usage_path,
-        exercise_daily_path,
-        exercise_elo_path,
-        activity_elo_path,
-        student_elo_events_path,
-        student_elo_profiles_path,
         fact_path,
         report_path,
     ]
@@ -631,16 +628,9 @@ Notes
             "agg_activity_daily": data["activity"].columns,
             "agg_objective_daily": data["objective"].columns,
             "agg_transition_edges": _parquet_columns(transition_path),
-            "agg_module_usage_daily": _parquet_columns(module_usage_daily_path),
-            "agg_playlist_module_usage": _parquet_columns(playlist_module_usage_path),
-            "agg_module_activity_usage": _parquet_columns(module_activity_usage_path),
-            "agg_exercise_daily": _parquet_columns(exercise_daily_path),
-            "agg_exercise_elo": _parquet_columns(exercise_elo_path),
-            "agg_activity_elo": _parquet_columns(activity_elo_path),
-            "student_elo_events": _parquet_columns(student_elo_events_path),
-            "student_elo_profiles": _parquet_columns(student_elo_profiles_path),
         },
         manifest_path=manifest_path,
+        required_tables=OVERVIEW_RUNTIME_TABLES,
     )
 
     st.title("Learning Analytics Overview")

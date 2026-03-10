@@ -221,6 +221,92 @@ def exercise_catalog_elo_base_frame(settings: Settings) -> pl.DataFrame:
     )
 
 
+def catalog_activity_rank_frame(settings: Settings) -> pl.DataFrame:
+    """Return the canonical module-local activity order from the learning catalog.
+
+    The rank is a dense sequential index within each module. It is used for
+    analyses that need a stable notion of "earlier" and "later" activity
+    positions independent of ZPDES edge directions.
+    """
+    catalog = load_learning_catalog(settings.learning_catalog_path)
+    rows: list[dict[str, object]] = []
+    for module in catalog.get("modules", []):
+        if not isinstance(module, dict):
+            continue
+        module_id = str(module.get("id") or "").strip() or None
+        module_code = str(module.get("code") or "").strip()
+        if not module_code:
+            continue
+        module_title = module.get("title") or {}
+        module_label = str(module_title.get("short") or module_title.get("long") or module_code).strip()
+        destination_rank = 0
+        for objective in module.get("objectives", []):
+            if not isinstance(objective, dict):
+                continue
+            objective_id = str(objective.get("id") or "").strip() or None
+            objective_code = str(objective.get("code") or "").strip()
+            if not objective_code:
+                continue
+            objective_title = objective.get("title") or {}
+            objective_label = str(
+                objective_title.get("short") or objective_title.get("long") or objective_code
+            ).strip()
+            for activity in objective.get("activities", []):
+                if not isinstance(activity, dict):
+                    continue
+                activity_id = str(activity.get("id") or "").strip()
+                activity_code = str(activity.get("code") or "").strip()
+                if not activity_id or not activity_code:
+                    continue
+                activity_title = activity.get("title") or {}
+                activity_label = str(
+                    activity_title.get("short") or activity_title.get("long") or activity_code
+                ).strip()
+                destination_rank += 1
+                rows.append(
+                    {
+                        "module_id": module_id,
+                        "module_code": module_code,
+                        "module_label": module_label,
+                        "objective_id": objective_id,
+                        "objective_code": objective_code,
+                        "objective_label": objective_label,
+                        "activity_id": activity_id,
+                        "activity_code": activity_code,
+                        "activity_label": activity_label,
+                        "destination_rank": destination_rank,
+                    }
+                )
+    if not rows:
+        return pl.DataFrame(
+            {
+                "module_id": [],
+                "module_code": [],
+                "module_label": [],
+                "objective_id": [],
+                "objective_code": [],
+                "objective_label": [],
+                "activity_id": [],
+                "activity_code": [],
+                "activity_label": [],
+                "destination_rank": [],
+            },
+            schema={
+                "module_id": pl.Utf8,
+                "module_code": pl.Utf8,
+                "module_label": pl.Utf8,
+                "objective_id": pl.Utf8,
+                "objective_code": pl.Utf8,
+                "objective_label": pl.Utf8,
+                "activity_id": pl.Utf8,
+                "activity_code": pl.Utf8,
+                "activity_label": pl.Utf8,
+                "destination_rank": pl.Int64,
+            },
+        )
+    return pl.DataFrame(rows).unique(subset=["activity_id"], keep="first")
+
+
 def catalog_code_frames(settings: Settings) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     """Return fallback code-to-id/label frames for module, objective, and activity codes."""
     catalog = load_learning_catalog(settings.learning_catalog_path)

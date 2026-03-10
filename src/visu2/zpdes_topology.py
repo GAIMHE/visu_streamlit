@@ -28,6 +28,153 @@ from .zpdes_types import (
 )
 
 
+def _selected_catalog_module(
+    catalog_payload: dict[str, Any],
+    module_code: str,
+) -> dict[str, Any] | None:
+    """Return the catalog module payload for one pedagogical module code."""
+    module_code_norm = clean_str(module_code)
+    return next(
+        (
+            module
+            for module in (catalog_payload.get("modules") or [])
+            if isinstance(module, dict) and clean_str(module.get("code")) == module_code_norm
+        ),
+        None,
+    )
+
+
+def _catalog_node_map_for_module(
+    catalog_payload: dict[str, Any],
+    module_code: str,
+) -> dict[str, dict[str, object]]:
+    """Build the canonical node map for a module directly from the learning catalog."""
+    module_code_norm = clean_str(module_code)
+    selected_catalog_module = _selected_catalog_module(catalog_payload, module_code_norm)
+    node_map: dict[str, dict[str, object]] = {}
+    if not isinstance(selected_catalog_module, dict):
+        return node_map
+
+    for objective in selected_catalog_module.get("objectives") or []:
+        if not isinstance(objective, dict):
+            continue
+        objective_code = clean_str(objective.get("code"))
+        objective_id = clean_str(objective.get("id"))
+        if not objective_code:
+            continue
+        node_map[objective_code] = {
+            "module_code": module_code_norm,
+            "node_id": objective_id or None,
+            "node_code": objective_code,
+            "node_type": "objective",
+            "label": label_from_catalog_entry(objective, objective_code),
+            "objective_code": objective_code,
+            "activity_index": None,
+            "init_open": False,
+            "source_primary": "catalog",
+            "source_enrichment": "rules",
+            "is_ghost": False,
+        }
+        for activity in objective.get("activities") or []:
+            if not isinstance(activity, dict):
+                continue
+            activity_code = clean_str(activity.get("code"))
+            activity_id = clean_str(activity.get("id"))
+            if not activity_code:
+                continue
+            node_map[activity_code] = {
+                "module_code": module_code_norm,
+                "node_id": activity_id or None,
+                "node_code": activity_code,
+                "node_type": "activity",
+                "label": label_from_catalog_entry(activity, activity_code),
+                "objective_code": objective_code,
+                "activity_index": parse_activity_index(activity_code),
+                "init_open": False,
+                "source_primary": "catalog",
+                "source_enrichment": "rules",
+                "is_ghost": False,
+            }
+    return node_map
+
+
+def _normalize_topology_tables(
+    nodes_raw: list[object],
+    edges_raw: list[object],
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Normalize dependency-topology payloads to the runtime node and edge schemas."""
+    nodes_df = pl.DataFrame(nodes_raw) if nodes_raw else empty_nodes_df()
+    edges_df = pl.DataFrame(edges_raw) if edges_raw else empty_edges_df()
+    for column, dtype in empty_nodes_df().schema.items():
+        if column not in nodes_df.columns:
+            nodes_df = nodes_df.with_columns(pl.lit(None, dtype=dtype).alias(column))
+    for column, dtype in empty_edges_df().schema.items():
+        if column not in edges_df.columns:
+            edges_df = edges_df.with_columns(pl.lit(None, dtype=dtype).alias(column))
+    return (
+        nodes_df.select(list(empty_nodes_df().schema.keys())),
+        edges_df.select(list(empty_edges_df().schema.keys())),
+    )
+
+
+def _reconcile_topology_nodes_with_catalog(
+    module_code: str,
+    catalog_payload: dict[str, Any],
+    nodes_df: pl.DataFrame,
+) -> tuple[pl.DataFrame, list[str]]:
+    """Reconcile topology nodes with canonical catalog ids, labels, and membership."""
+    module_code_norm = clean_str(module_code)
+    canonical_map = _catalog_node_map_for_module(catalog_payload, module_code_norm)
+    topology_map = {
+        clean_str(row.get("node_code")): row
+        for row in nodes_df.to_dicts()
+        if clean_str(row.get("node_code"))
+    }
+    warnings: list[str] = []
+    corrected_count = 0
+    added_count = 0
+
+    merged_rows: list[dict[str, object]] = []
+    for node_code in sorted(set(canonical_map) | set(topology_map)):
+        topology_row = topology_map.get(node_code)
+        canonical_row = canonical_map.get(node_code)
+        if canonical_row is None:
+            if topology_row is not None:
+                merged_rows.append(dict(topology_row))
+            continue
+
+        merged = dict(canonical_row)
+        if topology_row is not None:
+            merged["init_open"] = bool(topology_row.get("init_open"))
+            merged["source_primary"] = clean_str(topology_row.get("source_primary")) or merged["source_primary"]
+            merged["source_enrichment"] = (
+                clean_str(topology_row.get("source_enrichment")) or merged["source_enrichment"]
+            )
+            merged["is_ghost"] = bool(topology_row.get("is_ghost"))
+            if (
+                clean_str(topology_row.get("node_id")) != clean_str(canonical_row.get("node_id"))
+                or clean_str(topology_row.get("label")) != clean_str(canonical_row.get("label"))
+                or clean_str(topology_row.get("objective_code")) != clean_str(canonical_row.get("objective_code"))
+            ):
+                corrected_count += 1
+        else:
+            added_count += 1
+        merged_rows.append(merged)
+
+    if corrected_count:
+        warnings.append(
+            f"Reconciled {corrected_count} topology node(s) against canonical learning_catalog metadata."
+        )
+    if added_count:
+        warnings.append(
+            f"Added {added_count} catalog node(s) missing from dependency_topology."
+        )
+
+    if not merged_rows:
+        return empty_nodes_df(), warnings
+    return pl.DataFrame(merged_rows).select(list(empty_nodes_df().schema.keys())), warnings
+
+
 def _build_dependency_tables_from_rules_payload(
     module_code: str,
     catalog_payload: dict[str, Any],
@@ -92,57 +239,11 @@ Notes
         if clean_str(row.get("id"))
     }
 
-    selected_catalog_module = next(
-        (
-            module
-            for module in (catalog_payload.get("modules") or [])
-            if isinstance(module, dict) and clean_str(module.get("code")) == module_code_norm
-        ),
-        None,
-    )
-
-    node_map: dict[str, dict[str, object]] = {}
-    if isinstance(selected_catalog_module, dict):
-        for objective in selected_catalog_module.get("objectives") or []:
-            if not isinstance(objective, dict):
-                continue
-            objective_code = clean_str(objective.get("code"))
-            objective_id = clean_str(objective.get("id")) or code_to_id_global.get(objective_code)
-            if not objective_code:
-                continue
-            node_map[objective_code] = {
-                "module_code": module_code_norm,
-                "node_id": objective_id or None,
-                "node_code": objective_code,
-                "node_type": "objective",
-                "label": label_from_catalog_entry(objective, objective_code),
-                "objective_code": objective_code,
-                "activity_index": None,
-                "init_open": False,
-                "source_primary": "catalog",
-                "source_enrichment": "rules",
-                "is_ghost": False,
-            }
-            for activity in objective.get("activities") or []:
-                if not isinstance(activity, dict):
-                    continue
-                activity_code = clean_str(activity.get("code"))
-                activity_id = clean_str(activity.get("id")) or code_to_id_global.get(activity_code)
-                if not activity_code:
-                    continue
-                node_map[activity_code] = {
-                    "module_code": module_code_norm,
-                    "node_id": activity_id or None,
-                    "node_code": activity_code,
-                    "node_type": "activity",
-                    "label": label_from_catalog_entry(activity, activity_code),
-                    "objective_code": objective_code,
-                    "activity_index": parse_activity_index(activity_code),
-                    "init_open": False,
-                    "source_primary": "catalog",
-                    "source_enrichment": "rules",
-                    "is_ghost": False,
-                }
+    node_map = _catalog_node_map_for_module(catalog_payload, module_code_norm)
+    for node in node_map.values():
+        if not clean_str(node.get("node_id")):
+            code = clean_str(node.get("node_code"))
+            node["node_id"] = code_to_id_global.get(code) or None
 
     node_rules = module_rule.get("node_rules")
     node_rules = node_rules if isinstance(node_rules, list) else []
@@ -374,18 +475,16 @@ def build_dependency_tables_from_metadata(
             nodes_raw = nodes_raw if isinstance(nodes_raw, list) else []
             edges_raw = edges_raw if isinstance(edges_raw, list) else []
             if nodes_raw or edges_raw:
-                nodes_df = pl.DataFrame(nodes_raw) if nodes_raw else empty_nodes_df()
-                edges_df = pl.DataFrame(edges_raw) if edges_raw else empty_edges_df()
-                for column, dtype in empty_nodes_df().schema.items():
-                    if column not in nodes_df.columns:
-                        nodes_df = nodes_df.with_columns(pl.lit(None, dtype=dtype).alias(column))
-                for column, dtype in empty_edges_df().schema.items():
-                    if column not in edges_df.columns:
-                        edges_df = edges_df.with_columns(pl.lit(None, dtype=dtype).alias(column))
+                nodes_df, edges_df = _normalize_topology_tables(nodes_raw=nodes_raw, edges_raw=edges_raw)
+                nodes_df, warnings = _reconcile_topology_nodes_with_catalog(
+                    module_code=module_code,
+                    catalog_payload=catalog_payload,
+                    nodes_df=nodes_df,
+                )
                 return (
-                    nodes_df.select(list(empty_nodes_df().schema.keys())),
-                    edges_df.select(list(empty_edges_df().schema.keys())),
-                    [],
+                    nodes_df,
+                    edges_df,
+                    warnings,
                 )
 
     return _build_dependency_tables_from_rules_payload(

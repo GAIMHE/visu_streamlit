@@ -170,6 +170,15 @@ It helps inspect pace synchronization, divergence, and emerging bottlenecks in c
 - Replay matrix (`student x activity`) and cumulative progression states  
   Dataset: `artifacts/derived/fact_attempt_core.parquet`
 
+### Page 7: ZPDES Transition Efficiency (`apps/pages/6_zpdes_transition_efficiency.py`)
+This page keeps the structural ZPDES lane layout, then compares first-arrival student cohorts for each activity.  
+It is designed to show whether students first arriving from strictly earlier content behave differently from students who had already attempted later content.
+
+- Structural ZPDES layout with activity coloring  
+  Datasets: `data/zpdes_rules.json`, `data/learning_catalog.json`, `artifacts/derived/agg_activity_daily.parquet`, `artifacts/derived/agg_activity_elo.parquet`
+- Hover-based before/after cohort summaries (restricted to `zpdes` or `playlist` first-arrival events only)  
+  Dataset: `artifacts/derived/zpdes_first_arrival_events.parquet`
+
 ## Further Reading
 - `ressources/README_HF.md`
 - `ressources/STREAMLIT_FIGURES_GUIDE.md`

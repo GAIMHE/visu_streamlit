@@ -18,7 +18,7 @@ Functions
 from __future__ import annotations
 
 DERIVED_MANIFEST_VERSION = "1.0"
-DERIVED_SCHEMA_VERSION = "phase0_thin_slice_v4_elo"
+DERIVED_SCHEMA_VERSION = "phase0_thin_slice_v5_zpdes_arrivals"
 ACTIVE_CANONICAL_MODULE_CODES = ("M1", "M31", "M32", "M33", "M41", "M42", "M43")
 
 EXPECTED_BASELINE = {
@@ -237,6 +237,25 @@ REQUIRED_AGG_COLUMNS = {
         "final_student_elo",
         "eligible_for_replay",
     ],
+    "zpdes_first_arrival_events": [
+        "user_id",
+        "created_at",
+        "date_utc",
+        "module_id",
+        "module_code",
+        "module_label",
+        "objective_id",
+        "objective_label",
+        "activity_id",
+        "activity_label",
+        "work_mode",
+        "destination_rank",
+        "first_arrival_outcome",
+        "prior_attempt_count",
+        "prior_before_attempt_count",
+        "prior_later_attempt_count",
+        "arrival_bucket_base",
+    ],
 }
 
 RUNTIME_CORE_COLUMNS = {
@@ -370,6 +389,21 @@ RUNTIME_CORE_COLUMNS = {
         "final_student_elo",
         "eligible_for_replay",
     ],
+    "zpdes_first_arrival_events": [
+        "user_id",
+        "created_at",
+        "date_utc",
+        "module_code",
+        "objective_id",
+        "activity_id",
+        "work_mode",
+        "destination_rank",
+        "first_arrival_outcome",
+        "prior_attempt_count",
+        "prior_before_attempt_count",
+        "prior_later_attempt_count",
+        "arrival_bucket_base",
+    ],
 }
 
 RUNTIME_LABEL_COLUMNS = {
@@ -415,6 +449,11 @@ RUNTIME_LABEL_COLUMNS = {
         "exercise_label",
     ],
     "agg_activity_elo": [
+        "module_label",
+        "objective_label",
+        "activity_label",
+    ],
+    "zpdes_first_arrival_events": [
         "module_label",
         "objective_label",
         "activity_label",

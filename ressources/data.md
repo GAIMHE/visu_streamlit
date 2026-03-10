@@ -304,6 +304,16 @@ No derived dataset is generated in this phase. The following are design targets.
   - transition count, success-conditioned transition count
 - Purpose: trajectory explorer and path bottleneck visualization.
 
+### 7.6 `zpdes_first_arrival_events`
+- Grain: one row per (`user_id`, `activity_id`, `work_mode`) at the student's first arrival on that destination activity.
+- Metrics:
+  - first-arrival outcome
+  - total prior attempts
+  - prior attempts on earlier-ranked activities
+  - prior attempts on later-ranked activities
+  - base cohort bucket (`before`, `after_candidate`, `excluded`)
+- Purpose: fast cohort summaries for the ZPDES transition-efficiency page.
+
 ## 8. Validation Checklist
 
 1. Parquet metadata validation:

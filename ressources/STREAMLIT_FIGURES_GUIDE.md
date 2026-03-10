@@ -148,9 +148,33 @@ Important note:
 
 ---
 
+## Page: ZPDES Transition Efficiency
+
+### 11) Transition-Efficiency Graph (network/lanes graph with cohort hover metrics)
+**What it shows**
+- The same structural ZPDES lane layout as the dependency page.
+- Activity circles are colored either by:
+  - first-attempt success rate, or
+  - activity mean exercise Elo
+- A dedicated selector restricts the cohort analysis to either:
+  - `zpdes` attempts, or
+  - `playlist` attempts
+- A threshold input defines how many prior later-activity attempts are required for the `after` cohort
+- Hover on one activity shows:
+  - `before` cohort success rate, student count, and total previous attempts
+  - `after` cohort success rate, student count, and total previous attempts
+
+**Question it can answer**
+- Do students first arriving from strictly earlier content perform differently from students who already explored later content?
+- Does this contrast change between `zpdes` and `playlist` usage?
+- Which activities attract many students who are already \"ahead\" in the module ordering?
+- Are weak outcomes concentrated among these `after` cohorts?
+
+---
+
 ## Page: Student Elo Evolution
 
-### 11) Student Elo Evolution (replay line chart)
+### 12) Student Elo Evolution (replay line chart)
 **What it shows**
 - One or two students' Elo trajectories over their own attempt sequence.
 - Exercise difficulty is fixed from the historical calibration.
@@ -165,7 +189,7 @@ Important note:
 
 ## Page: Classroom Progression Replay
 
-### 12) Student x Activity Replay Matrix (animated heatmap)
+### 13) Student x Activity Replay Matrix (animated heatmap)
 **What it shows**
 - A classroom matrix:
   - X-axis = students (anonymized)

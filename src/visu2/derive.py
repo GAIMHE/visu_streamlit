@@ -24,6 +24,7 @@ from .derive_elo import (
     build_student_elo_profiles_from_events,
 )
 from .derive_fact import build_fact_attempt_core
+from .derive_zpdes import build_zpdes_first_arrival_events_from_fact
 from .transitions import build_transition_edges_from_fact
 
 
@@ -54,47 +55,36 @@ def write_derived_tables(settings: Settings, sample_rows: int | None = None) -> 
         "agg_activity_elo": settings.artifacts_derived_dir / "agg_activity_elo.parquet",
         "student_elo_events": settings.artifacts_derived_dir / "student_elo_events.parquet",
         "student_elo_profiles": settings.artifacts_derived_dir / "student_elo_profiles.parquet",
+        "zpdes_first_arrival_events": settings.artifacts_derived_dir / "zpdes_first_arrival_events.parquet",
     }
 
     fact = build_fact_attempt_core(settings, sample_rows=sample_rows)
     _validate_required_columns(fact, REQUIRED_FACT_COLUMNS, "fact_attempt_core")
+    fact.write_parquet(outputs["fact_attempt_core"])
 
-    agg_activity = build_agg_activity_daily_from_fact(fact)
-    agg_objective = build_agg_objective_daily_from_fact(fact)
-    agg_student_module = build_agg_student_module_progress_from_fact(fact)
-    agg_transition = build_transition_edges_from_fact(fact)
-    agg_module_usage_daily = build_agg_module_usage_daily_from_fact(fact)
-    agg_playlist_module_usage = build_agg_playlist_module_usage_from_fact(fact)
-    agg_module_activity_usage = build_agg_module_activity_usage_from_fact(fact)
-    agg_exercise_daily = build_agg_exercise_daily_from_fact(fact, settings=settings)
+    def write_frame(label: str, frame: pl.DataFrame) -> None:
+        _validate_required_columns(frame, REQUIRED_AGG_COLUMNS[label], label)
+        frame.write_parquet(outputs[label])
+
+    write_frame("agg_activity_daily", build_agg_activity_daily_from_fact(fact))
+    write_frame("agg_objective_daily", build_agg_objective_daily_from_fact(fact))
+    write_frame("agg_student_module_progress", build_agg_student_module_progress_from_fact(fact))
+    write_frame("agg_transition_edges", build_transition_edges_from_fact(fact))
+    write_frame("agg_module_usage_daily", build_agg_module_usage_daily_from_fact(fact))
+    write_frame("agg_playlist_module_usage", build_agg_playlist_module_usage_from_fact(fact))
+    write_frame("agg_module_activity_usage", build_agg_module_activity_usage_from_fact(fact))
+    write_frame("agg_exercise_daily", build_agg_exercise_daily_from_fact(fact, settings=settings))
+
     agg_exercise_elo = build_agg_exercise_elo_from_fact(fact, settings=settings)
-    agg_activity_elo = build_agg_activity_elo_from_exercise_elo(
-        agg_exercise_elo,
-        settings=settings,
+    write_frame("agg_exercise_elo", agg_exercise_elo)
+    write_frame(
+        "agg_activity_elo",
+        build_agg_activity_elo_from_exercise_elo(agg_exercise_elo, settings=settings),
     )
     student_elo_events = build_student_elo_events_from_fact(fact, agg_exercise_elo)
-    student_elo_profiles = build_student_elo_profiles_from_events(student_elo_events)
-
-    derived_frames = {
-        "agg_activity_daily": agg_activity,
-        "agg_objective_daily": agg_objective,
-        "agg_student_module_progress": agg_student_module,
-        "agg_transition_edges": agg_transition,
-        "agg_module_usage_daily": agg_module_usage_daily,
-        "agg_playlist_module_usage": agg_playlist_module_usage,
-        "agg_module_activity_usage": agg_module_activity_usage,
-        "agg_exercise_daily": agg_exercise_daily,
-        "agg_exercise_elo": agg_exercise_elo,
-        "agg_activity_elo": agg_activity_elo,
-        "student_elo_events": student_elo_events,
-        "student_elo_profiles": student_elo_profiles,
-    }
-    for label, frame in derived_frames.items():
-        _validate_required_columns(frame, REQUIRED_AGG_COLUMNS[label], label)
-
-    fact.write_parquet(outputs["fact_attempt_core"])
-    for label, frame in derived_frames.items():
-        frame.write_parquet(outputs[label])
+    write_frame("student_elo_events", student_elo_events)
+    write_frame("student_elo_profiles", build_student_elo_profiles_from_events(student_elo_events))
+    write_frame("zpdes_first_arrival_events", build_zpdes_first_arrival_events_from_fact(fact, settings=settings))
 
     return outputs
 
@@ -112,5 +102,6 @@ __all__ = [
     "build_agg_activity_elo_from_exercise_elo",
     "build_student_elo_events_from_fact",
     "build_student_elo_profiles_from_events",
+    "build_zpdes_first_arrival_events_from_fact",
     "write_derived_tables",
 ]
