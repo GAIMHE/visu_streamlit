@@ -10,7 +10,7 @@ Provide a runtime-ready event table for the static ZPDES transition-efficiency p
 - `src/visu2/derive_zpdes.py::build_zpdes_exercise_progression_events_from_fact`
 
 ## Main Consumers
-- `apps/pages/6_zpdes_transition_efficiency.py`
+- `apps/pages/3_zpdes_transition_efficiency.py`
 
 ## Required Columns (Contract)
 - `user_id`

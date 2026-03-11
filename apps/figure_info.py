@@ -30,127 +30,37 @@ FIGURE_INFO: dict[str, dict[str, tuple[str, ...]]] = {
             "A large gap between the two success rates usually means performance varies a lot across exercises.",
         ),
     },
-    "overview_work_mode_success_table": {
-        "What it shows": (
-            "A work-mode comparison table for the selected period and curriculum slice.",
-            "Each row summarizes one work mode with attempts and two success definitions.",
-        ),
-        "Why it matters": (
-            "It helps compare whether a mode looks strong because of many easy attempts or because students succeed more consistently across exercises.",
-        ),
-        "Metrics": (
-            "Attempts = number of filtered attempts in that work mode.",
-            "Success rate (attempt-weighted) = mean of `data_correct` over attempts.",
-            "Success rate (exercise-balanced) = mean of per-exercise success rates within the mode.",
-        ),
-        "Controls that affect it": (
-            "Sidebar date, module, objective, and activity filters affect the source rows.",
-            "The `Work modes shown` multiselect keeps or removes rows from this table only.",
-        ),
-        "How to read / interact": (
-            "Compare the two success columns together rather than reading only one.",
-            "If exercise-balanced success is much lower than attempt-weighted success, success is concentrated on a narrower subset of exercises.",
-        ),
-    },
-    "overview_work_mode_footprint_depth_chart": {
-        "What it shows": (
-            "A grouped bar chart of curriculum footprint by work mode.",
-            "It counts how many modules, objectives, and activities were explored in the current slice.",
-        ),
-        "Why it matters": (
-            "It separates broad exploration from narrow repeated practice.",
-        ),
-        "Metrics": (
-            "Modules explored, objectives explored, and activities explored are distinct counts within each work mode.",
-            "Depth is not drawn as bars here; it is summarized in the companion table through median attempts per activity and repeat-attempt rate.",
-        ),
-        "Controls that affect it": (
-            "Sidebar date, module, objective, and activity filters affect the data.",
-            "The `Work modes shown` multiselect limits which modes appear.",
-        ),
-        "How to read / interact": (
-            "Higher bars mean broader curriculum coverage, not better performance by themselves.",
-            "Read this chart together with the summary table to separate width from repetition.",
-        ),
-    },
     "overview_work_mode_summary_table": {
-        "What it shows": (
-            "A wider comparison table that combines usage volume, exploration width, depth, and success by work mode.",
+        "Work modes": (
+            "`zpdes` is the adaptive progression algorithm.",
+            "`playlist` is a learning path chosen by the teacher.",
+            "`adaptive-test` is a test used to estimate the student's level before regular progression.",
+            "`initial-test` is an older version of that level-estimation test.",
         ),
-        "Why it matters": (
-            "It gives the most complete descriptive view of how each work mode is used.",
-        ),
-        "Metrics": (
-            "Median attempts per activity describes local practice depth.",
-            "Repeat attempt rate = share of attempts with `attempt_number > 1`.",
-            "Success columns keep the same attempt-weighted vs exercise-balanced meaning as the success table.",
-        ),
-        "Controls that affect it": (
-            "The same filters and `Work modes shown` multiselect as the other work-mode blocks apply here.",
-        ),
-        "How to read / interact": (
-            "Look for combinations such as high breadth with low depth, or low breadth with high repetition.",
-            "Percent values are formatted after aggregation; the underlying computation is unchanged.",
+        "Success metrics": (
+            "Success rate (attempt-weighted) is the share of attempts answered correctly. Exercises that are attempted many times have more weight in this value.",
+            "Success rate (exercise-balanced) is computed by first calculating a success rate for each exercise, then averaging those exercise-level rates so every exercise counts equally.",
         ),
     },
-    "overview_bottleneck_candidates_chart": {
-        "What it shows": (
-            "A ranked horizontal bar chart of modules, objectives, or activities where learners struggle most.",
-        ),
-        "Why it matters": (
-            "It helps prioritize where to inspect content or pedagogy first.",
+    "bottlenecks_transitions_bottleneck_chart": {
+        "What": (
+            "A ranked horizontal bar chart of modules, objectives, or activities where learners appear to struggle the most in the selected slice.",
+            "The chart can switch between module level, objective level, and activity level.",
         ),
         "Metrics": (
-            "Failure rate = `1 - success_rate` from the filtered aggregate rows.",
-            "Bottleneck score combines failure rate and repeat-attempt rate, with more weight on failure.",
-            "The selected level determines whether rows are rolled up by module, objective, or activity.",
-        ),
-        "Controls that affect it": (
-            "Sidebar date, module, objective, and activity filters affect the chart according to the selected bottleneck level.",
-            "The `Bottleneck level`, `Top bottleneck entities`, and `Min attempts for bottleneck` controls directly change this chart.",
-        ),
-        "How to read / interact": (
-            "Longer bars indicate stronger candidate bottlenecks under the current score definition.",
-            "Use the hover to compare score, attempts, failure rate, and repeat-attempt rate together.",
+            "Failure rate is the share of attempts that were not successful.",
+            "Repeat attempt rate is the share of attempts that were repeats rather than first tries.",
+            "Bottleneck score combines those two signals, with more weight given to low success than to repetition. Higher values indicate stronger candidate bottlenecks.",
         ),
     },
-    "overview_path_transitions_chart": {
-        "What it shows": (
-            "The most frequent cross-objective activity-to-activity transitions in the current slice.",
-        ),
-        "Why it matters": (
-            "It highlights common learning paths and where students tend to go next.",
+    "bottlenecks_transitions_path_chart": {
+        "What": (
+            "A horizontal bar chart of the most frequent activity-to-activity transitions in the selected slice.",
+            "It focuses on cross-objective transitions, so it highlights movement between different parts of the module rather than short local loops inside the same objective.",
         ),
         "Metrics": (
-            "Transition count = number of observed source-to-destination transitions.",
-            "Successful destination attempts = count of destination attempts marked correct after that transition.",
-        ),
-        "Controls that affect it": (
-            "Sidebar date, module, and activity filters affect the transition set.",
-            "The `Top transitions` control changes how many edges are kept.",
-        ),
-        "How to read / interact": (
-            "This chart emphasizes common paths, not causal impact.",
-            "Use the hover labels to inspect the full source and destination activities when axis labels are shortened.",
-        ),
-    },
-    "overview_data_quality_panel": {
-        "What it shows": (
-            "The latest consistency status and contract checks produced by the derived-data pipeline.",
-        ),
-        "Why it matters": (
-            "It helps confirm whether the dashboard is reading artifacts that match the expected runtime contract.",
-        ),
-        "Metrics": (
-            "PASS/FAIL comes from the consistency report generated during the build.",
-            "When checks fail, the table lists the check name together with expected and observed values.",
-        ),
-        "Controls that affect it": (
-            "No analytical filters affect this panel.",
-        ),
-        "How to read / interact": (
-            "Treat this panel as runtime health information, not as a learning metric.",
-            "If it shows failures, rebuild artifacts before trusting downstream figures.",
+            "Transition count is the number of times students were observed moving from one activity to the next.",
+            "Successful destination attempts counts how many of those transitions were followed by a correct attempt on the destination activity.",
         ),
     },
     "matrix_objective_activity_heatmap": {
@@ -166,9 +76,10 @@ FIGURE_INFO: dict[str, dict[str, tuple[str, ...]]] = {
             "The Elo metric is global difficulty calibration and does not change with the date filter.",
         ),
         "Controls that affect it": (
-            "Sidebar module, date range, metric, `Show cell values`, and `Show IDs in hover` affect this heatmap.",
+            "Sidebar module, date range, cohort population, metric, and `Show IDs in hover` affect this heatmap.",
         ),
         "How to read / interact": (
+            "Cell values are always shown directly in the heatmap.",
             "Click a populated cell to open the exercise drilldown for that activity.",
             "Blank positions mean there is no activity at that local position for the objective.",
         ),
@@ -186,9 +97,10 @@ FIGURE_INFO: dict[str, dict[str, tuple[str, ...]]] = {
         ),
         "Controls that affect it": (
             "The selected matrix cell determines which activity appears here.",
-            "Module, date range, and selected metric also affect the drilldown rows.",
+            "Module, date range, cohort population, and selected metric also affect the drilldown rows.",
         ),
         "How to read / interact": (
+            "The table appears only after a matrix cell is selected.",
             "Click one row in this table to open the instruction panel below.",
             "If the metric is Elo, the date filter affects the selected activity context but not the Elo values themselves.",
         ),
@@ -209,60 +121,6 @@ FIGURE_INFO: dict[str, dict[str, tuple[str, ...]]] = {
         "How to read / interact": (
             "If no row is selected, this panel stays empty.",
             "The instruction text is currently sourced from the exercise label shown in the drilldown.",
-        ),
-    },
-    "zpdes_dependency_graph": {
-        "What it shows": (
-            "A structural dependency graph with objective lanes, activity nodes, and activation/deactivation edges.",
-        ),
-        "Why it matters": (
-            "It shows how content is supposed to unlock and which nodes may play a structural prerequisite role.",
-        ),
-        "Metrics": (
-            "Optional overlays color activity nodes by attempts, success rate, or repeat-attempt rate.",
-            "Objective squares stay structural.",
-        ),
-        "Controls that affect it": (
-            "Module, date range, objective selection, overlay choice, curve toggle, and `Show IDs in hover` affect the graph.",
-        ),
-        "How to read / interact": (
-            "Click a node to focus its neighborhood and populate the rule-detail panel.",
-            "Solid blue edges are activation rules; dashed red edges are deactivation rules; curved green edges are intra-objective dependencies.",
-        ),
-    },
-    "zpdes_rule_detail_panel": {
-        "What it shows": (
-            "A node-focused detail view for the current graph selection.",
-        ),
-        "Why it matters": (
-            "It separates the selected node's incoming prerequisite chain from its direct outgoing unlock rules.",
-        ),
-        "Metrics": (
-            "The panel can display overlay attempts, success rate, and repeat-attempt rate for the selected node when available.",
-        ),
-        "Controls that affect it": (
-            "It depends on the current node selected in the dependency graph and on the same module/date/objective scope as the graph.",
-        ),
-        "How to read / interact": (
-            "Use `Clear focus` to return the graph to its unfocused state.",
-            "Incoming rows show what must already be unlocked; outgoing rows show what the selected node can unlock directly.",
-        ),
-    },
-    "zpdes_dependency_audit_table": {
-        "What it shows": (
-            "A full table of the dependency edges currently visible under the graph filters.",
-        ),
-        "Why it matters": (
-            "It gives an audit-friendly view of the graph with enriched edge metadata that is harder to read from the visualization alone.",
-        ),
-        "Metrics": (
-            "This block is structural; it lists edge type, source/target labels and codes, thresholds, and provenance fields.",
-        ),
-        "Controls that affect it": (
-            "The same module, objective, and graph-scope filters as the dependency graph apply here.",
-        ),
-        "How to read / interact": (
-            "Use this table when you need exact node codes or provenance fields rather than a visual overview.",
         ),
     },
     "classroom_progression_replay_heatmap": {
@@ -322,23 +180,17 @@ FIGURE_INFO: dict[str, dict[str, tuple[str, ...]]] = {
         ),
     },
     "zpdes_transition_efficiency_graph": {
-        "What it shows": (
-            "A structural ZPDES layout with hover-based progression cohorts for each activity.",
-        ),
-        "Why it matters": (
-            "It compares how new-exercise first attempts behave for students coming from earlier content, already-later content, or prior work inside the same activity.",
+        "What": (
+            "A structural view of ZPDES dependencies inside one module.",
+            "Squares represent objectives and circles represent activities inside the module.",
+            "Activity circles are colored either by first-attempt success in ZPDES mode or by activity mean exercise Elo.",
         ),
         "Metrics": (
-            "Node color can show selected-work-mode first-attempt success or activity mean exercise Elo.",
-            "Hover always shows first-attempt success and event counts for all work modes, plus before/after/in-activity cohort summaries for the selected population.",
-            "Each cohort reports success rate, eligible event count, unique-student count, and total previous attempts.",
-        ),
-        "Controls that affect it": (
-            "Module, date range, objective selection, activity-color metric, cohort population, later-attempt threshold, curve toggle, and `Show IDs in hover` affect the graph.",
-        ),
-        "How to read / interact": (
-            "This graph is hover-driven; there is no click selection or arrow overlay in the current design.",
-            "The `after` cohort requires at least the configured number of prior later-activity attempts.",
+            "Hover always shows ZPDES first-attempt success and event counts for the activity.",
+            "The `before` cohort groups first attempts on new exercises made by students whose prior ZPDES history in the module stays on earlier activities only.",
+            "The `after` cohort groups first attempts on new exercises made by students who already have at least the configured number of prior attempts on later activities in the module.",
+            "The `in-activity` cohort groups first attempts on new exercises made by students who already worked on another exercise from the same activity but do not meet the `after` condition.",
+            "Each cohort reports four values: success rate, eligible event count, unique-student count, and total previous attempts.",
         ),
     },
 }

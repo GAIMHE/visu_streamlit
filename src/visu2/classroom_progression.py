@@ -84,9 +84,6 @@ Returns
 pl.LazyFrame
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return frame if isinstance(frame, pl.LazyFrame) else frame.lazy()
 
@@ -100,9 +97,6 @@ Returns
 pl.Expr
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return pl.col("classroom_id").is_not_null() & (pl.col("classroom_id").cast(pl.Utf8) != "None")
 
@@ -122,9 +116,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     columns = frame.collect_schema().names() if isinstance(frame, pl.LazyFrame) else frame.columns
     missing = [column for column in required if column not in columns]
@@ -141,9 +132,6 @@ Returns
 pl.DataFrame
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return pl.DataFrame(
         {name: pl.Series(name=name, values=[], dtype=dtype) for name, dtype in _PROFILE_SCHEMA.items()}
@@ -169,9 +157,6 @@ Returns
 dict[str, Any]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return {
         "classroom_id": classroom_id,
@@ -214,9 +199,6 @@ Returns
 list[int]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     if total_steps <= 0:
         return [0]
@@ -243,9 +225,6 @@ Returns
 str | None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     if value is None:
         return None
@@ -273,9 +252,6 @@ Returns
 list[list[float | None]]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     out: list[list[float | None]] = []
     for activity_idx in range(len(attempt_matrix)):
@@ -304,9 +280,6 @@ Returns
 list[list[int]]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return [row[:] for row in attempt_matrix]
 
@@ -324,9 +297,6 @@ Returns
 float
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return min(1.0, max(0.0, float(threshold)))
 
@@ -632,9 +602,6 @@ Returns
 go.Figure
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     rate_frames = payload.get("rate_frames") or []
     attempt_frames = payload.get("attempt_frames") or []

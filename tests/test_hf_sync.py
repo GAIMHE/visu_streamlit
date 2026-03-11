@@ -49,9 +49,6 @@ Returns
 Settings
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     data_dir = tmp_path / "data"
     artifacts_dir = tmp_path / "artifacts"
@@ -93,9 +90,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     for rel_path in relative_paths:
         path = root_dir / rel_path
@@ -112,9 +106,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 
 Examples
 --------
@@ -144,9 +135,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 
 Examples
 --------
@@ -179,9 +167,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 
 Examples
 --------
@@ -207,9 +192,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 
 Examples
 --------
@@ -233,9 +215,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 
 Examples
 --------
@@ -295,9 +274,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 
 Examples
 --------

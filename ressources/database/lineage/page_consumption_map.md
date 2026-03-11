@@ -6,14 +6,12 @@
   - `fact_attempt_core`, `agg_activity_daily`, `agg_transition_edges`, reports/manifest
 - `apps/pages/2_objective_activity_matrix.py`
   - `agg_activity_daily`, `agg_exercise_daily`, `agg_activity_elo`, `agg_exercise_elo`, `fact_attempt_core`, `learning_catalog.json`
-- `apps/pages/3_zpdes_dependencies.py`
-  - `zpdes_rules.json`, `learning_catalog.json`, optional `agg_activity_daily`
+- `apps/pages/3_zpdes_transition_efficiency.py`
+  - `zpdes_rules.json`, `learning_catalog.json`, `agg_activity_daily`, `agg_activity_elo`, `zpdes_exercise_progression_events`
 - `apps/pages/4_classroom_progression_replay.py`
   - `fact_attempt_core`
 - `apps/pages/5_student_elo_evolution.py`
   - `student_elo_events`, `student_elo_profiles`
-- `apps/pages/6_zpdes_transition_efficiency.py`
-  - `zpdes_rules.json`, `learning_catalog.json`, `agg_activity_daily`, `agg_activity_elo`, `zpdes_exercise_progression_events`
 
 ## Hidden Page (Not in current navigation)
 

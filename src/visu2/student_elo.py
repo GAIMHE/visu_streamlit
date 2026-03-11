@@ -50,9 +50,6 @@ Returns
 pl.DataFrame
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return pl.read_parquet(path)
 
@@ -70,9 +67,6 @@ Returns
 pl.LazyFrame
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return pl.scan_parquet(path)
 
@@ -90,9 +84,6 @@ Returns
 pl.LazyFrame
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return frame if isinstance(frame, pl.LazyFrame) else frame.lazy()
 
@@ -118,9 +109,6 @@ Returns
 list[str]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     if profiles.height == 0:
         return []
@@ -204,9 +192,6 @@ Returns
 dict[str, Any]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return {
         "student_ids": user_ids,
@@ -238,9 +223,6 @@ Returns
 dict[str, Any]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     normalized_user_ids = []
     for user_id in user_ids:
@@ -356,9 +338,6 @@ Returns
 go.Figure
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     student_ids = [str(user_id) for user_id in payload.get("student_ids") or []]
     frame_cutoffs = payload.get("frame_cutoffs") or [0]

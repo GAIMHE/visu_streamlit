@@ -94,6 +94,12 @@ METRIC_LABELS = {
     "playlist_unique_exercises": "Playlist unique exercises",
 }
 
+MATRIX_COHORT_OPTIONS = {
+    "All modes": None,
+    "ZPDES mode": "zpdes",
+    "Playlist mode": "playlist",
+}
+
 
 @st.cache_data(show_spinner=False)
 def load_activity_daily(path: Path) -> pl.DataFrame:
@@ -109,9 +115,6 @@ Returns
 pl.DataFrame
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return pl.read_parquet(path)
 
@@ -130,9 +133,6 @@ Returns
 pl.DataFrame
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return pl.read_parquet(path)
 
@@ -151,9 +151,6 @@ Returns
 pl.DataFrame
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return pl.read_parquet(path)
 
@@ -172,9 +169,6 @@ Returns
 pl.DataFrame
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return pl.read_parquet(path)
 
@@ -193,9 +187,6 @@ Returns
 dict
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return load_learning_catalog(path)
 
@@ -215,9 +206,6 @@ Returns
 str
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     if isinstance(label, str) and label.strip():
         return label.strip()
@@ -239,9 +227,6 @@ Returns
 str
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     base = _label_or_id(label, identifier)
     if isinstance(identifier, str) and identifier:
@@ -264,9 +249,6 @@ Returns
 str
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     normalized = str(text or "").strip()
     if len(normalized) <= max_chars:
@@ -287,9 +269,6 @@ Returns
 list[str]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     counts: dict[str, int] = {}
     output: list[str] = []
@@ -315,9 +294,6 @@ Returns
 tuple[pl.DataFrame, list[str]]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     missing: list[str] = []
     normalized = frame
@@ -369,9 +345,6 @@ Returns
 dict[str, str] | None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     if not isinstance(event, dict):
         return None
@@ -448,9 +421,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     bootstrap_runtime_assets()
     settings = get_settings()
@@ -492,14 +462,18 @@ Notes
             fact_columns = set(pq.ParquetFile(fact_path).schema_arrow.names)
         except Exception:
             fact_columns = set()
-    has_playlist_unique_metric = {
+    has_fact_matrix_source = {
         "date_utc",
         "module_code",
         "objective_id",
         "activity_id",
         "exercise_id",
         "work_mode",
+        "data_correct",
+        "attempt_number",
+        "data_duration",
     }.issubset(fact_columns)
+    has_playlist_unique_metric = has_fact_matrix_source
 
     min_date = activity["date_utc"].min()
     max_date = activity["date_utc"].max()
@@ -533,10 +507,16 @@ Notes
             + ", ".join(sorted(missing_labels))
         )
     if not has_first_attempt_columns:
-        st.info(
-            "First-attempt success metric is unavailable with current artifacts. "
-            "Rebuild derived data to enable it: `uv run python scripts/build_derived.py --strict-checks`."
-        )
+        if has_fact_matrix_source:
+            st.info(
+                "First-attempt success is unavailable in the all-mode aggregate view. "
+                "Cohort-filtered views can still compute it from `fact_attempt_core`."
+            )
+        else:
+            st.info(
+                "First-attempt success metric is unavailable with current artifacts. "
+                "Rebuild derived data to enable it: `uv run python scripts/build_derived.py --strict-checks`."
+            )
 
     exercise_daily: pl.DataFrame | None = None
     exercise_daily_status = "ok"
@@ -558,9 +538,16 @@ Notes
             st.code("uv run python scripts/build_derived.py --strict-checks")
     has_exercise_balanced_metric = exercise_daily_status == "ok"
     if not has_exercise_balanced_metric:
-        st.info(
-            "Exercise-balanced success metric is unavailable because `agg_exercise_daily` is missing or incompatible."
-        )
+        if has_fact_matrix_source:
+            st.info(
+                "Exercise-balanced success is unavailable in the all-mode aggregate view because "
+                "`agg_exercise_daily` is missing or incompatible. Cohort-filtered views can still compute "
+                "it from `fact_attempt_core`."
+            )
+        else:
+            st.info(
+                "Exercise-balanced success metric is unavailable because `agg_exercise_daily` is missing or incompatible."
+            )
     if not has_playlist_unique_metric:
         st.info(
             "Playlist unique exercises metric is unavailable because `fact_attempt_core` is missing or incompatible."
@@ -625,16 +612,33 @@ Notes
         st.error("Please select a valid start and end date.")
         st.stop()
 
+    cohort_population_label = st.sidebar.selectbox(
+        "Cohort population",
+        options=list(MATRIX_COHORT_OPTIONS.keys()),
+        index=0,
+    )
+    selected_work_mode = MATRIX_COHORT_OPTIONS[cohort_population_label]
+    if selected_work_mode is not None and not has_fact_matrix_source:
+        st.error(
+            "Cohort population filtering requires `fact_attempt_core.parquet` with work-mode fields. "
+            "Rebuild artifacts with `uv run python scripts/build_derived.py --strict-checks`."
+        )
+        st.stop()
+
     available_metrics = [
         metric
         for metric in VALID_MATRIX_METRICS
-        if metric != "first_attempt_success_rate" or has_first_attempt_columns
+        if metric != "first_attempt_success_rate" or selected_work_mode is not None or has_first_attempt_columns
     ]
-    if not has_exercise_balanced_metric:
+    if selected_work_mode is None and not has_exercise_balanced_metric:
         available_metrics = [
             metric for metric in available_metrics if metric != "exercise_balanced_success_rate"
         ]
     if not has_playlist_unique_metric:
+        available_metrics = [
+            metric for metric in available_metrics if metric != "playlist_unique_exercises"
+        ]
+    if selected_work_mode == "zpdes":
         available_metrics = [
             metric for metric in available_metrics if metric != "playlist_unique_exercises"
         ]
@@ -656,14 +660,13 @@ Notes
     if metric == "activity_mean_exercise_elo":
         st.info(
             "This Elo metric is globally calibrated from historical first attempts. "
-            "The date filter is kept for consistency, but it does not change Elo values."
+            "The date filter and cohort population are kept for consistency, but they do not change Elo values."
         )
 
-    show_cell_values = bool(st.sidebar.checkbox("Show cell values", value=True))
     show_ids_in_hover = bool(st.sidebar.checkbox("Show IDs in hover", value=False))
 
     try:
-        fact_lf = pl.scan_parquet(fact_path) if has_playlist_unique_metric else None
+        fact_lf = pl.scan_parquet(fact_path) if has_fact_matrix_source else None
         cells_df = build_objective_activity_cells(
             agg_activity_daily=activity,
             module_code=selected_module_code,
@@ -674,6 +677,7 @@ Notes
             agg_exercise_daily=exercise_daily,
             agg_activity_elo=activity_elo,
             fact_attempt_core=fact_lf,
+            work_mode=selected_work_mode,
         )
     except ValueError as err:
         st.error(str(err))
@@ -870,10 +874,9 @@ Notes
         heatmap_kwargs["zmin"] = z_min
     if z_max is not None:
         heatmap_kwargs["zmax"] = z_max
-    if show_cell_values:
-        heatmap_kwargs["text"] = metric_text_grid
-        heatmap_kwargs["texttemplate"] = "%{text}"
-        heatmap_kwargs["textfont"] = {"size": 11, "color": "#111"}
+    heatmap_kwargs["text"] = metric_text_grid
+    heatmap_kwargs["texttemplate"] = "%{text}"
+    heatmap_kwargs["textfont"] = {"size": 11, "color": "#111"}
 
     fig = go.Figure()
     fig.add_trace(go.Heatmap(**heatmap_kwargs))
@@ -958,13 +961,9 @@ Notes
     if selected_from_event is not None:
         st.session_state[selected_cell_key] = selected_from_event
 
-    show_selection_debug = bool(st.sidebar.checkbox("Debug matrix selection", value=False))
-    if show_selection_debug:
-        st.sidebar.write(event)
-
     st.subheader("Exercise Drilldown")
     render_figure_info("matrix_exercise_drilldown_table")
-    requires_exercise_daily = metric != "activity_mean_exercise_elo"
+    requires_exercise_daily = metric != "activity_mean_exercise_elo" and selected_work_mode is None
     if requires_exercise_daily and exercise_daily_status == "missing":
         st.info(
             "Exercise drilldown is unavailable because `agg_exercise_daily.parquet` is missing. "
@@ -976,62 +975,6 @@ Notes
         return
 
     selected_cell = st.session_state.get(selected_cell_key)
-    if not isinstance(selected_cell, dict):
-        with st.expander("Manual drilldown selection", expanded=False):
-            st.caption(
-                "If matrix click selection does not register, choose an objective and activity manually."
-            )
-            objective_manual_rows = (
-                cells_df.select(["objective_id", "objective_label", "objective_row_label"])
-                .unique()
-                .sort(["objective_row_label", "objective_id"])
-                .to_dicts()
-            )
-            objective_manual_map = {
-                f"{str(row.get('objective_row_label') or row.get('objective_label') or row.get('objective_id'))} [{row.get('objective_id')}]": row
-                for row in objective_manual_rows
-            }
-            if objective_manual_map:
-                objective_manual_label = st.selectbox(
-                    "Objective (manual)",
-                    options=list(objective_manual_map.keys()),
-                    key=f"manual_objective::{selected_module_code}::{start_date}::{end_date}::{metric}",
-                )
-                objective_manual = objective_manual_map[objective_manual_label]
-                activity_manual_rows = (
-                    cells_df.filter(pl.col("objective_id") == str(objective_manual.get("objective_id")))
-                    .select(["activity_id", "activity_label", "activity_col_label"])
-                    .unique()
-                    .sort(["activity_col_label", "activity_id"])
-                    .to_dicts()
-                )
-                activity_manual_map = {
-                    f"{str(row.get('activity_col_label') or '')} - {str(row.get('activity_label') or row.get('activity_id'))} [{row.get('activity_id')}]": row
-                    for row in activity_manual_rows
-                }
-                if activity_manual_map:
-                    activity_manual_label = st.selectbox(
-                        "Activity (manual)",
-                        options=list(activity_manual_map.keys()),
-                        key=f"manual_activity::{selected_module_code}::{start_date}::{end_date}::{metric}",
-                    )
-                    if st.button("Load exercise drilldown", key="manual_drilldown_load"):
-                        activity_manual = activity_manual_map[activity_manual_label]
-                        st.session_state[selected_cell_key] = {
-                            "objective_label": str(
-                                objective_manual.get("objective_label")
-                                or objective_manual.get("objective_id")
-                                or ""
-                            ),
-                            "objective_id": str(objective_manual.get("objective_id") or ""),
-                            "activity_label": str(
-                                activity_manual.get("activity_label")
-                                or activity_manual.get("activity_id")
-                                or ""
-                            ),
-                            "activity_id": str(activity_manual.get("activity_id") or ""),
-                        }
-                        st.rerun()
     if not isinstance(selected_cell, dict):
         st.info("Click a matrix cell to view exercise-level metrics for that activity.")
         return
@@ -1054,7 +997,8 @@ Notes
             end_date=end_date,
             metric=metric,
             agg_exercise_elo=exercise_elo,
-            fact_attempt_core=(pl.scan_parquet(fact_path) if has_playlist_unique_metric else None),
+            fact_attempt_core=(pl.scan_parquet(fact_path) if has_fact_matrix_source else None),
+            work_mode=selected_work_mode,
         )
     except ValueError as err:
         st.error(str(err))

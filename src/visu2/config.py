@@ -54,9 +54,6 @@ Returns
 Settings
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     root = Path(__file__).resolve().parents[2]
     data_dir = root / "data"
@@ -93,9 +90,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     settings.artifacts_dir.mkdir(parents=True, exist_ok=True)
     settings.artifacts_derived_dir.mkdir(parents=True, exist_ok=True)

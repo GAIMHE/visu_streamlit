@@ -108,9 +108,6 @@ Returns
 pl.DataFrame
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return build_classroom_mode_profiles(pl.scan_parquet(fact_path))
 
@@ -149,9 +146,6 @@ Returns
 dict
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return build_replay_payload(
         fact=pl.scan_parquet(fact_path),
@@ -177,9 +171,6 @@ Returns
 str
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return (
         f"{row.get('classroom_id')}  "
@@ -200,9 +191,6 @@ Returns
 str
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     for label, value in MODE_OPTIONS.items():
         if value == mode_scope:
@@ -223,9 +211,6 @@ Returns
 list[str]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return list(pq.ParquetFile(path).schema_arrow.names)
 
@@ -243,9 +228,6 @@ Returns
 tuple[date, date]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     first_ts = row.get("first_attempt_at")
     last_ts = row.get("last_attempt_at")
@@ -264,9 +246,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     bootstrap_runtime_assets()
     settings = get_settings()

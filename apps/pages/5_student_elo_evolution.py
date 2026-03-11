@@ -97,9 +97,6 @@ Returns
 Any
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return load_student_elo_profiles(path)
 
@@ -122,9 +119,6 @@ Returns
 Any
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return build_student_elo_payload(load_student_elo_events(path), list(user_ids), step_size)
 
@@ -142,9 +136,6 @@ Returns
 list[str]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return list(pq.ParquetFile(path).schema_arrow.names)
 
@@ -158,9 +149,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     bootstrap_runtime_assets()
     settings = get_settings()

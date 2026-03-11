@@ -44,9 +44,6 @@ Returns
 Mapping[str, object] | None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     try:
         return dict(st.secrets)
@@ -68,9 +65,6 @@ Returns
 SyncResult
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     if config is None:
         return local_only_sync_result()
@@ -87,9 +81,6 @@ Returns
 SyncResult
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     secrets = _secrets_mapping()
     try:

@@ -43,9 +43,6 @@ Returns
 Settings
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     data_dir = tmp_path / "data"
     artifacts_dir = tmp_path / "artifacts"
@@ -87,9 +84,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 
 Examples
 --------

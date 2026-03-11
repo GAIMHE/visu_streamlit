@@ -75,9 +75,6 @@ Returns
 str
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     base = str(base_label or "").strip() or "(unlabeled)"
     context_value = str(context or "").strip() or "unknown"
@@ -127,9 +124,6 @@ Returns
 pl.DataFrame
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     if level not in BOTTLENECK_LEVEL_CONFIG:
         raise ValueError(f"Unsupported bottleneck level: {level}")
@@ -172,9 +166,6 @@ Returns
 pd.DataFrame
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     if level not in BOTTLENECK_LEVEL_CONFIG:
         raise ValueError(f"Unsupported bottleneck level: {level}")

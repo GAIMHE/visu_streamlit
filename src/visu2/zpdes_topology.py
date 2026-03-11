@@ -196,9 +196,6 @@ Returns
 tuple[pl.DataFrame, pl.DataFrame, list[str]]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     module_code_norm = clean_str(module_code)
     warnings: list[str] = []

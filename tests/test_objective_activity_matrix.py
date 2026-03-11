@@ -55,9 +55,6 @@ Returns
 dict
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return {
         "modules": [
@@ -97,9 +94,6 @@ Returns
 pl.DataFrame
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return pl.DataFrame(
         {
@@ -156,9 +150,6 @@ Returns
 pl.DataFrame
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return pl.DataFrame(
         {
@@ -205,9 +196,6 @@ Returns
 pl.DataFrame
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return pl.DataFrame(
         {
@@ -235,9 +223,6 @@ Returns
 pl.DataFrame
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return pl.DataFrame(
         {
@@ -259,6 +244,46 @@ Notes
     )
 
 
+def _fact_attempt_core_sample() -> pl.DataFrame:
+    """Return a compact fact table with playlist and ZPDES rows for work-mode matrix tests."""
+    return pl.DataFrame(
+        {
+            "date_utc": [
+                date(2025, 1, 1),
+                date(2025, 1, 1),
+                date(2025, 1, 2),
+                date(2025, 1, 1),
+                date(2025, 1, 1),
+                date(2025, 1, 2),
+            ],
+            "module_code": ["M1", "M1", "M1", "M1", "M1", "M1"],
+            "objective_id": ["o1", "o1", "o1", "o2", "o1", "o1"],
+            "objective_label": [
+                "Objective One",
+                "Objective One",
+                "Objective One",
+                "Objective Two",
+                "Objective One",
+                "Objective One",
+            ],
+            "activity_id": ["a1", "a1", "a1", "a2", "a1", "a1"],
+            "activity_label": [
+                "Activity One",
+                "Activity One",
+                "Activity One",
+                "Activity Two",
+                "Activity One",
+                "Activity One",
+            ],
+            "exercise_id": ["e1", "e2", "e1", "e3", "e1", "e4"],
+            "work_mode": ["playlist", "playlist", "playlist", "playlist", "zpdes", "zpdes"],
+            "data_correct": [1, 0, 1, 1, 0, 1],
+            "attempt_number": [1, 1, 2, 1, 1, 1],
+            "data_duration": [10.0, 20.0, 12.0, 15.0, 11.0, 9.0],
+        }
+    )
+
+
 def test_weighted_metrics_and_attempt_sums_are_correct() -> None:
     """Test weighted metrics and attempt sums are correct.
 
@@ -268,9 +293,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 
 Examples
 --------
@@ -329,9 +351,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 
 Examples
 --------
@@ -369,9 +388,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 
 Examples
 --------
@@ -402,9 +418,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 
 Examples
 --------
@@ -436,9 +449,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 
 Examples
 --------
@@ -486,9 +496,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 
 Examples
 --------
@@ -518,9 +525,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 
 Examples
 --------
@@ -565,9 +569,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 
 Examples
 --------
@@ -621,9 +622,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 
 Examples
 --------
@@ -686,9 +684,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 
 Examples
 --------
@@ -733,9 +728,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 
 Examples
 --------
@@ -757,3 +749,77 @@ Examples
     )
     first_row = drilldown.to_dicts()[0]
     assert float(first_row["metric_value"]) == 1540.0
+
+
+def test_work_mode_filtered_cells_use_fact_attempt_core() -> None:
+    """Test cohort-population matrix cells are recomputed from the fact table."""
+    cells = build_objective_activity_cells(
+        agg_activity_daily=_activity_daily_sample(),
+        module_code="M1",
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 31),
+        metric="success_rate",
+        summary_payload=_summary_payload(),
+        fact_attempt_core=_fact_attempt_core_sample(),
+        work_mode="playlist",
+    )
+
+    playlist_a1 = cells.filter((pl.col("objective_id") == "o1") & (pl.col("activity_id") == "a1"))
+    assert playlist_a1.height == 1
+    assert float(playlist_a1["metric_value"].item()) == 2.0 / 3.0
+    assert playlist_a1["metric_text"].item() == "66.7%"
+
+    balanced_cells = build_objective_activity_cells(
+        agg_activity_daily=_activity_daily_sample(),
+        module_code="M1",
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 31),
+        metric="exercise_balanced_success_rate",
+        summary_payload=_summary_payload(),
+        fact_attempt_core=_fact_attempt_core_sample(),
+        work_mode="playlist",
+    )
+    balanced_value = balanced_cells.filter(
+        (pl.col("objective_id") == "o1") & (pl.col("activity_id") == "a1")
+    )["metric_value"].item()
+    assert float(balanced_value) == 0.5
+
+
+def test_work_mode_filtered_drilldown_uses_fact_attempt_core() -> None:
+    """Test cohort-population drilldown rows are computed from first-order fact data."""
+    drilldown = build_exercise_drilldown_frame(
+        agg_exercise_daily=_exercise_daily_sample(),
+        module_code="M1",
+        objective_id="o1",
+        activity_id="a1",
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 31),
+        metric="repeat_attempt_rate",
+        fact_attempt_core=_fact_attempt_core_sample(),
+        work_mode="playlist",
+    )
+
+    e1_row = drilldown.filter(pl.col("exercise_id") == "e1")
+    assert e1_row.height == 1
+    assert float(e1_row["attempts"].item()) == 2.0
+    assert float(e1_row["repeat_attempt_rate"].item()) == 0.5
+    assert float(e1_row["first_attempt_success_rate"].item()) == 1.0
+
+
+def test_playlist_unique_exercises_is_rejected_for_non_playlist_mode() -> None:
+    """Test the playlist-only metric cannot be requested with another cohort population."""
+    try:
+        build_objective_activity_cells(
+            agg_activity_daily=_activity_daily_sample(),
+            module_code="M1",
+            start_date=date(2025, 1, 1),
+            end_date=date(2025, 1, 31),
+            metric="playlist_unique_exercises",
+            summary_payload=_summary_payload(),
+            fact_attempt_core=_fact_attempt_core_sample(),
+            work_mode="zpdes",
+        )
+    except ValueError as err:
+        assert "playlist_unique_exercises" in str(err)
+        return
+    raise AssertionError("Expected playlist_unique_exercises to reject non-playlist work mode.")

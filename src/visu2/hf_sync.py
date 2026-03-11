@@ -115,9 +115,6 @@ Returns
 str | None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     if secrets is not None and key in secrets:
         value = secrets.get(key)
@@ -145,9 +142,6 @@ Returns
 tuple[str, ...]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     if raw is None:
         return DEFAULT_RUNTIME_RELATIVE_PATHS
@@ -193,9 +187,6 @@ Returns
 HFRepoConfig | None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     env = dict(os.environ) if environ is None else dict(environ)
     repo_id = _read_key("VISU2_HF_REPO_ID", secrets=secrets, environ=env)
@@ -249,9 +240,6 @@ Returns
 SyncResult
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return SyncResult(
         mode="local_only",
@@ -279,9 +267,6 @@ Returns
 SyncResult
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     ensure_artifact_directories(settings)
     kwargs: dict[str, object] = {

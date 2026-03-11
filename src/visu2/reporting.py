@@ -42,9 +42,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as f:
@@ -64,9 +61,6 @@ Returns
 dict[str, Any]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
@@ -87,9 +81,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     write_json_report(payload, path)
 
@@ -107,9 +98,6 @@ Returns
 dict[str, Any]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     if not path.exists():
         raise FileNotFoundError(f"Derived manifest not found: {path}")

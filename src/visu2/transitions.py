@@ -33,9 +33,6 @@ Returns
 pl.DataFrame
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     lf = fact.lazy() if isinstance(fact, pl.DataFrame) else fact
     sequenced = (

@@ -29,7 +29,6 @@ from visu2.zpdes_transition_efficiency import (
     NODE_METRIC_LABELS,
     NODE_METRIC_OPTIONS,
     PROGRESSION_EVENT_COLUMNS,
-    TRANSITION_WORK_MODE_OPTIONS,
     attach_progression_cohort_metrics_to_nodes,
     attach_transition_metric_to_nodes,
     build_transition_efficiency_figure,
@@ -167,30 +166,26 @@ def main() -> None:
     if min_date is None or max_date is None:
         st.info("No exercise progression cohort data is available.")
         st.stop()
+    full_start_date = min_date
+    full_end_date = max_date
 
     st.title("ZPDES Transition Efficiency")
+    st.write(
+        "The primary mode is an adaptive system based on a Zone of Proximal Development with "
+        "Estimated Success (ZPDES) approach. In this setting, students initially encounter "
+        "activities with minimal prerequisites, and the system continuously updates estimates "
+        "of mastery based on observed success rates. As mastery is inferred, new activities may "
+        "unlock dynamically, sometimes across different objectives. As a result, learning "
+        "trajectories are not strictly linear but evolve in a personalized manner over time."
+    )
     render_figure_info("zpdes_transition_efficiency_graph")
 
-    st.sidebar.header("Cohort Controls")
+    st.sidebar.header("Graph Controls")
     selected_module = st.sidebar.selectbox("Module", module_codes, index=0)
-    start_date, end_date = st.sidebar.date_input(
-        "Date range (UTC)",
-        value=(min_date, max_date),
-        min_value=min_date,
-        max_value=max_date,
-    )
-    if isinstance(start_date, tuple) or isinstance(end_date, tuple):
-        st.error("Please select a valid date range.")
-        st.stop()
 
     metric_label = st.sidebar.selectbox("Activity coloring", list(NODE_METRIC_OPTIONS.keys()), index=0)
     metric = NODE_METRIC_OPTIONS[metric_label]
-    transition_population_label = st.sidebar.selectbox(
-        "Cohort population",
-        options=list(TRANSITION_WORK_MODE_OPTIONS.keys()),
-        index=0,
-    )
-    selected_work_mode = TRANSITION_WORK_MODE_OPTIONS[transition_population_label]
+    selected_work_mode = "zpdes"
     later_attempt_threshold = int(
         st.sidebar.number_input(
             'Minimum prior later attempts for "after" cohort',
@@ -198,9 +193,6 @@ def main() -> None:
             value=1,
             step=1,
         )
-    )
-    curve_intra_objective_edges = bool(
-        st.sidebar.checkbox("Curve intra-objective structural edges", value=True)
     )
     show_ids = bool(st.sidebar.checkbox("Show IDs in hover", value=False))
 
@@ -221,8 +213,8 @@ def main() -> None:
         agg_activity_elo=activity_elo,
         progression_events=progression_events,
         module_code=selected_module,
-        start_date=start_date,
-        end_date=end_date,
+        start_date=full_start_date,
+        end_date=full_end_date,
         metric=metric,
         work_mode=selected_work_mode,
     )
@@ -230,8 +222,8 @@ def main() -> None:
         nodes=nodes_with_metric,
         progression_events=progression_events,
         module_code=selected_module,
-        start_date=start_date,
-        end_date=end_date,
+        start_date=full_start_date,
+        end_date=full_end_date,
         work_mode=selected_work_mode,
         later_attempt_threshold=later_attempt_threshold,
     )
@@ -271,7 +263,7 @@ def main() -> None:
         metric_label=NODE_METRIC_LABELS[metric],
         later_attempt_threshold=later_attempt_threshold,
         show_ids=show_ids,
-        curve_intra_objective_edges=curve_intra_objective_edges,
+        curve_intra_objective_edges=True,
     )
     st.plotly_chart(
         figure,
@@ -282,14 +274,8 @@ def main() -> None:
 
     if metric == "activity_mean_exercise_elo":
         st.info(
-            "Activity mean exercise Elo is globally calibrated and does not change with the date filter. "
-            "The date filter still applies to the exercise progression cohort metrics shown in node hover."
+            "Activity mean exercise Elo is globally calibrated and does not change across the selected ZPDES history."
         )
-
-    if warnings:
-        with st.expander("Metadata warnings", expanded=False):
-            st.markdown("\n".join(f"- {warning}" for warning in warnings))
-
 
 if __name__ == "__main__":
     main()
