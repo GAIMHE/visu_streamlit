@@ -24,6 +24,15 @@ class CurriculumFilters:
     activity_id: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class CurriculumFilterDomain:
+    """Compact curriculum metadata used to populate overview sidebar filters."""
+
+    min_date: date
+    max_date: date
+    curriculum_frame: pl.DataFrame
+
+
 def render_dashboard_style() -> None:
     """Apply the shared dashboard typography and background styling."""
     st.markdown(
@@ -171,34 +180,69 @@ def ensure_label_columns(
 
 
 @st.cache_data(show_spinner=False)
-def load_fact_dimensions(fact_path: Path) -> pl.DataFrame:
-    """Load only the dimension columns needed to build overview filters."""
-    return pl.read_parquet(
-        fact_path,
-        columns=[
-            "date_utc",
-            "module_code",
-            "module_label",
-            "objective_id",
-            "objective_label",
-            "activity_id",
-            "activity_label",
-        ],
+def load_fact_dimensions(fact_path: Path) -> CurriculumFilterDomain:
+    """Load a compact curriculum domain for the overview sidebar filters."""
+    date_bounds = collect_lazy(
+        pl.scan_parquet(fact_path).select(
+            pl.col("date_utc").min().alias("min_date"),
+            pl.col("date_utc").max().alias("max_date"),
+        )
+    )
+    min_date = date_bounds.item(0, "min_date")
+    max_date = date_bounds.item(0, "max_date")
+    if min_date is None or max_date is None:
+        st.error("No dated rows available to populate filters.")
+        st.stop()
+
+    curriculum_frame = collect_lazy(
+        pl.scan_parquet(fact_path)
+        .select(
+            [
+                "module_code",
+                "module_label",
+                "objective_id",
+                "objective_label",
+                "activity_id",
+                "activity_label",
+            ]
+        )
+        .unique()
+        .sort(["module_code", "objective_id", "activity_id"])
+    )
+    curriculum_frame, _ = ensure_label_columns(
+        curriculum_frame,
+        {
+            "module_label": "module_code",
+            "objective_label": "objective_id",
+            "activity_label": "activity_id",
+        },
+    )
+    return CurriculumFilterDomain(
+        min_date=min_date,
+        max_date=max_date,
+        curriculum_frame=curriculum_frame,
     )
 
 
 def render_curriculum_filters(
-    dimension_frame: pl.DataFrame,
+    dimension_source: pl.DataFrame | CurriculumFilterDomain,
     *,
     sidebar_header: str = "Filters",
 ) -> CurriculumFilters:
     """Render the shared sidebar date/module/objective/activity filters."""
+    if isinstance(dimension_source, CurriculumFilterDomain):
+        min_date = dimension_source.min_date
+        max_date = dimension_source.max_date
+        dimension_frame = dimension_source.curriculum_frame
+    else:
+        dimension_frame = dimension_source
+        min_date = dimension_frame["date_utc"].min()
+        max_date = dimension_frame["date_utc"].max()
+
     if dimension_frame.is_empty():
         st.error("No rows available to populate filters.")
         st.stop()
 
-    min_date = dimension_frame["date_utc"].min()
-    max_date = dimension_frame["date_utc"].max()
     if min_date is None or max_date is None:
         st.error("No dated rows available to populate filters.")
         st.stop()

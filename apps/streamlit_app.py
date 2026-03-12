@@ -21,7 +21,6 @@ from overview_shared import (
     build_fact_query,
     collect_core_compatibility,
     collect_lazy,
-    ensure_label_columns,
     format_missing_table_columns,
     load_fact_dimensions,
     parquet_columns,
@@ -70,16 +69,8 @@ def main() -> None:
         st.markdown(format_missing_table_columns(compatibility["missing_core_by_table"]))
         st.stop()
 
-    dimension_frame_raw = load_fact_dimensions(fact_path)
-    dimension_frame, _ = ensure_label_columns(
-        dimension_frame_raw,
-        {
-            "module_label": "module_code",
-            "objective_label": "objective_id",
-            "activity_label": "activity_id",
-        },
-    )
-    filters = render_curriculum_filters(dimension_frame)
+    dimension_domain = load_fact_dimensions(fact_path)
+    filters = render_curriculum_filters(dimension_domain)
 
     fact_query = build_fact_query(
         fact_path=fact_path,
