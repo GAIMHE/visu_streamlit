@@ -505,7 +505,6 @@ def test_attach_transition_metric_to_nodes_uses_weighted_first_attempt_success()
     )
     out = attach_transition_metric_to_nodes(
         nodes=nodes,
-        agg_activity_daily=pl.DataFrame(),
         agg_activity_elo=pl.DataFrame(),
         progression_events=progression_events,
         module_code="M1",
@@ -542,7 +541,6 @@ def test_attach_transition_metric_to_nodes_uses_activity_elo_without_date_filter
     )
     out = attach_transition_metric_to_nodes(
         nodes=nodes,
-        agg_activity_daily=pl.DataFrame(),
         agg_activity_elo=agg_activity_elo,
         progression_events=pl.DataFrame(),
         module_code="M1",
@@ -614,15 +612,6 @@ def test_build_transition_efficiency_figure_stays_structural_only(tmp_path: Path
     progression_events = build_zpdes_exercise_progression_events_from_fact(_fact(), settings=settings)
     nodes = attach_transition_metric_to_nodes(
         nodes=_nodes(),
-        agg_activity_daily=pl.DataFrame(
-            {
-                "date_utc": [date(2025, 1, 1)] * 4,
-                "module_code": ["M1", "M1", "M1", "M1"],
-                "activity_id": ["a1", "a2", "a3", "a4"],
-                "first_attempt_success_rate": [0.6, 0.4, 0.5, 0.8],
-                "first_attempt_count": [10, 20, 30, 15],
-            }
-        ),
         agg_activity_elo=pl.DataFrame(),
         progression_events=progression_events,
         module_code="M1",

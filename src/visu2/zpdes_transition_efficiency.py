@@ -52,6 +52,28 @@ PROGRESSION_EVENT_COLUMNS = [
 ]
 
 
+def _collect_frame(frame: pl.LazyFrame | pl.DataFrame) -> pl.DataFrame:
+    """Collect a lazy frame with streaming fallback or clone an eager frame."""
+    if isinstance(frame, pl.DataFrame):
+        return frame.clone()
+    try:
+        return frame.collect(engine="streaming")
+    except TypeError:
+        return frame.collect()
+
+
+def _as_lazyframe(frame: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame:
+    """Return a lazy view of a frame without forcing materialization."""
+    return frame if isinstance(frame, pl.LazyFrame) else frame.lazy()
+
+
+def _frame_columns(frame: pl.LazyFrame | pl.DataFrame) -> set[str]:
+    """Return available column names for eager or lazy Polars frames."""
+    if isinstance(frame, pl.DataFrame):
+        return set(frame.columns)
+    return set(frame.collect_schema().names())
+
+
 def objective_sort_key(code: str | None) -> tuple[int, int, str]:
     """Return a stable sort key for objective codes like ``M1O2``."""
     text = str(code or "")
@@ -118,15 +140,10 @@ def _empty_work_mode_first_attempt_frame() -> pl.DataFrame:
 def _all_work_mode_first_attempt_frame(
     progression_events: pl.DataFrame | pl.LazyFrame,
     module_code: str,
-    start_date: date,
-    end_date: date,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ) -> pl.DataFrame:
     """Aggregate activity first-attempt success and event counts for each work mode."""
-    progression_frame = (
-        progression_events.collect()
-        if isinstance(progression_events, pl.LazyFrame)
-        else progression_events
-    )
     required_columns = {
         "module_code",
         "date_utc",
@@ -134,28 +151,37 @@ def _all_work_mode_first_attempt_frame(
         "work_mode",
         "exercise_first_attempt_outcome",
     }
-    if progression_frame.is_empty() or not required_columns.issubset(set(progression_frame.columns)):
+    if not required_columns.issubset(_frame_columns(progression_events)):
         return _empty_work_mode_first_attempt_frame()
-    scoped = progression_frame.filter(
-        (pl.col("module_code") == module_code)
-        & (pl.col("date_utc") >= pl.lit(start_date))
-        & (pl.col("date_utc") <= pl.lit(end_date))
+    scoped = _as_lazyframe(progression_events).filter(pl.col("module_code") == module_code)
+    if start_date is not None and end_date is not None:
+        scoped = scoped.filter(
+            (pl.col("date_utc") >= pl.lit(start_date)) & (pl.col("date_utc") <= pl.lit(end_date))
+        )
+
+    grouped = _collect_frame(
+        scoped.group_by(["activity_id", "work_mode"]).agg(
+            pl.len().cast(pl.Int64).alias("first_attempt_event_count"),
+            pl.col("exercise_first_attempt_outcome")
+            .cast(pl.Float64)
+            .mean()
+            .alias("first_attempt_success_rate"),
+        )
     )
-    if scoped.height == 0:
+    if grouped.height == 0:
         return _empty_work_mode_first_attempt_frame()
 
     work_mode_frames: list[pl.DataFrame] = []
-    for work_mode, label in WORK_MODE_HOVER_LABELS.items():
+    for work_mode in WORK_MODE_HOVER_LABELS:
         prefix = work_mode.replace("-", "_")
         mode_frame = (
-            scoped.filter(pl.col("work_mode") == work_mode)
-            .group_by("activity_id")
-            .agg(
-                pl.len().cast(pl.Int64).alias(f"{prefix}_first_attempt_event_count"),
-                pl.col("exercise_first_attempt_outcome")
-                .cast(pl.Float64)
-                .mean()
-                .alias(f"{prefix}_first_attempt_success_rate"),
+            grouped.filter(pl.col("work_mode") == work_mode)
+            .select(
+                [
+                    "activity_id",
+                    pl.col("first_attempt_event_count").alias(f"{prefix}_first_attempt_event_count"),
+                    pl.col("first_attempt_success_rate").alias(f"{prefix}_first_attempt_success_rate"),
+                ]
             )
             .rename({"activity_id": "node_id"})
         )
@@ -193,12 +219,11 @@ def _quadratic_curve_points(
 
 def attach_transition_metric_to_nodes(
     nodes: pl.DataFrame,
-    agg_activity_daily: pl.DataFrame | pl.LazyFrame,
     agg_activity_elo: pl.DataFrame | pl.LazyFrame,
     progression_events: pl.DataFrame | pl.LazyFrame,
     module_code: str,
-    start_date: date,
-    end_date: date,
+    start_date: date | None,
+    end_date: date | None,
     metric: str,
     work_mode: str,
 ) -> pl.DataFrame:
@@ -231,25 +256,17 @@ def attach_transition_metric_to_nodes(
         )
     elif metric == "first_attempt_success_rate":
         mode_metric_frame = (
-            (
-                progression_events.collect()
-                if isinstance(progression_events, pl.LazyFrame)
-                else progression_events
-            ).filter(
-                (pl.col("module_code") == module_code)
-                & (pl.col("date_utc") >= pl.lit(start_date))
-                & (pl.col("date_utc") <= pl.lit(end_date))
-                & (pl.col("work_mode") == work_mode)
+            work_mode_summary_frame.select(
+                [
+                    "node_id",
+                    pl.col(f"{work_mode.replace('-', '_')}_first_attempt_success_rate").alias(
+                        "selected_mode_first_attempt_success_rate"
+                    ),
+                    pl.col(f"{work_mode.replace('-', '_')}_first_attempt_event_count").alias(
+                        "selected_mode_first_attempt_event_count"
+                    ),
+                ]
             )
-            .group_by("activity_id")
-            .agg(
-                pl.len().cast(pl.Int64).alias("selected_mode_first_attempt_event_count"),
-                pl.col("exercise_first_attempt_outcome")
-                .cast(pl.Float64)
-                .mean()
-                .alias("selected_mode_first_attempt_success_rate"),
-            )
-            .rename({"activity_id": "node_id"})
         )
         metric_frame = mode_metric_frame.select(
             [
@@ -321,24 +338,127 @@ def attach_progression_cohort_metrics_to_nodes(
     nodes: pl.DataFrame,
     progression_events: pl.DataFrame | pl.LazyFrame,
     module_code: str,
-    start_date: date,
-    end_date: date,
+    start_date: date | None,
+    end_date: date | None,
     work_mode: str,
     later_attempt_threshold: int,
 ) -> pl.DataFrame:
     """Attach event-based before/after/in-activity cohort metrics to activity nodes."""
-    events_frame = (
-        progression_events.collect()
-        if isinstance(progression_events, pl.LazyFrame)
-        else progression_events
+    required_columns = {
+        "module_code",
+        "date_utc",
+        "activity_id",
+        "work_mode",
+        "user_id",
+        "exercise_first_attempt_outcome",
+        "prior_attempt_count",
+        "prior_before_activity_attempt_count",
+        "prior_same_activity_attempt_count",
+        "prior_later_activity_attempt_count",
+    }
+    if not required_columns.issubset(_frame_columns(progression_events)):
+        return nodes.with_columns(
+            pl.lit(None, dtype=pl.Int64).alias("before_event_count"),
+            pl.lit(None, dtype=pl.Int64).alias("before_unique_students"),
+            pl.lit(None, dtype=pl.Float64).alias("before_success_rate"),
+            pl.lit(None, dtype=pl.Int64).alias("before_previous_attempts"),
+            pl.lit(None, dtype=pl.Int64).alias("after_event_count"),
+            pl.lit(None, dtype=pl.Int64).alias("after_unique_students"),
+            pl.lit(None, dtype=pl.Float64).alias("after_success_rate"),
+            pl.lit(None, dtype=pl.Int64).alias("after_previous_attempts"),
+            pl.lit(None, dtype=pl.Int64).alias("in_activity_event_count"),
+            pl.lit(None, dtype=pl.Int64).alias("in_activity_unique_students"),
+            pl.lit(None, dtype=pl.Float64).alias("in_activity_success_rate"),
+            pl.lit(None, dtype=pl.Int64).alias("in_activity_previous_attempts"),
+        )
+    scoped = _as_lazyframe(progression_events).filter(
+        (pl.col("module_code") == module_code) & (pl.col("work_mode") == work_mode)
     )
-    scoped = events_frame.filter(
-        (pl.col("module_code") == module_code)
-        & (pl.col("date_utc") >= pl.lit(start_date))
-        & (pl.col("date_utc") <= pl.lit(end_date))
-        & (pl.col("work_mode") == work_mode)
+    if start_date is not None and end_date is not None:
+        scoped = scoped.filter(
+            (pl.col("date_utc") >= pl.lit(start_date)) & (pl.col("date_utc") <= pl.lit(end_date))
+        )
+
+    threshold = max(1, int(later_attempt_threshold))
+    before_condition = (
+        (pl.col("prior_same_activity_attempt_count") == 0)
+        & (pl.col("prior_before_activity_attempt_count") > 0)
+        & (pl.col("prior_later_activity_attempt_count") == 0)
     )
-    if scoped.height == 0:
+    after_condition = pl.col("prior_later_activity_attempt_count") >= threshold
+    in_activity_condition = (
+        (pl.col("prior_same_activity_attempt_count") > 0)
+        & (pl.col("prior_later_activity_attempt_count") < threshold)
+    )
+
+    scoped_summary = _collect_frame(
+        scoped.group_by("activity_id").agg(
+            pl.col("exercise_first_attempt_outcome")
+            .filter(before_condition)
+            .count()
+            .cast(pl.Int64)
+            .alias("before_event_count"),
+            pl.col("user_id")
+            .filter(before_condition)
+            .drop_nulls()
+            .n_unique()
+            .cast(pl.Int64)
+            .alias("before_unique_students"),
+            pl.col("exercise_first_attempt_outcome")
+            .filter(before_condition)
+            .cast(pl.Float64)
+            .mean()
+            .alias("before_success_rate"),
+            pl.col("prior_attempt_count")
+            .filter(before_condition)
+            .sum()
+            .cast(pl.Int64)
+            .alias("before_previous_attempts"),
+            pl.col("exercise_first_attempt_outcome")
+            .filter(after_condition)
+            .count()
+            .cast(pl.Int64)
+            .alias("after_event_count"),
+            pl.col("user_id")
+            .filter(after_condition)
+            .drop_nulls()
+            .n_unique()
+            .cast(pl.Int64)
+            .alias("after_unique_students"),
+            pl.col("exercise_first_attempt_outcome")
+            .filter(after_condition)
+            .cast(pl.Float64)
+            .mean()
+            .alias("after_success_rate"),
+            pl.col("prior_attempt_count")
+            .filter(after_condition)
+            .sum()
+            .cast(pl.Int64)
+            .alias("after_previous_attempts"),
+            pl.col("exercise_first_attempt_outcome")
+            .filter(in_activity_condition)
+            .count()
+            .cast(pl.Int64)
+            .alias("in_activity_event_count"),
+            pl.col("user_id")
+            .filter(in_activity_condition)
+            .drop_nulls()
+            .n_unique()
+            .cast(pl.Int64)
+            .alias("in_activity_unique_students"),
+            pl.col("exercise_first_attempt_outcome")
+            .filter(in_activity_condition)
+            .cast(pl.Float64)
+            .mean()
+            .alias("in_activity_success_rate"),
+            pl.col("prior_attempt_count")
+            .filter(in_activity_condition)
+            .sum()
+            .cast(pl.Int64)
+            .alias("in_activity_previous_attempts"),
+        )
+    ).rename({"activity_id": "node_id"})
+    if scoped_summary.height == 0:
         return nodes.with_columns(
             pl.lit(None, dtype=pl.Int64).alias("before_event_count"),
             pl.lit(None, dtype=pl.Int64).alias("before_unique_students"),
@@ -354,34 +474,8 @@ def attach_progression_cohort_metrics_to_nodes(
             pl.lit(None, dtype=pl.Int64).alias("in_activity_previous_attempts"),
         )
 
-    threshold = max(1, int(later_attempt_threshold))
-    before_metrics = _cohort_metrics(
-        scoped_events=scoped,
-        condition=(
-            (pl.col("prior_same_activity_attempt_count") == 0)
-            & (pl.col("prior_before_activity_attempt_count") > 0)
-            & (pl.col("prior_later_activity_attempt_count") == 0)
-        ),
-        prefix="before",
-    )
-    after_metrics = _cohort_metrics(
-        scoped_events=scoped,
-        condition=pl.col("prior_later_activity_attempt_count") >= threshold,
-        prefix="after",
-    )
-    in_activity_metrics = _cohort_metrics(
-        scoped_events=scoped,
-        condition=(
-            (pl.col("prior_same_activity_attempt_count") > 0)
-            & (pl.col("prior_later_activity_attempt_count") < threshold)
-        ),
-        prefix="in_activity",
-    )
-
     return (
-        nodes.join(before_metrics, on="node_id", how="left")
-        .join(after_metrics, on="node_id", how="left")
-        .join(in_activity_metrics, on="node_id", how="left")
+        nodes.join(scoped_summary, on="node_id", how="left")
         .with_columns(
             pl.when(pl.col("node_type") == "activity")
             .then(pl.col("before_event_count"))

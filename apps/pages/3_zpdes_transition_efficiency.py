@@ -81,12 +81,6 @@ def _load_activity_elo(path: Path) -> pl.DataFrame:
 
 
 @st.cache_data(show_spinner=False)
-def _load_progression_events(path: Path) -> pl.DataFrame:
-    """Load exercise-level progression events."""
-    return pl.read_parquet(path)
-
-
-@st.cache_data(show_spinner=False)
 def _load_dependency_tables(
     module_code: str,
     learning_catalog_path: Path,
@@ -146,7 +140,6 @@ def main() -> None:
 
     activity = _load_activity_daily(activity_path)
     activity_elo = _load_activity_elo(activity_elo_path)
-    progression_events = _load_progression_events(arrival_path)
 
     observed_modules = {
         str(code)
@@ -161,14 +154,6 @@ def main() -> None:
     if not module_codes:
         st.error("No modules available for ZPDES transition analysis.")
         st.stop()
-
-    min_date = progression_events["date_utc"].min()
-    max_date = progression_events["date_utc"].max()
-    if min_date is None or max_date is None:
-        st.info("No exercise progression cohort data is available.")
-        st.stop()
-    full_start_date = min_date
-    full_end_date = max_date
 
     st.title("ZPDES Transition Efficiency")
     st.write(
@@ -208,14 +193,28 @@ def main() -> None:
             st.info("\n".join(f"- {warning}" for warning in warnings))
         st.stop()
 
+    progression_events = pl.scan_parquet(arrival_path).select(
+        [
+            "module_code",
+            "date_utc",
+            "activity_id",
+            "work_mode",
+            "user_id",
+            "exercise_first_attempt_outcome",
+            "prior_attempt_count",
+            "prior_before_activity_attempt_count",
+            "prior_same_activity_attempt_count",
+            "prior_later_activity_attempt_count",
+        ]
+    )
+
     nodes_with_metric = attach_transition_metric_to_nodes(
         nodes=all_nodes,
-        agg_activity_daily=activity,
         agg_activity_elo=activity_elo,
         progression_events=progression_events,
         module_code=selected_module,
-        start_date=full_start_date,
-        end_date=full_end_date,
+        start_date=None,
+        end_date=None,
         metric=metric,
         work_mode=selected_work_mode,
     )
@@ -223,8 +222,8 @@ def main() -> None:
         nodes=nodes_with_metric,
         progression_events=progression_events,
         module_code=selected_module,
-        start_date=full_start_date,
-        end_date=full_end_date,
+        start_date=None,
+        end_date=None,
         work_mode=selected_work_mode,
         later_attempt_threshold=later_attempt_threshold,
     )
