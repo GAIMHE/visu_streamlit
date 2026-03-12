@@ -123,6 +123,7 @@ Implementation notes:
 
 The deployed app still reads the same local paths.
 The difference is: at startup, it can download the required runtime files from a Hugging Face dataset repo into the local filesystem.
+The app now scopes that sync by page so the default landing page does not need to prefetch every heavy artifact used elsewhere in the dashboard.
 
 This is a sync-then-run model:
 1. Download expected files into `data/` and `artifacts/`.

@@ -29,6 +29,7 @@ from overview_shared import (
     render_dashboard_style,
 )
 from runtime_bootstrap import bootstrap_runtime_assets
+from runtime_paths import OVERVIEW_RUNTIME_RELATIVE_PATHS
 
 from visu2.config import get_settings
 
@@ -45,7 +46,7 @@ OVERVIEW_RUNTIME_TABLES: tuple[str, ...] = ("fact_attempt_core",)
 
 def main() -> None:
     """Render the simplified overview page."""
-    bootstrap_runtime_assets()
+    bootstrap_runtime_assets(OVERVIEW_RUNTIME_RELATIVE_PATHS)
     settings = get_settings()
     fact_path = settings.artifacts_derived_dir / "fact_attempt_core.parquet"
 

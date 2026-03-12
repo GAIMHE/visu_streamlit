@@ -22,6 +22,7 @@ Functions
 ---------
 - _read_key: Utility for read key.
 - _parse_allow_patterns: Utility for parse allow patterns.
+- _normalize_required_paths: Utility for normalize required paths.
 - load_hf_repo_config: Load hf repo config.
 - local_only_sync_result: Utility for local only sync result.
 - ensure_runtime_assets_from_hf: Utility for ensure runtime assets from hf.
@@ -165,6 +166,36 @@ tuple[str, ...]
     return tuple(parsed)
 
 
+def _normalize_required_paths(required_paths: Sequence[str] | None) -> tuple[str, ...]:
+    """Normalize a caller-provided runtime file subset.
+
+    Parameters
+    ----------
+    required_paths : Sequence[str] | None
+        Requested runtime relative paths, or `None` to use the default full
+        runtime set.
+
+    Returns
+    -------
+    tuple[str, ...]
+        Deduplicated runtime relative paths in caller order.
+    """
+    if required_paths is None:
+        return DEFAULT_RUNTIME_RELATIVE_PATHS
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw_path in required_paths:
+        path = str(raw_path).strip()
+        if not path or path in seen:
+            continue
+        normalized.append(path)
+        seen.add(path)
+    if not normalized:
+        raise ValueError("required_paths cannot be empty.")
+    return tuple(normalized)
+
+
 def load_hf_repo_config(
     *,
     secrets: Mapping[str, object] | None = None,
@@ -252,7 +283,11 @@ SyncResult
     )
 
 
-def ensure_runtime_assets_from_hf(settings: Settings, config: HFRepoConfig) -> SyncResult:
+def ensure_runtime_assets_from_hf(
+    settings: Settings,
+    config: HFRepoConfig,
+    required_paths: Sequence[str] | None = None,
+) -> SyncResult:
     """Ensure runtime assets from hf.
 
 Parameters
@@ -261,6 +296,9 @@ settings : Settings
         Input parameter used by this routine.
 config : HFRepoConfig
         Input parameter used by this routine.
+required_paths : Sequence[str] | None
+        Optional page-specific runtime subset. When omitted, the full default
+        runtime set is synchronized.
 
 Returns
 -------
@@ -269,13 +307,18 @@ SyncResult
 
 """
     ensure_artifact_directories(settings)
+    expected_paths = (
+        tuple(config.allow_patterns)
+        if required_paths is None
+        else _normalize_required_paths(required_paths)
+    )
     kwargs: dict[str, object] = {
         "repo_id": config.repo_id,
         "repo_type": config.repo_type,
         "revision": config.revision,
         "token": config.token,
         "local_dir": str(settings.root_dir),
-        "allow_patterns": list(config.allow_patterns),
+        "allow_patterns": list(expected_paths),
     }
     if "local_dir_use_symlinks" in signature(snapshot_download).parameters:
         kwargs["local_dir_use_symlinks"] = False
@@ -285,7 +328,7 @@ SyncResult
 
     missing = tuple(
         relative_path
-        for relative_path in DEFAULT_RUNTIME_RELATIVE_PATHS
+        for relative_path in expected_paths
         if not (settings.root_dir / relative_path).exists()
     )
     if missing:
@@ -300,7 +343,7 @@ SyncResult
         repo_id=config.repo_id,
         revision=config.revision,
         downloaded=True,
-        files_checked=len(DEFAULT_RUNTIME_RELATIVE_PATHS),
+        files_checked=len(expected_paths),
         missing_files=(),
         message="Runtime files synchronized from Hugging Face.",
     )

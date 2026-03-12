@@ -83,6 +83,10 @@ Runtime sync is automatic at app startup when these keys are configured:
 
 If `VISU2_HF_REPO_ID` is not set, the app runs in local-only mode.
 
+The deployed app now uses page-scoped runtime sync:
+- the landing page downloads only its own required assets
+- heavier page-specific artifacts are downloaded when those pages are opened
+
 Files expected in the HF dataset layout:
 - `data/learning_catalog.json`
 - `data/zpdes_rules.json`

@@ -50,6 +50,7 @@ if str(APPS_DIR) not in sys.path:
 
 from figure_info import render_figure_info
 from runtime_bootstrap import bootstrap_runtime_assets
+from runtime_paths import CLASSROOM_REPLAY_RUNTIME_RELATIVE_PATHS
 
 from visu2.classroom_progression import (
     VALID_MODE_SCOPES,
@@ -226,7 +227,7 @@ None
         Result produced by this routine.
 
 """
-    bootstrap_runtime_assets()
+    bootstrap_runtime_assets(CLASSROOM_REPLAY_RUNTIME_RELATIVE_PATHS)
     settings = get_settings()
     fact_path = settings.artifacts_derived_dir / "fact_attempt_core.parquet"
     if not fact_path.exists():

@@ -16,12 +16,13 @@ Classes
 Functions
 ---------
 - _secrets_mapping: Utility for secrets mapping.
+- _format_expected_paths_markdown: Utility for format expected paths markdown.
 - _cached_runtime_sync: Utility for cached runtime sync.
 - bootstrap_runtime_assets: Utility for bootstrap runtime assets.
 """
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 import streamlit as st
 
@@ -52,12 +53,17 @@ Mapping[str, object] | None
 
 
 @st.cache_resource(show_spinner=False)
-def _cached_runtime_sync(config: HFRepoConfig | None) -> SyncResult:
+def _cached_runtime_sync(
+    config: HFRepoConfig | None,
+    required_paths: tuple[str, ...] | None,
+) -> SyncResult:
     """Cached runtime sync.
 
 Parameters
 ----------
-config : HFRepoConfig | None
+    config : HFRepoConfig | None
+        Input parameter used by this routine.
+    required_paths : tuple[str, ...] | None
         Input parameter used by this routine.
 
 Returns
@@ -69,11 +75,42 @@ SyncResult
     if config is None:
         return local_only_sync_result()
     settings = get_settings()
-    return ensure_runtime_assets_from_hf(settings, config)
+    return ensure_runtime_assets_from_hf(settings, config, required_paths=required_paths)
 
 
-def bootstrap_runtime_assets() -> SyncResult:
+def _format_expected_paths_markdown(required_paths: tuple[str, ...] | None) -> str:
+    """Format page-specific runtime expectations for UI error reporting.
+
+    Parameters
+    ----------
+    required_paths : tuple[str, ...] | None
+        Page-specific required runtime subset, or `None` for the legacy full set.
+
+    Returns
+    -------
+    str
+        Markdown bullet list of expected runtime files.
+    """
+    if not required_paths:
+        return (
+            "- `data/learning_catalog.json`\n"
+            "- `data/zpdes_rules.json`\n"
+            "- `data/exercises.json`\n"
+            "- `artifacts/reports/consistency_report.json`\n"
+            "- `artifacts/reports/derived_manifest.json`\n"
+            "- `artifacts/derived/*.parquet`"
+        )
+    return "\n".join(f"- `{path}`" for path in required_paths)
+
+
+def bootstrap_runtime_assets(required_paths: Sequence[str] | None = None) -> SyncResult:
     """Bootstrap runtime assets.
+
+    Parameters
+    ----------
+    required_paths : Sequence[str] | None
+        Optional page-specific runtime subset to synchronize before page logic
+        executes.
 
 
 Returns
@@ -83,9 +120,12 @@ SyncResult
 
 """
     secrets = _secrets_mapping()
+    required_tuple = tuple(
+        str(path).strip() for path in (required_paths or ()) if str(path).strip()
+    ) or None
     try:
         config = load_hf_repo_config(secrets=secrets)
-        return _cached_runtime_sync(config)
+        return _cached_runtime_sync(config, required_tuple)
     except Exception as err:
         st.error("Runtime data synchronization failed.")
         st.markdown(
@@ -95,13 +135,6 @@ SyncResult
         st.markdown("Required configuration keys:")
         st.markdown("- `VISU2_HF_REPO_ID`\n- `VISU2_HF_REVISION`\n- `HF_TOKEN`")
         st.markdown("Expected runtime files:")
-        st.markdown(
-            "- `data/learning_catalog.json`\n"
-            "- `data/zpdes_rules.json`\n"
-            "- `data/exercises.json`\n"
-            "- `artifacts/reports/consistency_report.json`\n"
-            "- `artifacts/reports/derived_manifest.json`\n"
-            "- `artifacts/derived/*.parquet`"
-        )
+        st.markdown(_format_expected_paths_markdown(required_tuple))
         st.code(str(err))
         st.stop()

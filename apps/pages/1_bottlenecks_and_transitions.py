@@ -31,6 +31,7 @@ from overview_shared import (
     render_dashboard_style,
 )
 from runtime_bootstrap import bootstrap_runtime_assets
+from runtime_paths import BOTTLENECKS_TRANSITIONS_RUNTIME_RELATIVE_PATHS
 
 from visu2.bottleneck import apply_bottleneck_filters, build_bottleneck_frame
 from visu2.config import get_settings
@@ -55,7 +56,7 @@ def load_activity_aggregate(path: Path) -> pl.DataFrame:
 
 def main() -> None:
     """Render the bottleneck and transition analysis page."""
-    bootstrap_runtime_assets()
+    bootstrap_runtime_assets(BOTTLENECKS_TRANSITIONS_RUNTIME_RELATIVE_PATHS)
     settings = get_settings()
     derived_dir = settings.artifacts_derived_dir
     activity_path = derived_dir / "agg_activity_daily.parquet"

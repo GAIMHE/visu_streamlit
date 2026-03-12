@@ -150,7 +150,7 @@ Expected deployment pattern:
    - `VISU2_HF_REPO_ID`
    - `VISU2_HF_REVISION` (pin to a tag/commit)
    - `HF_TOKEN` (private access)
-4. On startup, the app downloads required runtime files and then runs normally with local paths.
+4. On startup, the app downloads the required runtime subset for the page being opened and then runs normally with local paths.
 
 Runtime subset usually needed by the app:
 - `data/learning_catalog.json`

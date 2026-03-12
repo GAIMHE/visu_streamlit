@@ -51,6 +51,7 @@ if str(APPS_DIR) not in sys.path:
     sys.path.insert(0, str(APPS_DIR))
 
 from runtime_bootstrap import bootstrap_runtime_assets
+from runtime_paths import USAGE_PAGE_RUNTIME_RELATIVE_PATHS
 
 from visu2.config import get_settings
 from visu2.contracts import DERIVED_SCHEMA_VERSION, RUNTIME_CORE_COLUMNS
@@ -327,7 +328,7 @@ None
         Result produced by this routine.
 
 """
-    bootstrap_runtime_assets()
+    bootstrap_runtime_assets(USAGE_PAGE_RUNTIME_RELATIVE_PATHS)
     settings = get_settings()
     derived_dir = settings.artifacts_derived_dir
     fact_path = derived_dir / "fact_attempt_core.parquet"

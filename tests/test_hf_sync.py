@@ -21,6 +21,7 @@ Functions
 - test_load_hf_repo_config_missing_required_values: Test scenario for load hf repo config missing required values.
 - test_load_hf_repo_config_returns_none_without_repo_id: Test scenario for load hf repo config returns none without repo id.
 - test_ensure_runtime_assets_from_hf_success: Test scenario for ensure runtime assets from hf success.
+- test_ensure_runtime_assets_from_hf_respects_required_paths_subset: Test scenario for ensure runtime assets from hf respects required paths subset.
 - test_ensure_runtime_assets_from_hf_raises_on_missing_files: Test scenario for ensure runtime assets from hf raises on missing files.
 """
 from __future__ import annotations
@@ -256,6 +257,30 @@ Notes
     assert result.mode == "synced"
     assert result.downloaded is True
     assert result.files_checked == len(DEFAULT_RUNTIME_RELATIVE_PATHS)
+    assert result.missing_files == ()
+
+
+def test_ensure_runtime_assets_from_hf_respects_required_paths_subset(tmp_path, monkeypatch) -> None:
+    """Test runtime sync only downloads and validates the requested subset."""
+    settings = _build_settings(tmp_path)
+    config = HFRepoConfig(
+        repo_id="org/repo",
+        revision="v1",
+        repo_type="dataset",
+        token="token",
+        allow_patterns=DEFAULT_RUNTIME_RELATIVE_PATHS,
+    )
+    required_subset = DEFAULT_RUNTIME_RELATIVE_PATHS[:3]
+
+    def fake_snapshot_download(**kwargs):
+        assert tuple(kwargs["allow_patterns"]) == required_subset
+        _write_runtime_files(settings.root_dir, required_subset)
+        return str(settings.root_dir)
+
+    monkeypatch.setattr("visu2.hf_sync.snapshot_download", fake_snapshot_download)
+    result = ensure_runtime_assets_from_hf(settings, config, required_paths=required_subset)
+    assert result.mode == "synced"
+    assert result.files_checked == len(required_subset)
     assert result.missing_files == ()
 
 

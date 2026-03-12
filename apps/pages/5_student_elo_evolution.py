@@ -46,6 +46,7 @@ if str(APPS_DIR) not in sys.path:
 
 from figure_info import render_figure_info
 from runtime_bootstrap import bootstrap_runtime_assets
+from runtime_paths import STUDENT_ELO_RUNTIME_RELATIVE_PATHS
 
 from visu2.config import get_settings
 from visu2.contracts import RUNTIME_CORE_COLUMNS
@@ -165,7 +166,7 @@ None
         Result produced by this routine.
 
 """
-    bootstrap_runtime_assets()
+    bootstrap_runtime_assets(STUDENT_ELO_RUNTIME_RELATIVE_PATHS)
     settings = get_settings()
     profiles_path = settings.artifacts_derived_dir / "student_elo_profiles.parquet"
     events_path = settings.artifacts_derived_dir / "student_elo_events.parquet"

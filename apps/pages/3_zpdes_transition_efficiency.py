@@ -19,6 +19,7 @@ if str(APPS_DIR) not in sys.path:
 
 from figure_info import render_figure_info
 from runtime_bootstrap import bootstrap_runtime_assets
+from runtime_paths import ZPDES_TRANSITION_EFFICIENCY_RUNTIME_RELATIVE_PATHS
 
 from visu2.config import get_settings
 from visu2.zpdes_dependencies import (
@@ -101,7 +102,7 @@ def _load_dependency_tables(
 
 def main() -> None:
     """Render the transition-efficiency page."""
-    bootstrap_runtime_assets()
+    bootstrap_runtime_assets(ZPDES_TRANSITION_EFFICIENCY_RUNTIME_RELATIVE_PATHS)
     settings = get_settings()
     activity_path = settings.artifacts_derived_dir / "agg_activity_daily.parquet"
     activity_elo_path = settings.artifacts_derived_dir / "agg_activity_elo.parquet"
