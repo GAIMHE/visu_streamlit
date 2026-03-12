@@ -50,6 +50,7 @@ if str(APPS_DIR) not in sys.path:
     sys.path.insert(0, str(APPS_DIR))
 
 from figure_info import render_figure_info
+from overview_shared import normalize_date_input_range
 from runtime_bootstrap import bootstrap_runtime_assets
 from runtime_paths import MATRIX_RUNTIME_RELATIVE_PATHS
 
@@ -603,15 +604,17 @@ None
     selected_module_code = module_options_map[selected_module_label]
     selected_module_display = module_code_to_display.get(selected_module_code, selected_module_code)
 
-    start_date, end_date = st.sidebar.date_input(
+    selected_range = st.sidebar.date_input(
         "Date range (UTC)",
         value=(min_date, max_date),
         min_value=min_date,
         max_value=max_date,
     )
-    if isinstance(start_date, tuple) or isinstance(end_date, tuple):
+    normalized_range = normalize_date_input_range(selected_range)
+    if normalized_range is None:
         st.error("Please select a valid start and end date.")
         st.stop()
+    start_date, end_date = normalized_range
 
     cohort_population_label = st.sidebar.selectbox(
         "Cohort population",

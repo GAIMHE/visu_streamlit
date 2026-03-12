@@ -84,6 +84,20 @@ def collect_lazy(lf: pl.LazyFrame) -> pl.DataFrame:
         return lf.collect()
 
 
+def normalize_date_input_range(value: object) -> tuple[date, date] | None:
+    """Normalize Streamlit date-input outputs into a stable inclusive date range."""
+    if isinstance(value, date):
+        return (value, value)
+    if isinstance(value, (list, tuple)):
+        if len(value) == 0:
+            return None
+        if len(value) == 1 and isinstance(value[0], date):
+            return (value[0], value[0])
+        if len(value) >= 2 and isinstance(value[0], date) and isinstance(value[1], date):
+            return (value[0], value[1])
+    return None
+
+
 @st.cache_data(show_spinner=False)
 def parquet_columns(path: Path) -> list[str]:
     """Return parquet column names without materializing the full table."""
@@ -248,15 +262,17 @@ def render_curriculum_filters(
         st.stop()
 
     st.sidebar.header(sidebar_header)
-    start_date, end_date = st.sidebar.date_input(
+    selected_range = st.sidebar.date_input(
         "Date range (UTC)",
         value=(min_date, max_date),
         min_value=min_date,
         max_value=max_date,
     )
-    if isinstance(start_date, tuple) or isinstance(end_date, tuple):
+    normalized_range = normalize_date_input_range(selected_range)
+    if normalized_range is None:
         st.error("Please provide a valid start and end date.")
         st.stop()
+    start_date, end_date = normalized_range
 
     module_frame = (
         dimension_frame.select(["module_code", "module_label"])
