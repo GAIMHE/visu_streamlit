@@ -28,6 +28,7 @@ Functions
 - _matrix_attempt_snapshot: Utility for matrix attempt snapshot.
 - _clip_threshold: Utility for clip threshold.
 - build_classroom_mode_profiles: Build classroom mode profiles.
+- select_classrooms_near_student_target: Select classrooms near student target.
 - select_default_classroom: Select default classroom.
 - build_replay_payload: Build replay payload.
 - build_heatmap_figure: Build heatmap figure.
@@ -42,6 +43,8 @@ import plotly.graph_objects as go
 import polars as pl
 
 VALID_MODE_SCOPES = ("zpdes", "playlist", "all")
+MISSING_ACTIVITY_KEY = "__missing_activity__"
+MISSING_ACTIVITY_LABEL = "(missing activity metadata)"
 
 _PROFILE_SCHEMA: dict[str, pl.DataType] = {
     "mode_scope": pl.Utf8,
@@ -165,6 +168,7 @@ dict[str, Any]
         "end_date": end_date.isoformat(),
         "student_ids": [],
         "student_axis_labels": [],
+        "student_total_attempts": [],
         "activity_ids": [],
         "activity_axis_labels": [],
         "activity_full_labels": [],
@@ -173,6 +177,8 @@ dict[str, Any]
         "frame_timestamps": [None],
         "rate_frames": [[]],
         "attempt_frames": [[]],
+        "success_frames": [[]],
+        "unique_exercise_frames": [[]],
         "total_events_raw": 0,
         "total_events_valid_timestamp": 0,
         "total_sync_steps": 0,
@@ -301,6 +307,106 @@ float
     return min(1.0, max(0.0, float(threshold)))
 
 
+def _normalize_activity_key(value: object) -> str:
+    """Return a stable replay key for activity identifiers.
+
+    Parameters
+    ----------
+    value : object
+        Raw activity identifier from the fact table.
+
+    Returns
+    -------
+    str
+        Normalized activity key. Missing identifiers collapse to a single
+        placeholder value so attempts are still visible in replay outputs.
+    """
+    text = str(value).strip() if value is not None else ""
+    return text or MISSING_ACTIVITY_KEY
+
+
+def _normalize_activity_label(value: object) -> str:
+    """Return a readable label for replay activity rows.
+
+    Parameters
+    ----------
+    value : object
+        Raw activity label from the fact table.
+
+    Returns
+    -------
+    str
+        Readable activity label, or a placeholder when metadata is missing.
+    """
+    text = str(value).strip() if value is not None else ""
+    return text or MISSING_ACTIVITY_LABEL
+
+
+def _make_unique_axis_labels(labels: list[str]) -> list[str]:
+    """Return category labels that stay readable while remaining unique.
+
+    Parameters
+    ----------
+    labels : list[str]
+        Candidate axis labels in display order.
+
+    Returns
+    -------
+    list[str]
+        Unique labels preserving the original order. Duplicate values receive a
+        numeric suffix so Plotly does not collapse them onto the same category.
+    """
+    counts: dict[str, int] = {}
+    unique_labels: list[str] = []
+    for raw_label in labels:
+        label = str(raw_label or "").strip() or "(unlabeled)"
+        next_rank = counts.get(label, 0) + 1
+        counts[label] = next_rank
+        if next_rank == 1:
+            unique_labels.append(label)
+        else:
+            unique_labels.append(f"{label} [{next_rank}]")
+    return unique_labels
+
+
+def _format_active_student_tick_labels(
+    labels: list[str],
+    total_attempts: list[int],
+    frame_step_counts: list[int],
+    frame_idx: int,
+) -> list[str]:
+    """Format student tick labels, bolding students active in the current frame.
+
+    Parameters
+    ----------
+    labels : list[str]
+        Base student axis labels.
+    total_attempts : list[int]
+        Total local attempt counts per student.
+    frame_step_counts : list[int]
+        Synchronized replay step counts for each frame.
+    frame_idx : int
+        Selected frame index.
+
+    Returns
+    -------
+    list[str]
+        Tick labels with active students wrapped in bold HTML tags.
+    """
+    if not labels:
+        return []
+    index = max(0, min(int(frame_idx), max(0, len(frame_step_counts) - 1)))
+    previous_step = frame_step_counts[index - 1] if index > 0 else 0
+    formatted: list[str] = []
+    for idx, label in enumerate(labels):
+        total = int(total_attempts[idx]) if idx < len(total_attempts) else 0
+        if total > previous_step:
+            formatted.append(f"<b>{label}</b>")
+        else:
+            formatted.append(label)
+    return formatted
+
+
 def build_classroom_mode_profiles(fact: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame:
     """Return per-(mode, classroom) and all-mode classroom profiles."""
     _assert_required_columns(fact, _REPLAY_REQUIRED_COLUMNS)
@@ -349,6 +455,54 @@ def build_classroom_mode_profiles(fact: pl.DataFrame | pl.LazyFrame) -> pl.DataF
     return profiles.select(list(_PROFILE_SCHEMA.keys())).sort(
         ["mode_scope", "students", "attempts", "classroom_id"],
         descending=[False, True, True, False],
+    )
+
+
+def select_classrooms_near_student_target(
+    profiles: pl.DataFrame,
+    mode_scope: str,
+    target_students: int,
+    tolerance_ratio: float = 0.10,
+) -> pl.DataFrame:
+    """Return classrooms whose student counts fall within a target band.
+
+    Parameters
+    ----------
+    profiles : pl.DataFrame
+        Classroom profile table produced by `build_classroom_mode_profiles`.
+    mode_scope : str
+        Selected work-mode scope.
+    target_students : int
+        Desired classroom size used to form the matching band.
+    tolerance_ratio : float, optional
+        Relative half-width of the acceptance band.
+
+    Returns
+    -------
+    pl.DataFrame
+        Matching classroom rows sorted by activity coverage, then attempts,
+        then students, then classroom identifier.
+    """
+    if mode_scope not in VALID_MODE_SCOPES:
+        raise ValueError(f"Unsupported mode_scope '{mode_scope}'. Expected one of {list(VALID_MODE_SCOPES)}")
+    if profiles.height == 0:
+        return _empty_profiles()
+
+    target = max(1, int(target_students))
+    tolerance = max(0.0, float(tolerance_ratio))
+    lower = max(1, int(math.floor(target * (1.0 - tolerance))))
+    upper = max(lower, int(math.ceil(target * (1.0 + tolerance))))
+
+    scoped = profiles.filter(pl.col("mode_scope") == mode_scope)
+    if scoped.height == 0:
+        return _empty_profiles()
+
+    return (
+        scoped.filter((pl.col("students") >= lower) & (pl.col("students") <= upper))
+        .sort(
+            ["activities", "attempts", "students", "classroom_id"],
+            descending=[True, True, True, False],
+        )
     )
 
 
@@ -452,6 +606,14 @@ def build_replay_payload(
                 "attempt_number",
             ]
         )
+        .with_columns(
+            pl.col("activity_id")
+            .map_elements(_normalize_activity_key, return_dtype=pl.Utf8)
+            .alias("activity_id"),
+            pl.col("activity_label")
+            .map_elements(_normalize_activity_label, return_dtype=pl.Utf8)
+            .alias("activity_label"),
+        )
         .sort(["created_at", "user_id", "activity_id", "exercise_id", "attempt_number"])
         .collect()
     )
@@ -476,16 +638,18 @@ def build_replay_payload(
         )
         .sort(["first_seen", "activity_id"])
     )
-    activity_ids = [str(value) for value in activity_order["activity_id"].to_list()]
+    activity_ids = [_normalize_activity_key(value) for value in activity_order["activity_id"].to_list()]
     activity_full_labels = [
-        str(label).strip() if str(label).strip() else str(activity_id)
+        _normalize_activity_label(label)
         for label, activity_id in zip(
             activity_order["activity_label"].fill_null("").to_list(),
             activity_ids,
             strict=False,
         )
     ]
-    activity_axis_labels = [label if len(label) <= 48 else f"{label[:47].rstrip()}..." for label in activity_full_labels]
+    activity_axis_labels = _make_unique_axis_labels(
+        [label if len(label) <= 48 else f"{label[:47].rstrip()}..." for label in activity_full_labels]
+    )
 
     student_index = {student_id: idx for idx, student_id in enumerate(student_ids)}
     activity_index = {activity_id: idx for idx, activity_id in enumerate(activity_ids)}
@@ -494,6 +658,8 @@ def build_replay_payload(
     n_activities = len(activity_ids)
     success_matrix = [[0 for _ in range(n_students)] for _ in range(n_activities)]
     attempt_matrix = [[0 for _ in range(n_students)] for _ in range(n_activities)]
+    unique_exercise_sets = [[set() for _ in range(n_students)] for _ in range(n_activities)]
+    unique_exercise_count_matrix = [[0 for _ in range(n_students)] for _ in range(n_activities)]
 
     rows = events.to_dicts()
     student_sequences: list[list[dict[str, Any]]] = [[] for _ in range(n_students)]
@@ -502,6 +668,7 @@ def build_replay_payload(
         idx = student_index.get(student_id)
         if idx is not None:
             student_sequences[idx].append(row)
+    student_total_attempts = [len(sequence) for sequence in student_sequences]
 
     total_sync_steps = max((len(sequence) for sequence in student_sequences), default=0)
     requested_step = max(1, int(step_size))
@@ -513,11 +680,15 @@ def build_replay_payload(
 
     rate_frames: list[list[list[float | None]]] = []
     attempt_frames: list[list[list[int]]] = []
+    success_frames: list[list[list[int]]] = []
+    unique_exercise_frames: list[list[list[int]]] = []
     frame_timestamps: list[str | None] = []
 
     # frame 0: empty matrix
     rate_frames.append([[None for _ in range(n_students)] for _ in range(n_activities)])
     attempt_frames.append([[0 for _ in range(n_students)] for _ in range(n_activities)])
+    success_frames.append([[0 for _ in range(n_students)] for _ in range(n_activities)])
+    unique_exercise_frames.append([[0 for _ in range(n_students)] for _ in range(n_activities)])
     frame_timestamps.append(None)
 
     previous_sync_step = 0
@@ -536,7 +707,7 @@ def build_replay_payload(
                 if timestamp_txt and (frame_last_timestamp is None or timestamp_txt > frame_last_timestamp):
                     frame_last_timestamp = timestamp_txt
 
-                activity_id = str(row.get("activity_id") or "")
+                activity_id = _normalize_activity_key(row.get("activity_id"))
                 a_idx = activity_index.get(activity_id)
                 if a_idx is None:
                     continue
@@ -545,9 +716,15 @@ def build_replay_payload(
                 score = float(raw_score) if isinstance(raw_score, (int, float)) else 0.0
                 attempt_matrix[a_idx][s_idx] += 1
                 success_matrix[a_idx][s_idx] += int(score >= 1.0)
+                exercise_id = str(row.get("exercise_id") or "").strip()
+                if exercise_id:
+                    unique_exercise_sets[a_idx][s_idx].add(exercise_id)
+                    unique_exercise_count_matrix[a_idx][s_idx] = len(unique_exercise_sets[a_idx][s_idx])
 
         rate_frames.append(_matrix_rate_snapshot(success_matrix, attempt_matrix))
         attempt_frames.append(_matrix_attempt_snapshot(attempt_matrix))
+        success_frames.append(_matrix_attempt_snapshot(success_matrix))
+        unique_exercise_frames.append(_matrix_attempt_snapshot(unique_exercise_count_matrix))
         frame_timestamps.append(frame_last_timestamp)
         frame_event_counts.append(events_processed)
         previous_sync_step = sync_step
@@ -559,6 +736,7 @@ def build_replay_payload(
         "end_date": end_date.isoformat(),
         "student_ids": student_ids,
         "student_axis_labels": student_axis_labels,
+        "student_total_attempts": student_total_attempts,
         "activity_ids": activity_ids,
         "activity_axis_labels": activity_axis_labels,
         "activity_full_labels": activity_full_labels,
@@ -567,6 +745,8 @@ def build_replay_payload(
         "frame_timestamps": frame_timestamps,
         "rate_frames": rate_frames,
         "attempt_frames": attempt_frames,
+        "success_frames": success_frames,
+        "unique_exercise_frames": unique_exercise_frames,
         "total_events_raw": total_events_raw,
         "total_events_valid_timestamp": total_events_valid,
         "total_sync_steps": total_sync_steps,
@@ -605,12 +785,16 @@ go.Figure
 """
     rate_frames = payload.get("rate_frames") or []
     attempt_frames = payload.get("attempt_frames") or []
+    success_frames = payload.get("success_frames") or []
+    unique_exercise_frames = payload.get("unique_exercise_frames") or []
     student_ids = [str(value) for value in payload.get("student_ids") or []]
     student_axis_labels = [str(value) for value in payload.get("student_axis_labels") or []]
+    student_total_attempts = [int(value) for value in payload.get("student_total_attempts") or []]
     activity_ids = [str(value) for value in payload.get("activity_ids") or []]
     activity_axis_labels = [str(value) for value in payload.get("activity_axis_labels") or []]
     activity_full_labels = [str(value) for value in payload.get("activity_full_labels") or []]
     timestamps = payload.get("frame_timestamps") or []
+    frame_step_counts = [int(value) for value in payload.get("frame_step_counts") or []]
 
     if not rate_frames or not student_axis_labels or not activity_axis_labels:
         fig = go.Figure()
@@ -635,7 +819,19 @@ go.Figure
     index = max(0, min(int(frame_idx), len(rate_frames) - 1))
     z = rate_frames[index]
     attempts = attempt_frames[index]
+    successes = success_frames[index] if index < len(success_frames) else [[0 for _ in row] for row in attempts]
+    unique_exercises = (
+        unique_exercise_frames[index]
+        if index < len(unique_exercise_frames)
+        else [[0 for _ in row] for row in attempts]
+    )
     frame_time = timestamps[index] if index < len(timestamps) else None
+    x_tick_text = _format_active_student_tick_labels(
+        labels=student_axis_labels,
+        total_attempts=student_total_attempts,
+        frame_step_counts=frame_step_counts,
+        frame_idx=index,
+    )
 
     threshold_clipped = _clip_threshold(threshold)
     p1 = max(0.0, threshold_clipped * 0.5)
@@ -650,13 +846,16 @@ go.Figure
     ]
 
     customdata: list[list[list[Any]]] = []
-    text_matrix: list[list[str]] = []
+    text_x: list[str] = []
+    text_y: list[str] = []
+    text_values: list[str] = []
     for row_idx, activity_id in enumerate(activity_ids):
         custom_row: list[list[Any]] = []
-        text_row: list[str] = []
         for col_idx, student_id in enumerate(student_ids):
             rate_value = z[row_idx][col_idx]
             attempts_value = attempts[row_idx][col_idx]
+            success_value = successes[row_idx][col_idx]
+            unique_exercise_value = unique_exercises[row_idx][col_idx]
             custom_row.append(
                 [
                     student_id,
@@ -665,14 +864,15 @@ go.Figure
                     int(attempts_value),
                     None if rate_value is None else float(rate_value),
                     frame_time,
+                    int(success_value),
+                    int(unique_exercise_value),
                 ]
             )
             if show_values and rate_value is not None:
-                text_row.append(f"{float(rate_value) * 100:.0f}%")
-            else:
-                text_row.append("")
+                text_x.append(student_axis_labels[col_idx])
+                text_y.append(activity_axis_labels[row_idx])
+                text_values.append(f"{float(rate_value) * 100:.0f}%")
         customdata.append(custom_row)
-        text_matrix.append(text_row)
 
     fig = go.Figure(
         data=[
@@ -684,9 +884,6 @@ go.Figure
                 zmax=1.0,
                 colorscale=colorscale,
                 colorbar={"title": "Cumulative success rate"},
-                text=text_matrix if show_values else None,
-                texttemplate="%{text}" if show_values else None,
-                textfont={"size": 10},
                 customdata=customdata,
                 hoverongaps=False,
                 hovertemplate=(
@@ -695,7 +892,9 @@ go.Figure
                     + "User ID: %{customdata[0]}<br>"
                     + "Activity ID: %{customdata[1]}<br>"
                     + "Attempts in cell: %{customdata[3]}<br>"
+                    + "Successful attempts: %{customdata[6]}<br>"
                     + "Cumulative success rate: %{z:.1%}<br>"
+                    + "Unique exercises in cell: %{customdata[7]}<br>"
                     + "Last event timestamp: %{customdata[5]}"
                     + "<extra></extra>"
                 ),
@@ -704,6 +903,19 @@ go.Figure
             )
         ]
     )
+    if show_values and text_values:
+        fig.add_trace(
+            go.Scatter(
+                x=text_x,
+                y=text_y,
+                mode="text",
+                text=text_values,
+                textposition="middle center",
+                textfont={"size": 10, "color": "#111111"},
+                hoverinfo="skip",
+                showlegend=False,
+            )
+        )
     fig.update_layout(
         template="plotly_white",
         margin={"l": 220, "r": 24, "t": 44, "b": 24},
@@ -711,4 +923,5 @@ go.Figure
         xaxis_title="Students (anonymized)",
         yaxis_title="Activities",
     )
+    fig.update_xaxes(tickmode="array", tickvals=student_axis_labels, ticktext=x_tick_text)
     return fig

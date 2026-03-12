@@ -31,10 +31,13 @@ from __future__ import annotations
 from bisect import bisect_right
 from math import ceil
 from pathlib import Path
+from random import Random
 from typing import Any
 
 import plotly.graph_objects as go
 import polars as pl
+
+from visu2.loaders import catalog_to_summary_frames, load_learning_catalog
 
 
 def load_student_elo_profiles(path: Path) -> pl.DataFrame:
@@ -69,6 +72,33 @@ pl.LazyFrame
 
 """
     return pl.scan_parquet(path)
+
+
+def load_student_elo_label_lookup(path: Path) -> pl.DataFrame:
+    """Load a readable label lookup for student Elo hover content.
+
+    Parameters
+    ----------
+    path : Path
+        Path to `learning_catalog.json`.
+
+    Returns
+    -------
+    pl.DataFrame
+        Activity-level label lookup keyed by activity, objective, and module.
+    """
+    catalog = load_learning_catalog(path)
+    frames = catalog_to_summary_frames(catalog)
+    return frames.activity_hierarchy.select(
+        [
+            "activity_id",
+            "module_code",
+            "module_label",
+            "objective_id",
+            "objective_label",
+            "activity_label",
+        ]
+    ).unique()
 
 
 def _as_lazy(frame: pl.DataFrame | pl.LazyFrame) -> pl.LazyFrame:
@@ -177,6 +207,61 @@ Notes
     return [str(rows[idx]) for idx in selected_indices[:limit]]
 
 
+def select_students_near_attempt_target(
+    profiles: pl.DataFrame,
+    target_attempts: int,
+    tolerance_ratio: float = 0.10,
+    max_students: int = 2,
+    seed: int | None = None,
+) -> list[str]:
+    """Select up to ``max_students`` eligible students near a target attempt count.
+
+    Parameters
+    ----------
+    profiles : pl.DataFrame
+        Student Elo profile table.
+    target_attempts : int
+        Desired number of total attempts around which students are sampled.
+    tolerance_ratio : float, optional
+        Relative half-width of the acceptance band. A value of ``0.10`` means
+        ``target_attempts +/- 10%``.
+    max_students : int, optional
+        Maximum number of students to return.
+    seed : int | None, optional
+        Optional random seed used to make sampling deterministic in tests.
+
+    Returns
+    -------
+    list[str]
+        Randomly sampled student identifiers from the eligible band.
+    """
+    if profiles.height == 0:
+        return []
+
+    target = max(1, int(target_attempts))
+    tolerance = max(0.0, float(tolerance_ratio))
+    limit = max(1, int(max_students))
+    lower = int(target * (1.0 - tolerance))
+    upper = int(ceil(target * (1.0 + tolerance)))
+
+    candidates = (
+        profiles.filter(
+            pl.col("eligible_for_replay")
+            & (pl.col("total_attempts") >= lower)
+            & (pl.col("total_attempts") <= upper)
+        )
+        .select("user_id")
+        .to_series()
+        .to_list()
+    )
+    normalized = sorted({str(user_id).strip() for user_id in candidates if str(user_id).strip()})
+    if len(normalized) <= limit:
+        return normalized
+
+    rng = Random(seed)
+    return sorted(rng.sample(normalized, k=limit))
+
+
 def _empty_payload(user_ids: list[str], step_size: int) -> dict[str, Any]:
     """Empty payload.
 
@@ -206,6 +291,7 @@ def build_student_elo_payload(
     events: pl.DataFrame | pl.LazyFrame,
     user_ids: list[str],
     step_size: int,
+    label_lookup: pl.DataFrame | None = None,
 ) -> dict[str, Any]:
     """Build student elo payload.
 
@@ -234,10 +320,24 @@ dict[str, Any]
         return _empty_payload([], step_size)
 
     step = max(1, int(step_size))
+    events_lazy = _as_lazy(events).filter(pl.col("user_id").cast(pl.Utf8).is_in(normalized_user_ids))
+    if label_lookup is not None and label_lookup.height > 0:
+        events_lazy = events_lazy.join(
+            label_lookup.lazy(),
+            on=["activity_id", "objective_id", "module_code"],
+            how="left",
+        )
+    else:
+        events_lazy = events_lazy.with_columns(
+            [
+                pl.lit(None, dtype=pl.Utf8).alias("module_label"),
+                pl.lit(None, dtype=pl.Utf8).alias("objective_label"),
+                pl.lit(None, dtype=pl.Utf8).alias("activity_label"),
+            ]
+        )
+
     frame = (
-        _as_lazy(events)
-        .filter(pl.col("user_id").cast(pl.Utf8).is_in(normalized_user_ids))
-        .select(
+        events_lazy.select(
             [
                 "user_id",
                 "attempt_ordinal",
@@ -245,8 +345,11 @@ dict[str, Any]
                 "date_utc",
                 "work_mode",
                 "module_code",
+                "module_label",
                 "objective_id",
+                "objective_label",
                 "activity_id",
+                "activity_label",
                 "exercise_id",
                 "outcome",
                 "expected_success",
@@ -275,8 +378,11 @@ dict[str, Any]
                 "created_at": [],
                 "exercise_id": [],
                 "activity_id": [],
+                "activity_label": [],
                 "work_mode": [],
                 "module_code": [],
+                "module_label": [],
+                "objective_label": [],
                 "outcome": [],
                 "expected_success": [],
                 "exercise_elo": [],
@@ -294,8 +400,17 @@ dict[str, Any]
         )
         bucket["exercise_id"].append(None if row.get("exercise_id") is None else str(row.get("exercise_id")))
         bucket["activity_id"].append(None if row.get("activity_id") is None else str(row.get("activity_id")))
+        bucket["activity_label"].append(
+            None if row.get("activity_label") is None else str(row.get("activity_label"))
+        )
         bucket["work_mode"].append(None if row.get("work_mode") is None else str(row.get("work_mode")))
         bucket["module_code"].append(None if row.get("module_code") is None else str(row.get("module_code")))
+        bucket["module_label"].append(
+            None if row.get("module_label") is None else str(row.get("module_label"))
+        )
+        bucket["objective_label"].append(
+            None if row.get("objective_label") is None else str(row.get("objective_label"))
+        )
         bucket["outcome"].append(float(row.get("outcome") or 0.0))
         bucket["expected_success"].append(float(row.get("expected_success") or 0.0))
         bucket["exercise_elo"].append(float(row.get("exercise_elo") or 0.0))
@@ -360,9 +475,10 @@ go.Figure
             zip(
                 user_series.get("created_at", [])[:visible_count],
                 user_series.get("exercise_id", [])[:visible_count],
-                user_series.get("activity_id", [])[:visible_count],
+                user_series.get("activity_label", [])[:visible_count],
+                user_series.get("objective_label", [])[:visible_count],
                 user_series.get("work_mode", [])[:visible_count],
-                user_series.get("module_code", [])[:visible_count],
+                user_series.get("module_label", [])[:visible_count],
                 user_series.get("outcome", [])[:visible_count],
                 user_series.get("expected_success", [])[:visible_count],
                 user_series.get("exercise_elo", [])[:visible_count],
@@ -386,13 +502,14 @@ go.Figure
                     "<b>Timestamp</b>: %{customdata[0]}<br>"
                     "<b>Exercise</b>: %{customdata[1]}<br>"
                     "<b>Activity</b>: %{customdata[2]}<br>"
-                    "<b>Work mode</b>: %{customdata[3]}<br>"
-                    "<b>Module</b>: %{customdata[4]}<br>"
-                    "<b>Outcome</b>: %{customdata[5]:.0f}<br>"
-                    "<b>Expected success</b>: %{customdata[6]:.3f}<br>"
-                    "<b>Exercise Elo</b>: %{customdata[7]:.1f}<br>"
-                    "<b>Student Elo (pre)</b>: %{customdata[8]:.1f}<br>"
-                    "<b>Student Elo (post)</b>: %{customdata[9]:.1f}"
+                    "<b>Objective</b>: %{customdata[3]}<br>"
+                    "<b>Work mode</b>: %{customdata[4]}<br>"
+                    "<b>Module</b>: %{customdata[5]}<br>"
+                    "<b>Outcome</b>: %{customdata[6]:.0f}<br>"
+                    "<b>Expected success</b>: %{customdata[7]:.3f}<br>"
+                    "<b>Exercise Elo</b>: %{customdata[8]:.1f}<br>"
+                    "<b>Student Elo (pre)</b>: %{customdata[9]:.1f}<br>"
+                    "<b>Student Elo (post)</b>: %{customdata[10]:.1f}"
                     "<extra></extra>"
                 ),
             )

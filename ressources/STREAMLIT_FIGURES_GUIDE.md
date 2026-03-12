@@ -123,8 +123,11 @@ Important note:
 - A classroom matrix:
   - X-axis = students (anonymized)
   - Y-axis = activities
+- The page first narrows classrooms by target student count inside the selected work-mode scope.
+- Matching classrooms are ordered by activity coverage first, then attempts, then students.
 - Replay starts empty, then fills in synchronized steps.
 - Each cell color = cumulative success rate for that student on that activity.
+- The color scale uses a fixed `75%` reference threshold.
 
 **Question it can answer**
 - How does progression spread across a class over time?

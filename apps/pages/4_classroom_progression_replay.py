@@ -26,11 +26,11 @@ Functions
 - _format_classroom_option: Utility for format classroom option.
 - _mode_label: Utility for mode label.
 - _parquet_columns: Utility for parquet columns.
-- _default_date_range: Utility for default date range.
 - main: Utility for main.
 """
 from __future__ import annotations
 
+import math
 import sys
 import time
 from datetime import date
@@ -56,7 +56,7 @@ from visu2.classroom_progression import (
     build_classroom_mode_profiles,
     build_heatmap_figure,
     build_replay_payload,
-    select_default_classroom,
+    select_classrooms_near_student_target,
 )
 from visu2.config import get_settings
 
@@ -92,6 +92,7 @@ MODE_OPTIONS = {
     "Playlist": "playlist",
     "All modes": "all",
 }
+HEATMAP_MASTERY_THRESHOLD = 0.75
 
 
 @st.cache_data(show_spinner=False)
@@ -117,8 +118,8 @@ def _load_replay_payload(
     fact_path: Path,
     classroom_id: str,
     mode_scope: str,
-    start_date: date,
-    end_date: date,
+    start_date_iso: str,
+    end_date_iso: str,
     max_frames: int,
     step_size: int,
 ) -> dict:
@@ -132,9 +133,9 @@ classroom_id : str
         Input parameter used by this routine.
 mode_scope : str
         Input parameter used by this routine.
-start_date : date
+start_date_iso : str
         Input parameter used by this routine.
-end_date : date
+end_date_iso : str
         Input parameter used by this routine.
 max_frames : int
         Input parameter used by this routine.
@@ -151,8 +152,8 @@ dict
         fact=pl.scan_parquet(fact_path),
         classroom_id=classroom_id,
         mode_scope=mode_scope,
-        start_date=start_date,
-        end_date=end_date,
+        start_date=date.fromisoformat(start_date_iso),
+        end_date=date.fromisoformat(end_date_iso),
         max_frames=max_frames,
         step_size=step_size,
     )
@@ -213,28 +214,6 @@ list[str]
 
 """
     return list(pq.ParquetFile(path).schema_arrow.names)
-
-
-def _default_date_range(row: dict[str, object]) -> tuple[date, date]:
-    """Default date range.
-
-Parameters
-----------
-row : dict[str, object]
-        Input parameter used by this routine.
-
-Returns
--------
-tuple[date, date]
-        Result produced by this routine.
-
-"""
-    first_ts = row.get("first_attempt_at")
-    last_ts = row.get("last_attempt_at")
-    if hasattr(first_ts, "date") and hasattr(last_ts, "date"):
-        return first_ts.date(), last_ts.date()
-    today = date.today()
-    return today, today
 
 
 def main() -> None:
@@ -300,38 +279,51 @@ None
         st.info(f"No classrooms available for scope '{_mode_label(mode_scope)}'.")
         st.stop()
 
-    default_classroom_id = select_default_classroom(profiles, mode_scope)
-    rows = scoped_profiles.to_dicts()
+    min_students = int(scoped_profiles["students"].min() or 0)
+    max_students = int(scoped_profiles["students"].max() or 0)
+    st.caption(
+        f"Classrooms in this scope range from **{min_students}** to **{max_students}** students."
+    )
+
+    default_target = int(scoped_profiles["students"].median() or min_students or 1)
+    target_students = int(
+        st.number_input(
+            "Target classroom size (students)",
+            min_value=max(1, min_students),
+            max_value=max(1, max_students),
+            value=min(max(1, default_target), max(1, max_students)),
+            step=1,
+        )
+    )
+
+    lower = max(1, int(math.floor(target_students * 0.9)))
+    upper = max(lower, int(math.ceil(target_students * 1.1)))
+    matching_profiles = select_classrooms_near_student_target(
+        profiles,
+        mode_scope=mode_scope,
+        target_students=target_students,
+        tolerance_ratio=0.10,
+    )
+    if matching_profiles.height == 0:
+        st.info("No classrooms found in that range, please try another range.")
+        st.stop()
+
+    st.caption(
+        f"Showing classrooms with **{lower}** to **{upper}** students in **{_mode_label(mode_scope)}** scope."
+    )
+    rows = matching_profiles.to_dicts()
     option_map = {_format_classroom_option(row): str(row.get("classroom_id")) for row in rows}
     option_keys = list(option_map.keys())
-
-    default_index = 0
-    if default_classroom_id is not None:
-        for idx, row in enumerate(rows):
-            if str(row.get("classroom_id")) == default_classroom_id:
-                default_index = idx
-                break
-
-    selected_option = st.sidebar.selectbox("Classroom", option_keys, index=default_index)
+    selected_option = st.selectbox("Matching classrooms", option_keys, index=0)
     selected_classroom_id = option_map[selected_option]
-    selected_row = next(
-        (row for row in rows if str(row.get("classroom_id")) == selected_classroom_id),
-        rows[0],
-    )
-
-    min_date, max_date = _default_date_range(selected_row)
-    start_date, end_date = st.sidebar.date_input(
-        "Date range (UTC)",
-        value=(min_date, max_date),
-        min_value=min_date,
-        max_value=max_date,
-    )
-    if isinstance(start_date, tuple) or isinstance(end_date, tuple):
-        st.error("Please select a valid date range.")
+    selected_row = next((row for row in rows if str(row.get("classroom_id")) == selected_classroom_id), rows[0])
+    first_ts = selected_row.get("first_attempt_at")
+    last_ts = selected_row.get("last_attempt_at")
+    if not (hasattr(first_ts, "date") and hasattr(last_ts, "date")):
+        st.info("Selected classroom does not have a valid replay time span.")
         st.stop()
-    if start_date > end_date:
-        st.error("Start date must be <= end date.")
-        st.stop()
+    start_date = first_ts.date()
+    end_date = last_ts.date()
 
     st.sidebar.header("Replay")
     speed_ms = st.sidebar.slider("Autoplay speed (ms/frame)", min_value=100, max_value=1500, value=450, step=50)
@@ -344,23 +336,22 @@ None
     )
     max_frames = st.sidebar.number_input("Max frames", min_value=50, max_value=5000, value=2000, step=50)
 
-    st.sidebar.header("Color")
-    threshold = st.sidebar.slider("Mastery threshold", min_value=0.50, max_value=0.95, value=0.75, step=0.01)
+    st.sidebar.header("Display")
     show_values = st.sidebar.checkbox("Show cell values", value=False)
 
     payload = _load_replay_payload(
         fact_path=fact_path,
         classroom_id=selected_classroom_id,
         mode_scope=mode_scope,
-        start_date=start_date,
-        end_date=end_date,
+        start_date_iso=start_date.isoformat(),
+        end_date_iso=end_date.isoformat(),
         max_frames=int(max_frames),
         step_size=int(step_size),
     )
 
     total_events = int(payload.get("total_events_valid_timestamp") or 0)
     if total_events == 0:
-        st.info("No attempts found for this classroom/mode/date selection.")
+        st.info("No attempts found for this classroom and work-mode scope.")
         st.stop()
 
     if len(payload.get("activity_ids") or []) == 1:
@@ -384,8 +375,6 @@ None
     state_signature = (
         mode_scope,
         selected_classroom_id,
-        str(start_date),
-        str(end_date),
         int(step_size),
         int(max_frames),
     )
@@ -442,7 +431,7 @@ None
     figure = build_heatmap_figure(
         payload=payload,
         frame_idx=frame_idx,
-        threshold=float(threshold),
+        threshold=HEATMAP_MASTERY_THRESHOLD,
         show_values=bool(show_values),
     )
     st.plotly_chart(figure, width='stretch')

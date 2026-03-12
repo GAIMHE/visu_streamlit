@@ -33,6 +33,7 @@ from visu2.student_elo import (
     build_student_elo_figure,
     build_student_elo_payload,
     select_default_students,
+    select_students_near_attempt_target,
 )
 
 
@@ -141,6 +142,45 @@ Examples
     assert selected == ["u1"]
 
 
+def test_select_students_near_attempt_target_samples_within_band() -> None:
+    """Test attempt-target sampling returns only students inside the requested band."""
+    selected = select_students_near_attempt_target(
+        _profiles(),
+        target_attempts=110,
+        tolerance_ratio=0.10,
+        max_students=2,
+        seed=7,
+    )
+    assert selected == ["u2"]
+
+
+def _label_lookup() -> pl.DataFrame:
+    """Return a minimal readable label lookup for hover enrichment."""
+    return pl.DataFrame(
+        {
+            "activity_id": ["a1", "a2", "a3"],
+            "module_code": ["M1", "M1", "M1"],
+            "module_label": ["Numbers", "Numbers", "Numbers"],
+            "objective_id": ["o1", "o1", "o2"],
+            "objective_label": ["Counting", "Counting", "Comparisons"],
+            "activity_label": ["Activity One", "Activity Two", "Activity Three"],
+        }
+    )
+
+
+def test_select_students_near_attempt_target_can_return_two_random_students() -> None:
+    """Test attempt-target sampling returns two students when the band is wide enough."""
+    selected = select_students_near_attempt_target(
+        _profiles(),
+        target_attempts=120,
+        tolerance_ratio=1.0,
+        max_students=2,
+        seed=3,
+    )
+    assert len(selected) == 2
+    assert set(selected).issubset({"u1", "u2", "u3"})
+
+
 def test_build_student_elo_payload_respects_step_size_and_final_point() -> None:
     """Test build student elo payload respects step size and final point.
 
@@ -179,6 +219,20 @@ Examples
     assert payload["frame_cutoffs"] == [0, 2]
 
 
+def test_build_student_elo_payload_backfills_readable_labels() -> None:
+    """Test payload enrichment uses catalog-backed readable labels."""
+    payload = build_student_elo_payload(
+        _events(),
+        ["u1"],
+        step_size=10,
+        label_lookup=_label_lookup(),
+    )
+    series = payload["series"]["u1"]
+    assert series["activity_label"][:2] == ["Activity One", "Activity One"]
+    assert series["objective_label"][:2] == ["Counting", "Counting"]
+    assert series["module_label"][:2] == ["Numbers", "Numbers"]
+
+
 def test_build_student_elo_figure_uses_synchronized_cutoff() -> None:
     """Test build student elo figure uses synchronized cutoff.
 
@@ -199,3 +253,17 @@ Examples
     assert len(figure.data) == 2
     trace_lengths = [len(trace.x) for trace in figure.data]
     assert trace_lengths == [2, 2]
+
+
+def test_build_student_elo_figure_hovertemplate_mentions_objective_and_module() -> None:
+    """Test hover template exposes readable activity context fields."""
+    payload = build_student_elo_payload(
+        _events(),
+        ["u1"],
+        step_size=2,
+        label_lookup=_label_lookup(),
+    )
+    figure = build_student_elo_figure(payload, frame_idx=1)
+    hovertemplate = figure.data[0].hovertemplate
+    assert "<b>Objective</b>" in hovertemplate
+    assert "<b>Module</b>" in hovertemplate

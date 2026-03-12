@@ -43,7 +43,7 @@ FIGURE_INFO: dict[str, dict[str, tuple[str, ...]]] = {
         ),
     },
     "bottlenecks_transitions_bottleneck_chart": {
-        "What": (
+        "What it shows": (
             "A ranked horizontal bar chart of modules, objectives, or activities where learners appear to struggle the most in the selected slice.",
             "The chart can switch between module level, objective level, and activity level.",
         ),
@@ -54,7 +54,7 @@ FIGURE_INFO: dict[str, dict[str, tuple[str, ...]]] = {
         ),
     },
     "bottlenecks_transitions_path_chart": {
-        "What": (
+        "What it shows": (
             "A horizontal bar chart of the most frequent activity-to-activity transitions in the selected slice.",
             "It focuses on cross-objective transitions, so it highlights movement between different parts of the module rather than short local loops inside the same objective.",
         ),
@@ -65,44 +65,28 @@ FIGURE_INFO: dict[str, dict[str, tuple[str, ...]]] = {
     },
     "matrix_objective_activity_heatmap": {
         "What it shows": (
-            "A module-level matrix where rows are objectives and columns are local activity positions (`A1..An`).",
+            "A module-level matrix where rows are objectives and columns are activity positions.",
             "Each populated cell summarizes one objective/activity pair with the selected metric.",
-        ),
-        "Why it matters": (
-            "It helps compare where strong or weak areas are concentrated inside a module.",
+            "Click a populated cell to open the exercise drilldown for that activity.",
         ),
         "Metrics": (
-            "Available metrics include attempts, success rate, exercise-balanced success, repeat-attempt rate, first-attempt success, playlist unique exercises, and activity mean exercise Elo when artifacts support them.",
+            "`Attempts` counts all recorded attempts on exercises inside the activity.",
+            "`Success rate` is the share of those attempts answered correctly.",
+            "`Exercise-balanced success` first computes a success rate for each exercise, then averages those exercise-level rates so heavily used exercises do not dominate the result.",
+            "`Repeat-attempt rate` is the share of attempts that are not the first try on that exercise.",
+            "`First-attempt success` is the share of first tries that were correct.",
+            "`Playlist unique exercises` counts how many distinct exercises from that activity were used in playlist mode.",
+            "`Activity mean exercise Elo` is the average calibrated difficulty of the exercises in that activity; higher values indicate harder content.",
             "The Elo metric is global difficulty calibration and does not change with the date filter.",
-        ),
-        "Controls that affect it": (
-            "Sidebar module, date range, cohort population, metric, and `Show IDs in hover` affect this heatmap.",
-        ),
-        "How to read / interact": (
-            "Cell values are always shown directly in the heatmap.",
-            "Click a populated cell to open the exercise drilldown for that activity.",
-            "Blank positions mean there is no activity at that local position for the objective.",
         ),
     },
     "matrix_exercise_drilldown_table": {
         "What it shows": (
             "An exercise-level table for the currently selected matrix cell.",
         ),
-        "Why it matters": (
-            "It breaks an activity down into its exercises so you can see whether the matrix signal is broad or driven by a few exercises.",
-        ),
         "Metrics": (
             "Standard metrics include attempts, success rate, first-attempt success, repeat-attempt rate, and median duration.",
             "For the Elo metric, the table switches to exercise Elo, calibration attempts, and calibration success rate.",
-        ),
-        "Controls that affect it": (
-            "The selected matrix cell determines which activity appears here.",
-            "Module, date range, cohort population, and selected metric also affect the drilldown rows.",
-        ),
-        "How to read / interact": (
-            "The table appears only after a matrix cell is selected.",
-            "Click one row in this table to open the instruction panel below.",
-            "If the metric is Elo, the date filter affects the selected activity context but not the Elo values themselves.",
         ),
     },
     "matrix_exercise_instruction_panel": {
@@ -125,22 +109,19 @@ FIGURE_INFO: dict[str, dict[str, tuple[str, ...]]] = {
     },
     "classroom_progression_replay_heatmap": {
         "What it shows": (
-            "An animated student-by-activity matrix for one classroom.",
-            "Each cell reflects cumulative success on that activity at the current replay step.",
-        ),
-        "Why it matters": (
-            "It reveals whether a class progresses together or diverges across activities.",
+            "An animated student-by-activity heatmap for one classroom.",
+            "Rows are activities, columns are students, and each frame shows the classroom state after a synchronized progression step.",
+            "Student labels are bold when that student is still active.",
         ),
         "Metrics": (
-            "Cell color is cumulative success rate for that student/activity pair at the current frame.",
-            "The mastery threshold only changes the color interpretation, not the underlying replay data.",
-        ),
-        "Controls that affect it": (
-            "Classroom, work-mode scope, date range, replay buttons, frame slider, step size, max frames, mastery threshold, and `Show cell values` affect this block.",
-        ),
-        "How to read / interact": (
-            "Use `Play`, `Pause`, `Reset`, and `Step +1` to move through synchronized classroom steps.",
-            "The frame caption above the chart tells you how many attempts have already been integrated.",
+            "One replay step means each student advances by the same number of their own local attempts in that frame.",
+            "With step size `1`, each frame adds the next attempt of each student if one exists; larger step sizes add that many next local attempts per student.",
+            "Each cell stores cumulative attempts and cumulative successes for one student on one activity.",
+            "Cell color is `cumulative successes / cumulative attempts` for that student-activity pair.",
+            "The hover also reports cumulative successful attempts and the number of unique exercises already seen in that student-activity cell.",
+            "Unseen cells stay blank until the student reaches that activity.",
+            "The color scale uses a fixed reference threshold of `75%` to separate weaker and stronger cumulative performance.",
+            "`Show cell values` writes the current cumulative success rate percentage only on populated cells.",
         ),
     },
     "student_elo_summary_cards": {
@@ -154,7 +135,7 @@ FIGURE_INFO: dict[str, dict[str, tuple[str, ...]]] = {
             "Each card shows total attempts, final student Elo, and the first/last attempt timestamps from the profile artifact.",
         ),
         "Controls that affect it": (
-            "Minimum attempts and the student multiselect determine which cards appear.",
+            "The target attempt-count field determines which randomly sampled student trajectories appear.",
         ),
         "How to read / interact": (
             "Use these cards to compare trajectory length and end-state Elo before reading the line chart.",
@@ -172,7 +153,7 @@ FIGURE_INFO: dict[str, dict[str, tuple[str, ...]]] = {
             "Exercise difficulty is fixed from calibrated exercise Elo; only the student rating moves during replay.",
         ),
         "Controls that affect it": (
-            "Student selection, minimum attempts, step size, autoplay speed, replay buttons, and frame slider affect this chart.",
+            "The target attempt-count field, step size, autoplay speed, replay buttons, and frame slider affect this chart.",
         ),
         "How to read / interact": (
             "Use `Play`, `Pause`, `Reset`, and `Step +1` to step through the local attempt timeline.",
@@ -180,7 +161,7 @@ FIGURE_INFO: dict[str, dict[str, tuple[str, ...]]] = {
         ),
     },
     "zpdes_transition_efficiency_graph": {
-        "What": (
+        "What it shows": (
             "A structural view of ZPDES dependencies inside one module.",
             "Squares represent objectives and circles represent activities inside the module.",
             "Activity circles are colored either by first-attempt success in ZPDES mode or by activity mean exercise Elo.",

@@ -143,6 +143,7 @@ It is designed to show whether first attempts on new exercises differ for studen
 ### Page 5: Classroom Progression Replay (`apps/pages/4_classroom_progression_replay.py`)
 This page replays class progression over time as a student-by-activity matrix.  
 It helps inspect pace synchronization, divergence, and emerging bottlenecks in classroom contexts.
+Classrooms are selected by target student count inside the current work-mode scope.
 
 - Replay matrix (`student x activity`) and cumulative progression states  
   Dataset: `artifacts/derived/fact_attempt_core.parquet`
