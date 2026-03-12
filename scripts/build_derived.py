@@ -63,6 +63,7 @@ def _build_manifest(
         "agg_activity_elo",
         "student_elo_events",
         "student_elo_profiles",
+        "zpdes_exercise_progression_events",
     ]
     tables: dict[str, dict[str, object]] = {}
     for table_name in required_tables:

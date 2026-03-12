@@ -12,7 +12,7 @@ Render a runtime-ready derived table for `agg_activity_daily`.
 ## Main Consumers
 - `apps/streamlit_app.py`
 - `apps/pages/2_objective_activity_matrix.py`
-- `apps/pages/3_zpdes_dependencies.py` (overlay)
+- `apps/pages/3_zpdes_transition_efficiency.py` (ZPDES first-attempt coloring)
 
 ## Required Columns (Contract)
 - `date_utc`

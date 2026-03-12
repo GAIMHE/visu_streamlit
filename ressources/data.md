@@ -304,6 +304,16 @@ No derived dataset is generated in this phase. The following are design targets.
   - transition count, success-conditioned transition count
 - Purpose: trajectory explorer and path bottleneck visualization.
 
+### 7.6 `zpdes_exercise_progression_events`
+- Grain: one row per (`user_id`, `exercise_id`, `work_mode`) at the student's first-ever attempt on that destination exercise.
+- Metrics:
+  - exercise first-attempt outcome
+  - total prior attempts
+  - prior attempts on earlier-ranked activities
+  - prior attempts on the same activity
+  - prior attempts on later-ranked activities
+- Purpose: fast event-based before / after / in-activity cohort summaries for the ZPDES transition-efficiency page.
+
 ## 8. Validation Checklist
 
 1. Parquet metadata validation:

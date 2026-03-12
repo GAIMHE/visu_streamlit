@@ -30,6 +30,7 @@ def build_objective_activity_cells(
     agg_exercise_daily: pl.DataFrame | pl.LazyFrame | None = None,
     agg_activity_elo: pl.DataFrame | pl.LazyFrame | None = None,
     fact_attempt_core: pl.DataFrame | pl.LazyFrame | None = None,
+    work_mode: str | None = None,
 ) -> pl.DataFrame:
     """Build the ragged matrix cell table for the selected module and metric."""
     if metric not in VALID_MATRIX_METRICS:
@@ -83,7 +84,117 @@ def build_objective_activity_cells(
         .alias("activity_label"),
     )
 
-    if metric == "exercise_balanced_success_rate":
+    if work_mode is not None and metric != "activity_mean_exercise_elo":
+        if fact_attempt_core is None:
+            raise ValueError(f"Matrix metric '{metric}' with a cohort population requires fact_attempt_core.")
+        fact_cols = columns_of(fact_attempt_core)
+        missing_fact_cols = [
+            col
+            for col in [
+                "date_utc",
+                "module_code",
+                "objective_id",
+                "activity_id",
+                "exercise_id",
+                "work_mode",
+                "data_correct",
+                "attempt_number",
+            ]
+            if col not in fact_cols
+        ]
+        if missing_fact_cols:
+            raise ValueError(f"Matrix source is missing required columns: {sorted(set(missing_fact_cols))}")
+        if metric == "playlist_unique_exercises" and work_mode != "playlist":
+            raise ValueError("Matrix metric 'playlist_unique_exercises' is only available for playlist mode.")
+
+        fact_lf = fact_attempt_core.lazy() if isinstance(fact_attempt_core, pl.DataFrame) else fact_attempt_core
+        fact_filtered = fact_lf.filter(
+            (pl.col("module_code") == module_code)
+            & (pl.col("date_utc") >= pl.lit(start_date))
+            & (pl.col("date_utc") <= pl.lit(end_date))
+            & (pl.col("work_mode") == work_mode)
+            & pl.col("objective_id").is_not_null()
+            & (pl.col("objective_id").cast(pl.Utf8) != "None")
+            & pl.col("activity_id").is_not_null()
+            & (pl.col("activity_id").cast(pl.Utf8) != "None")
+            & pl.col("exercise_id").is_not_null()
+            & (pl.col("exercise_id").cast(pl.Utf8) != "None")
+        )
+
+        if metric == "exercise_balanced_success_rate":
+            exercise_group_exprs: list[pl.Expr] = [
+                pl.col("data_correct").cast(pl.Float64).mean().alias("exercise_success_rate"),
+            ]
+            if "objective_label" in fact_cols:
+                exercise_group_exprs.append(
+                    pl.col("objective_label").cast(pl.Utf8).drop_nulls().first().alias("objective_label")
+                )
+            else:
+                exercise_group_exprs.append(pl.lit(None, dtype=pl.Utf8).alias("objective_label"))
+            if "activity_label" in fact_cols:
+                exercise_group_exprs.append(
+                    pl.col("activity_label").cast(pl.Utf8).drop_nulls().first().alias("activity_label")
+                )
+            else:
+                exercise_group_exprs.append(pl.lit(None, dtype=pl.Utf8).alias("activity_label"))
+            aggregated = collect_lazy(
+                fact_filtered.group_by(["module_code", "objective_id", "activity_id", "exercise_id"]).agg(
+                    exercise_group_exprs
+                )
+                .group_by(["module_code", "objective_id", "activity_id"])
+                .agg(
+                    pl.col("objective_label").drop_nulls().first().alias("objective_label"),
+                    pl.col("activity_label").drop_nulls().first().alias("activity_label"),
+                    pl.col("exercise_success_rate").drop_nulls().mean().alias("exercise_balanced_success_rate"),
+                )
+            ).to_dicts()
+        elif metric == "playlist_unique_exercises":
+            group_exprs: list[pl.Expr] = [
+                pl.col("exercise_id").cast(pl.Utf8).n_unique().cast(pl.Float64).alias("playlist_unique_exercises"),
+            ]
+            if "objective_label" in fact_cols:
+                group_exprs.append(
+                    pl.col("objective_label").cast(pl.Utf8).drop_nulls().first().alias("objective_label")
+                )
+            else:
+                group_exprs.append(pl.lit(None, dtype=pl.Utf8).alias("objective_label"))
+            if "activity_label" in fact_cols:
+                group_exprs.append(
+                    pl.col("activity_label").cast(pl.Utf8).drop_nulls().first().alias("activity_label")
+                )
+            else:
+                group_exprs.append(pl.lit(None, dtype=pl.Utf8).alias("activity_label"))
+            aggregated = collect_lazy(
+                fact_filtered.group_by(["module_code", "objective_id", "activity_id"]).agg(group_exprs)
+            ).to_dicts()
+        else:
+            group_exprs = [
+                pl.len().cast(pl.Float64).alias("attempts_sum"),
+                pl.col("data_correct").cast(pl.Float64).sum().alias("weighted_success_sum"),
+                (pl.col("attempt_number") > 1).cast(pl.Float64).sum().alias("weighted_repeat_sum"),
+                pl.col("data_correct")
+                .filter(pl.col("attempt_number") == 1)
+                .cast(pl.Float64)
+                .sum()
+                .alias("weighted_first_attempt_success_sum"),
+                (pl.col("attempt_number") == 1).cast(pl.Float64).sum().alias("first_attempt_count_sum"),
+            ]
+            if "objective_label" in fact_cols:
+                group_exprs.append(
+                    pl.col("objective_label").cast(pl.Utf8).drop_nulls().first().alias("objective_label")
+                )
+            else:
+                group_exprs.append(pl.lit(None, dtype=pl.Utf8).alias("objective_label"))
+            if "activity_label" in fact_cols:
+                group_exprs.append(
+                    pl.col("activity_label").cast(pl.Utf8).drop_nulls().first().alias("activity_label")
+                )
+            else:
+                group_exprs.append(pl.lit(None, dtype=pl.Utf8).alias("activity_label"))
+            aggregated = collect_lazy(
+                fact_filtered.group_by(["module_code", "objective_id", "activity_id"]).agg(group_exprs)
+            ).to_dicts()
+    elif metric == "exercise_balanced_success_rate":
         if agg_exercise_daily is None:
             raise ValueError("Matrix metric 'exercise_balanced_success_rate' requires agg_exercise_daily.")
         exercise_frame = as_frame(agg_exercise_daily)

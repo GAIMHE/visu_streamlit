@@ -21,12 +21,15 @@ Functions
 """
 from __future__ import annotations
 
+import json
 from datetime import date
+from pathlib import Path
 
 import polars as pl
 
 from visu2.zpdes_dependencies import (
     attach_overlay_metrics_to_nodes,
+    build_dependency_tables_from_metadata,
     filter_dependency_graph_by_objectives,
     parse_dependency_tokens,
 )
@@ -41,9 +44,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 
 Examples
 --------
@@ -65,9 +65,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 
 Examples
 --------
@@ -131,9 +128,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 
 Examples
 --------
@@ -179,3 +173,144 @@ Examples
     assert set(filtered_nodes["node_code"].to_list()) == {"M31O1", "M31O1A1"}
     assert filtered_edges.height == 1
     assert filtered_edges["edge_id"].to_list() == ["e1"]
+
+
+def test_build_dependency_tables_from_metadata_reconciles_stale_topology_nodes(
+    tmp_path: Path,
+) -> None:
+    """Check that dependency_topology nodes are reconciled against the catalog."""
+    learning_catalog = {
+        "meta": {},
+        "id_label_index": {},
+        "exercise_to_hierarchy": {},
+        "modules": [
+            {
+                "id": "m1",
+                "code": "M1",
+                "title": {"short": "Module 1"},
+                "objectives": [
+                    {
+                        "id": "o12",
+                        "code": "M1O12",
+                        "title": {"short": "Ordonner des nombres"},
+                        "activities": [
+                            {
+                                "id": "a1-id",
+                                "code": "M1O12A1",
+                                "title": {"short": "A1 title"},
+                                "exercise_ids": [],
+                            },
+                            {
+                                "id": "a2-id-canonical",
+                                "code": "M1O12A2",
+                                "title": {"short": "A2 canonical"},
+                                "exercise_ids": [],
+                            },
+                            {
+                                "id": "a3-id-canonical",
+                                "code": "M1O12A3",
+                                "title": {"short": "A3 canonical"},
+                                "exercise_ids": [],
+                            },
+                            {
+                                "id": "a4-id-canonical",
+                                "code": "M1O12A4",
+                                "title": {"short": "A4 canonical"},
+                                "exercise_ids": [],
+                            },
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    zpdes_rules = {
+        "meta": {},
+        "module_rules": [{"module_code": "M1", "node_rules": []}],
+        "map_id_code": {"code_to_id": {}, "id_to_codes": {}},
+        "links_to_catalog": {},
+        "unresolved_links": {},
+        "dependency_topology": {
+            "M1": {
+                "nodes": [
+                    {
+                        "module_code": "M1",
+                        "node_id": "o12",
+                        "node_code": "M1O12",
+                        "node_type": "objective",
+                        "label": "Ordonner des nombres",
+                        "objective_code": "M1O12",
+                        "activity_index": None,
+                        "init_open": True,
+                        "source_primary": "topology",
+                        "source_enrichment": "topology",
+                        "is_ghost": False,
+                    },
+                    {
+                        "module_code": "M1",
+                        "node_id": "a1-id",
+                        "node_code": "M1O12A1",
+                        "node_type": "activity",
+                        "label": "A1 title",
+                        "objective_code": "M1O12",
+                        "activity_index": 1,
+                        "init_open": False,
+                        "source_primary": "topology",
+                        "source_enrichment": "topology",
+                        "is_ghost": False,
+                    },
+                    {
+                        "module_code": "M1",
+                        "node_id": "a3-id-canonical",
+                        "node_code": "M1O12A2",
+                        "node_type": "activity",
+                        "label": "A3 canonical",
+                        "objective_code": "M1O12",
+                        "activity_index": 2,
+                        "init_open": False,
+                        "source_primary": "topology",
+                        "source_enrichment": "topology",
+                        "is_ghost": False,
+                    },
+                    {
+                        "module_code": "M1",
+                        "node_id": "missing-a6",
+                        "node_code": "M1O12A3",
+                        "node_type": "activity",
+                        "label": "Wrong A3 title",
+                        "objective_code": "M1O12",
+                        "activity_index": 3,
+                        "init_open": False,
+                        "source_primary": "topology",
+                        "source_enrichment": "topology",
+                        "is_ghost": False,
+                    },
+                ],
+                "edges": [],
+            }
+        },
+    }
+
+    catalog_path = tmp_path / "learning_catalog.json"
+    rules_path = tmp_path / "zpdes_rules.json"
+    catalog_path.write_text(json.dumps(learning_catalog, ensure_ascii=False), encoding="utf-8")
+    rules_path.write_text(json.dumps(zpdes_rules, ensure_ascii=False), encoding="utf-8")
+
+    nodes, edges, warnings = build_dependency_tables_from_metadata(
+        module_code="M1",
+        learning_catalog_path=catalog_path,
+        zpdes_rules_path=rules_path,
+    )
+
+    assert edges.height == 0
+    a2 = nodes.filter(pl.col("node_code") == "M1O12A2").row(0, named=True)
+    a3 = nodes.filter(pl.col("node_code") == "M1O12A3").row(0, named=True)
+    a4 = nodes.filter(pl.col("node_code") == "M1O12A4").row(0, named=True)
+    assert a2["node_id"] == "a2-id-canonical"
+    assert a2["label"] == "A2 canonical"
+    assert a3["node_id"] == "a3-id-canonical"
+    assert a3["label"] == "A3 canonical"
+    assert a4["node_id"] == "a4-id-canonical"
+    assert a4["label"] == "A4 canonical"
+    assert any("Reconciled" in warning for warning in warnings)
+    assert any("Added" in warning for warning in warnings)

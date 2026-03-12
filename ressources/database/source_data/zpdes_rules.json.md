@@ -11,7 +11,7 @@ Dependency rules and topology for activation/deactivation logic across nodes.
 
 ## Main Consumers
 - `src/visu2/zpdes_dependencies.py` topology and dependency extraction
-- `apps/pages/3_zpdes_dependencies.py` graph and rule details
+- `apps/pages/3_zpdes_transition_efficiency.py` structural ZPDES lane graph
 - `src/visu2/checks.py` metadata health checks
 
 ## Main Fields

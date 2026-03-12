@@ -97,9 +97,6 @@ Returns
 dict[str, pl.DataFrame]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return {
         "module_daily": pl.read_parquet(derived_dir / "agg_module_usage_daily.parquet"),
@@ -141,9 +138,6 @@ Returns
 list[str]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     lf = pl.scan_parquet(fact_path).filter(
         (pl.col("date_utc") >= pl.lit(start_date)) & (pl.col("date_utc") <= pl.lit(end_date))
@@ -173,9 +167,6 @@ Returns
 list[str]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return list(pq.ParquetFile(path).schema_arrow.names)
 
@@ -195,9 +186,6 @@ Returns
 str
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     if isinstance(label, str) and label.strip():
         return label.strip()
@@ -219,9 +207,6 @@ Returns
 str
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     base = _label_or_id(label, identifier)
     if isinstance(identifier, str) and identifier:
@@ -247,9 +232,6 @@ Returns
 tuple[str, dict[str, list[str]], list[str], str]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     missing_core: dict[str, list[str]] = {}
     messages: list[str] = []
@@ -322,9 +304,6 @@ Returns
 pl.LazyFrame
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     lf = pl.scan_parquet(fact_path).filter(
         (pl.col("date_utc") >= pl.lit(start_date)) & (pl.col("date_utc") <= pl.lit(end_date))
@@ -347,9 +326,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     bootstrap_runtime_assets()
     settings = get_settings()

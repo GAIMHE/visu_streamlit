@@ -83,9 +83,6 @@ Returns
 dict
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
@@ -104,9 +101,6 @@ Returns
 dict
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     payload = load_json(path)
     required = {"meta", "id_label_index", "modules", "exercise_to_hierarchy"}
@@ -129,9 +123,6 @@ Returns
 dict
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     payload = load_json(path)
     required = {"meta", "module_rules", "map_id_code", "links_to_catalog", "unresolved_links"}
@@ -154,9 +145,6 @@ Returns
 dict
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     payload = load_json(path)
     if "exercises" not in payload:
@@ -181,9 +169,6 @@ Returns
 pl.DataFrame
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return (
         df.select([c for c in df.columns if c != list_col] + [list_col])
@@ -205,9 +190,6 @@ Returns
 SummaryFrames
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     modules = pl.DataFrame(
         [
@@ -322,9 +304,6 @@ Returns
 tuple[str | None, str | None]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     if not isinstance(title_obj, dict):
         return None, None
@@ -349,9 +328,6 @@ Returns
 SummaryFrames
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     modules_rows: list[dict[str, object]] = []
     objectives_rows: list[dict[str, object]] = []
@@ -452,9 +428,6 @@ Returns
 CatalogIndexFrames
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     raw_index = catalog.get("id_label_index")
     if not isinstance(raw_index, dict):
@@ -527,9 +500,6 @@ Returns
 dict[str, dict[str, object]]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     raw = zpdes_rules.get("map_id_code")
     if not isinstance(raw, dict):

@@ -69,6 +69,8 @@ Current runtime set includes:
   - One row per replayable student attempt, with pre/post Elo values.
 - `artifacts/derived/student_elo_profiles.parquet`
   - One row per student for selector cards and replay filtering.
+- `artifacts/derived/zpdes_exercise_progression_events.parquet`
+  - One row per `student x destination exercise x work_mode` first attempt, capturing prior-history counts used by the ZPDES transition-efficiency page.
 - page-2 usage aggregates:
   - `agg_module_usage_daily.parquet`
   - `agg_playlist_module_usage.parquet`

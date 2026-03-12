@@ -66,9 +66,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     source_files = meta.get("source_files")
     if not isinstance(source_files, list):
@@ -104,9 +101,6 @@ Returns
 list[tuple[str, str]]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     found: list[tuple[str, str]] = []
     if isinstance(obj, str):
@@ -140,9 +134,6 @@ Returns
 list[tuple[str, str]]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     found: list[tuple[str, str]] = []
     if isinstance(obj, dict):
@@ -175,9 +166,6 @@ Returns
 list[tuple[str, str]]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     found: list[tuple[str, str]] = []
     if isinstance(obj, dict):
@@ -211,9 +199,6 @@ Returns
 dict[str, int]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     required = {"meta", "id_label_index", "modules", "exercise_to_hierarchy", "conflicts", "orphans"}
     missing = sorted(required - set(payload.keys()))
@@ -351,9 +336,6 @@ Returns
 dict[str, int]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     required = {"meta", "module_rules", "map_id_code", "links_to_catalog", "unresolved_links"}
     missing = sorted(required - set(payload.keys()))
@@ -448,9 +430,6 @@ Returns
 int
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     parser = argparse.ArgumentParser(description="Validate learning_catalog/zpdes_rules contract shape.")
     parser.add_argument(

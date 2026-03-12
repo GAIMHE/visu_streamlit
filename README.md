@@ -99,34 +99,22 @@ uv run python scripts/sync_runtime_assets.py --repo-id <org/repo> --revision <ta
 ## Streamlit Pages and Figures
 
 ### Page 1: Learning Analytics Overview (`apps/streamlit_app.py`)
-This page gives a high-level view of usage, performance, friction points, and navigation flows.  
-It is designed to start broad (KPIs/work modes) and then move to bottlenecks and paths.
+This page is the compact entrypoint into the dashboard.  
+It keeps only the high-level volume KPIs and the work-mode summary table.
 
-- KPI cards (attempts, unique students, unique exercises, success rate)  
+- KPI cards (attempts, unique students, unique exercises)  
   Dataset: `artifacts/derived/fact_attempt_core.parquet`
-- Work Mode Performance / Footprint & Depth  
+- Work Mode Summary Table  
   Dataset: `artifacts/derived/fact_attempt_core.parquet`
+
+### Page 2: Bottlenecks and Transitions (`apps/pages/1_bottlenecks_and_transitions.py`)
+This page focuses on friction points and navigation flows.  
+It keeps the same bottleneck ranking and transition logic that previously lived on the overview page.
+
 - Bottleneck Candidates  
   Dataset: `artifacts/derived/agg_activity_daily.parquet`
 - Path Transitions  
   Dataset: `artifacts/derived/agg_transition_edges.parquet` (with labels from derived aggregates)
-- Data Quality Panel  
-  Datasets: `artifacts/reports/consistency_report.json`, `artifacts/reports/derived_manifest.json`
-
-### Page 2: Usage, Playlist and Engagement (`apps/pages/1_usage_playlist_engagement.py`)
-This page focuses on exposure intensity, time trends, playlist/module usage patterns, and subgroup comparison.  
-It is useful for understanding how learners and classes interact with content at module/activity levels.
-
-- Exposure Overview  
-  Dataset: `artifacts/derived/fact_attempt_core.parquet`
-- Module Usage Trends (attempts and students over time)  
-  Dataset: `artifacts/derived/agg_module_usage_daily.parquet`
-- Module/Playlist Analytics  
-  Dataset: `artifacts/derived/agg_playlist_module_usage.parquet`
-- Activity Usage within Module  
-  Dataset: `artifacts/derived/agg_module_activity_usage.parquet`
-- Diligent Learners Panel (threshold-based subgroup)  
-  Dataset: `artifacts/derived/fact_attempt_core.parquet`
 
 ### Page 3: Objective-Activity Matrix Heatmap (`apps/pages/2_objective_activity_matrix.py`)
 This page shows module-internal structure with objectives on rows and local activity positions (`A1..An`) on columns.  
@@ -143,18 +131,24 @@ It supports metric comparison and click-based drilldown to exercise level.
 - Exercise instruction panel (row click in drilldown table)  
   Datasets: `artifacts/derived/agg_exercise_daily.parquet`, `artifacts/derived/agg_exercise_elo.parquet`, placeholder image `images/placeholder_exo.png`
 
-### Page 4: ZPDES Dependency Graph (`apps/pages/3_zpdes_dependencies.py`)
-This page visualizes unlocking dependencies between objectives and activities, with optional metric overlays.  
-It helps connect rule structure with observed performance.
+### Page 4: ZPDES Transition Efficiency (`apps/pages/3_zpdes_transition_efficiency.py`)
+This page uses the structural ZPDES lane layout and focuses on ZPDES-mode progression only.  
+It is designed to show whether first attempts on new exercises differ for students coming from earlier content, already-later content, or prior work inside the same activity.
 
-- Dependency graph structure and rules  
-  Dataset: `data/zpdes_rules.json`
-- Labels and hierarchy context  
-  Dataset: `data/learning_catalog.json`
-- Optional node performance overlays  
-  Dataset: `artifacts/derived/agg_activity_daily.parquet`
+- Structural ZPDES layout with activity coloring  
+  Datasets: `data/zpdes_rules.json`, `data/learning_catalog.json`, `artifacts/derived/agg_activity_daily.parquet`, `artifacts/derived/agg_activity_elo.parquet`
+- Hover-based ZPDES first-attempt summaries plus before/after/in-activity cohort summaries  
+  Dataset: `artifacts/derived/zpdes_exercise_progression_events.parquet`
 
-### Page 5: Student Elo Evolution (`apps/pages/5_student_elo_evolution.py`)
+### Page 5: Classroom Progression Replay (`apps/pages/4_classroom_progression_replay.py`)
+This page replays class progression over time as a student-by-activity matrix.  
+It helps inspect pace synchronization, divergence, and emerging bottlenecks in classroom contexts.
+Classrooms are selected by target student count inside the current work-mode scope.
+
+- Replay matrix (`student x activity`) and cumulative progression states  
+  Dataset: `artifacts/derived/fact_attempt_core.parquet`
+
+### Page 6: Student Elo Evolution (`apps/pages/5_student_elo_evolution.py`)
 This page replays one or two student Elo trajectories over their own local attempt sequence.  
 It is useful for comparing progression pace, stability, and recovery after failures against fixed exercise difficulty.
 
@@ -162,13 +156,6 @@ It is useful for comparing progression pace, stability, and recovery after failu
   Dataset: `artifacts/derived/student_elo_events.parquet`
 - Student selector and summary cards  
   Dataset: `artifacts/derived/student_elo_profiles.parquet`
-
-### Page 6: Classroom Progression Replay (`apps/pages/4_classroom_progression_replay.py`)
-This page replays class progression over time as a student-by-activity matrix.  
-It helps inspect pace synchronization, divergence, and emerging bottlenecks in classroom contexts.
-
-- Replay matrix (`student x activity`) and cumulative progression states  
-  Dataset: `artifacts/derived/fact_attempt_core.parquet`
 
 ## Further Reading
 - `ressources/README_HF.md`

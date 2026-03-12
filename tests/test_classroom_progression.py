@@ -30,7 +30,9 @@ import polars as pl
 
 from visu2.classroom_progression import (
     build_classroom_mode_profiles,
+    build_heatmap_figure,
     build_replay_payload,
+    select_classrooms_near_student_target,
     select_default_classroom,
 )
 
@@ -44,9 +46,6 @@ Returns
 pl.DataFrame
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     ts0 = datetime(2025, 1, 1, 9, 0, tzinfo=UTC)
     rows: list[dict[str, object]] = []
@@ -146,9 +145,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 
 Examples
 --------
@@ -176,9 +172,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 
 Examples
 --------
@@ -202,6 +195,219 @@ Examples
     assert select_default_classroom(profiles, "all") == "cA"
 
 
+def test_select_classrooms_near_student_target_filters_and_sorts() -> None:
+    """Test classroom target selection filters by band and sorts by locked rules."""
+    profiles = pl.DataFrame(
+        {
+            "mode_scope": ["zpdes", "zpdes", "zpdes", "playlist"],
+            "classroom_id": ["cA", "cB", "cC", "cD"],
+            "students": [18, 21, 19, 20],
+            "activities": [10, 9, 14, 20],
+            "objectives": [4, 4, 4, 4],
+            "modules": [1, 1, 1, 1],
+            "attempts": [120, 300, 200, 100],
+            "first_attempt_at": [None, None, None, None],
+            "last_attempt_at": [None, None, None, None],
+        }
+    )
+    selected = select_classrooms_near_student_target(profiles, "zpdes", target_students=20)
+    assert selected["classroom_id"].to_list() == ["cC", "cA", "cB"]
+
+
+def test_select_classrooms_near_student_target_returns_empty_when_no_match() -> None:
+    """Test classroom target selection returns an empty frame when no classroom matches."""
+    profiles = pl.DataFrame(
+        {
+            "mode_scope": ["zpdes"],
+            "classroom_id": ["cA"],
+            "students": [40],
+            "activities": [10],
+            "objectives": [4],
+            "modules": [1],
+            "attempts": [120],
+            "first_attempt_at": [None],
+            "last_attempt_at": [None],
+        }
+    )
+    selected = select_classrooms_near_student_target(profiles, "zpdes", target_students=20)
+    assert selected.height == 0
+
+
+def test_build_heatmap_figure_overlays_values_only_on_populated_cells() -> None:
+    """Test classroom heatmap values are rendered only for populated cells."""
+    payload = build_replay_payload(
+        fact=_base_fact_fixture(),
+        classroom_id="c1",
+        mode_scope="zpdes",
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 1),
+        max_frames=2000,
+        step_size=1,
+    )
+
+    figure = build_heatmap_figure(payload=payload, frame_idx=1, threshold=0.75, show_values=True)
+
+    assert len(figure.data) == 2
+    heatmap = figure.data[0]
+    text_overlay = figure.data[1]
+    assert heatmap.type == "heatmap"
+    assert text_overlay.type == "scatter"
+    assert list(text_overlay.text) == ["0%", "100%"]
+    assert list(text_overlay.x) == ["Student 1", "Student 2"]
+    assert list(text_overlay.y) == ["A1", "A2"]
+    hover_customdata = heatmap.customdata
+    assert hover_customdata[0][0][3] == 1
+    assert hover_customdata[0][0][6] == 0
+    assert hover_customdata[0][0][7] == 1
+    assert hover_customdata[1][1][3] == 1
+    assert hover_customdata[1][1][6] == 1
+    assert hover_customdata[1][1][7] == 1
+
+
+def test_build_replay_payload_makes_duplicate_activity_axis_labels_unique() -> None:
+    """Test replay payload uniquifies duplicate activity labels for Plotly axes."""
+    ts0 = datetime(2025, 1, 1, 9, 0, tzinfo=UTC)
+    fact = pl.DataFrame(
+        [
+            {
+                "created_at": ts0,
+                "date_utc": ts0.date(),
+                "user_id": "u1",
+                "teacher_id": "t1",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "pm1",
+                "objective_id": "o1",
+                "objective_label": "o1",
+                "activity_id": "a1",
+                "activity_label": "Repeated label",
+                "exercise_id": "e1",
+                "module_long_title": "Module",
+                "data_correct": 1,
+                "data_duration": 5.0,
+                "session_duration": 10.0,
+                "work_mode": "zpdes",
+                "attempt_number": 1,
+                "student_attempt_index": 1,
+                "first_attempt_success_rate": 1.0,
+                "module_id": "mid-1",
+                "module_code": "M1",
+                "module_label": "M1",
+            },
+            {
+                "created_at": ts0 + timedelta(minutes=1),
+                "date_utc": ts0.date(),
+                "user_id": "u1",
+                "teacher_id": "t1",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "pm1",
+                "objective_id": "o1",
+                "objective_label": "o1",
+                "activity_id": "a2",
+                "activity_label": "Repeated label",
+                "exercise_id": "e2",
+                "module_long_title": "Module",
+                "data_correct": 0,
+                "data_duration": 5.0,
+                "session_duration": 10.0,
+                "work_mode": "zpdes",
+                "attempt_number": 1,
+                "student_attempt_index": 2,
+                "first_attempt_success_rate": 0.0,
+                "module_id": "mid-1",
+                "module_code": "M1",
+                "module_label": "M1",
+            },
+        ]
+    )
+
+    payload = build_replay_payload(
+        fact=fact,
+        classroom_id="c1",
+        mode_scope="zpdes",
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 1),
+        max_frames=2000,
+        step_size=1,
+    )
+
+    assert payload["activity_axis_labels"] == ["Repeated label", "Repeated label [2]"]
+
+    figure = build_heatmap_figure(payload=payload, frame_idx=2, threshold=0.75, show_values=True)
+    assert list(figure.data[1].y) == ["Repeated label", "Repeated label [2]"]
+
+
+def test_build_replay_payload_keeps_missing_activity_metadata_visible() -> None:
+    """Test replay payload keeps attempts with missing activity metadata in a placeholder row."""
+    ts0 = datetime(2025, 1, 1, 9, 0, tzinfo=UTC)
+    fact = pl.DataFrame(
+        [
+            {
+                "created_at": ts0,
+                "date_utc": ts0.date(),
+                "user_id": "u1",
+                "teacher_id": "t1",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "pm1",
+                "objective_id": "o1",
+                "objective_label": "o1",
+                "activity_id": None,
+                "activity_label": None,
+                "exercise_id": "e1",
+                "module_long_title": "Module",
+                "data_correct": 1,
+                "data_duration": 5.0,
+                "session_duration": 10.0,
+                "work_mode": "playlist",
+                "attempt_number": 1,
+                "student_attempt_index": 1,
+                "first_attempt_success_rate": 1.0,
+                "module_id": "mid-1",
+                "module_code": "M1",
+                "module_label": "M1",
+            },
+            {
+                "created_at": ts0 + timedelta(minutes=1),
+                "date_utc": ts0.date(),
+                "user_id": "u2",
+                "teacher_id": "t1",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "pm1",
+                "objective_id": "o1",
+                "objective_label": "o1",
+                "activity_id": "a1",
+                "activity_label": "A1",
+                "exercise_id": "e2",
+                "module_long_title": "Module",
+                "data_correct": 0,
+                "data_duration": 5.0,
+                "session_duration": 10.0,
+                "work_mode": "playlist",
+                "attempt_number": 1,
+                "student_attempt_index": 1,
+                "first_attempt_success_rate": 0.0,
+                "module_id": "mid-1",
+                "module_code": "M1",
+                "module_label": "M1",
+            },
+        ]
+    )
+
+    payload = build_replay_payload(
+        fact=fact,
+        classroom_id="c1",
+        mode_scope="playlist",
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 1),
+        max_frames=2000,
+        step_size=1,
+    )
+
+    assert "(missing activity metadata)" in payload["activity_axis_labels"]
+    final_attempts = payload["attempt_frames"][-1]
+    nonzero_cells = sum(1 for row in final_attempts for value in row if value > 0)
+    assert nonzero_cells == 2
+
+
 def test_build_replay_payload_has_empty_initial_frame_and_cumulative_updates() -> None:
     """Test build replay payload has empty initial frame and cumulative updates.
 
@@ -211,9 +417,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 
 Examples
 --------
@@ -253,6 +456,8 @@ Examples
     # final frame cumulative checks
     last = payload["rate_frames"][-1]
     attempts_last = payload["attempt_frames"][-1]
+    successes_last = payload["success_frames"][-1]
+    unique_exercises_last = payload["unique_exercise_frames"][-1]
 
     student_axis = payload["student_axis_labels"]
     activity_ids = payload["activity_ids"]
@@ -262,11 +467,17 @@ Examples
     # a1 x Student1 -> 0 then 1 => 0.5
     assert abs(float(last[0][0]) - 0.5) < 1e-9
     assert int(attempts_last[0][0]) == 2
+    assert int(successes_last[0][0]) == 1
+    assert int(unique_exercises_last[0][0]) == 2
     # a1 x Student2 -> 1/1
     assert abs(float(last[0][1]) - 1.0) < 1e-9
     assert int(attempts_last[0][1]) == 1
+    assert int(successes_last[0][1]) == 1
+    assert int(unique_exercises_last[0][1]) == 1
     # a2 x Student2 -> 1/1
     assert abs(float(last[1][1]) - 1.0) < 1e-9
+    assert int(successes_last[1][1]) == 1
+    assert int(unique_exercises_last[1][1]) == 1
 
 
 def test_build_replay_payload_applies_frame_cap_with_effective_step() -> None:
@@ -278,9 +489,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 
 Examples
 --------
@@ -342,9 +550,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 
 Examples
 --------
@@ -463,3 +668,8 @@ Examples
 
     assert payload["frame_step_counts"] == [0, 1, 2, 3]
     assert payload["frame_event_counts"] == [0, 2, 3, 4]
+    assert payload["student_total_attempts"] == [3, 1]
+
+    figure = build_heatmap_figure(payload=payload, frame_idx=2, threshold=0.75, show_values=False)
+    ticktext = list(figure.layout.xaxis.ticktext)
+    assert ticktext == ["<b>Student 1</b>", "Student 2"]

@@ -60,9 +60,6 @@ Returns
 str
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return datetime.now(UTC).isoformat()
 
@@ -84,9 +81,6 @@ Returns
 dict[str, Any]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return {
         "name": name,
@@ -111,9 +105,6 @@ Returns
 int
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     parquet = pq.ParquetFile(parquet_path)
     schema_names = parquet.schema_arrow.names
@@ -143,9 +134,6 @@ Returns
 dict[str, Any]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     parquet = pq.ParquetFile(settings.parquet_path)
     schema_names = parquet.schema_arrow.names
@@ -196,9 +184,6 @@ Returns
 dict[str, Any]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     frames = catalog_to_summary_frames(catalog_payload)
     module_objectives = frames.module_objectives
@@ -242,9 +227,6 @@ Returns
 int
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     value = payload.get(key)
     return len(value) if isinstance(value, list) else 0
@@ -265,9 +247,6 @@ Returns
 int
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     value = payload.get(key)
     return len(value) if isinstance(value, dict) else 0
@@ -288,9 +267,6 @@ Returns
 int
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     try:
         return int(value)
@@ -313,9 +289,6 @@ Returns
 object
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     for key in keys:
         if key in payload:
@@ -347,9 +320,6 @@ Returns
 dict[str, int]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     conflicts = catalog_payload.get("conflicts")
     conflicts = conflicts if isinstance(conflicts, dict) else {}
@@ -441,9 +411,6 @@ Returns
 dict[str, Any]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     catalog_payload = load_learning_catalog(settings.learning_catalog_path)
     zpdes_rules_payload = load_zpdes_rules(settings.zpdes_rules_path)

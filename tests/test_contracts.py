@@ -37,9 +37,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 
 Examples
 --------
@@ -77,9 +74,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 
 Examples
 --------
@@ -135,9 +129,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 
 Examples
 --------
@@ -152,6 +143,7 @@ Examples
         "agg_activity_elo",
         "student_elo_events",
         "student_elo_profiles",
+        "zpdes_exercise_progression_events",
     }
     assert expected_tables.issubset(set(REQUIRED_AGG_COLUMNS.keys()))
 
@@ -165,9 +157,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 
 Examples
 --------

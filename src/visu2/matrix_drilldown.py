@@ -123,6 +123,7 @@ def build_exercise_drilldown_frame(
     metric: str,
     agg_exercise_elo: pl.DataFrame | pl.LazyFrame | None = None,
     fact_attempt_core: pl.DataFrame | pl.LazyFrame | None = None,
+    work_mode: str | None = None,
 ) -> pl.DataFrame:
     """Build the exercise-level drilldown for the selected matrix cell."""
     if metric not in VALID_MATRIX_METRICS:
@@ -173,6 +174,91 @@ def build_exercise_drilldown_frame(
                 pl.lit(None, dtype=pl.Float64).alias("avg_attempt_number"),
             )
             .sort(["metric_value", "calibration_attempts"], descending=[True, True])
+        )
+        return drilldown.select(list(DRILLDOWN_SCHEMA.keys()))
+
+    if work_mode is not None:
+        if fact_attempt_core is None:
+            raise ValueError(f"Exercise drilldown for '{metric}' with a cohort population requires fact_attempt_core.")
+        fact_cols = columns_of(fact_attempt_core)
+        missing_fact_cols = [
+            col
+            for col in [
+                "date_utc",
+                "module_code",
+                "objective_id",
+                "activity_id",
+                "exercise_id",
+                "work_mode",
+                "data_correct",
+                "attempt_number",
+                "data_duration",
+            ]
+            if col not in fact_cols
+        ]
+        if missing_fact_cols:
+            raise ValueError(f"Drilldown source is missing required columns: {sorted(set(missing_fact_cols))}")
+        if metric == "playlist_unique_exercises" and work_mode != "playlist":
+            raise ValueError("Exercise drilldown for 'playlist_unique_exercises' is only available for playlist mode.")
+
+        fact_lf = fact_attempt_core.lazy() if isinstance(fact_attempt_core, pl.DataFrame) else fact_attempt_core
+        filtered = fact_lf.filter(
+            (pl.col("module_code") == module_code)
+            & (pl.col("objective_id") == objective_id)
+            & (pl.col("activity_id") == activity_id)
+            & (pl.col("date_utc") >= pl.lit(start_date))
+            & (pl.col("date_utc") <= pl.lit(end_date))
+            & (pl.col("work_mode") == work_mode)
+            & pl.col("exercise_id").is_not_null()
+            & (pl.col("exercise_id").cast(pl.Utf8) != "None")
+        )
+        grouped = collect_lazy(
+            filtered.group_by(["exercise_id"])
+            .agg(
+                pl.len().cast(pl.Float64).alias("attempts"),
+                pl.col("data_correct").cast(pl.Float64).mean().alias("success_rate"),
+                (pl.col("attempt_number") > 1).cast(pl.Float64).mean().alias("repeat_attempt_rate"),
+                pl.col("data_correct")
+                .filter(pl.col("attempt_number") == 1)
+                .cast(pl.Float64)
+                .mean()
+                .alias("first_attempt_success_rate"),
+                (pl.col("attempt_number") == 1).cast(pl.Float64).sum().alias("first_attempt_count"),
+                pl.col("data_duration").cast(pl.Float64).median().alias("median_duration"),
+                pl.col("attempt_number").cast(pl.Float64).mean().alias("avg_attempt_number"),
+            )
+        )
+        if grouped.height == 0:
+            return empty_drilldown_df()
+
+        metric_expr = {
+            "attempts": pl.col("attempts"),
+            "success_rate": pl.col("success_rate"),
+            "exercise_balanced_success_rate": pl.col("success_rate"),
+            "repeat_attempt_rate": pl.col("repeat_attempt_rate"),
+            "first_attempt_success_rate": pl.col("first_attempt_success_rate"),
+            "playlist_unique_exercises": pl.col("attempts"),
+        }.get(metric)
+        if metric_expr is None:
+            raise ValueError(f"Unsupported metric '{metric}' for fact-backed drilldown.")
+
+        metric_text_metric = "attempts" if metric == "playlist_unique_exercises" else metric
+        drilldown = (
+            grouped.with_columns(
+                pl.col("exercise_id").cast(pl.Utf8),
+                pl.col("exercise_id").cast(pl.Utf8).alias("exercise_label"),
+                pl.lit("unknown", dtype=pl.Utf8).alias("exercise_type"),
+                pl.col("exercise_id").cast(pl.Utf8).str.slice(0, 8).alias("exercise_short_id"),
+            )
+            .with_columns(pl.col("exercise_short_id").alias("exercise_display_label"))
+            .with_columns(
+                metric_expr.alias("metric_value"),
+                pl.lit(None, dtype=pl.Float64).alias("exercise_elo"),
+                pl.lit(None, dtype=pl.Int64).alias("calibration_attempts"),
+                pl.lit(None, dtype=pl.Float64).alias("calibration_success_rate"),
+            )
+            .with_columns(_formatted_metric_text_expr(metric_text_metric))
+            .sort(["metric_value", "attempts"], descending=[True, True])
         )
         return drilldown.select(list(DRILLDOWN_SCHEMA.keys()))
 

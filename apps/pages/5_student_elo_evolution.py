@@ -30,6 +30,7 @@ from __future__ import annotations
 import sys
 import time
 from pathlib import Path
+from random import SystemRandom
 
 import polars as pl
 import pyarrow.parquet as pq
@@ -43,6 +44,7 @@ if str(SRC_DIR) not in sys.path:
 if str(APPS_DIR) not in sys.path:
     sys.path.insert(0, str(APPS_DIR))
 
+from figure_info import render_figure_info
 from runtime_bootstrap import bootstrap_runtime_assets
 
 from visu2.config import get_settings
@@ -51,8 +53,9 @@ from visu2.student_elo import (
     build_student_elo_figure,
     build_student_elo_payload,
     load_student_elo_events,
+    load_student_elo_label_lookup,
     load_student_elo_profiles,
-    select_default_students,
+    select_students_near_attempt_target,
 )
 
 st.set_page_config(
@@ -96,20 +99,19 @@ Returns
 Any
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return load_student_elo_profiles(path)
 
 
 @st.cache_data(show_spinner=False)
-def _load_payload(path: Path, user_ids: tuple[str, ...], step_size: int):
+def _load_payload(path: Path, label_path: Path, user_ids: tuple[str, ...], step_size: int):
     """Load payload.
 
 Parameters
 ----------
 path : Path
+        Input parameter used by this routine.
+label_path : Path
         Input parameter used by this routine.
 user_ids : tuple[str, ...]
         Input parameter used by this routine.
@@ -121,11 +123,19 @@ Returns
 Any
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
-    return build_student_elo_payload(load_student_elo_events(path), list(user_ids), step_size)
+    return build_student_elo_payload(
+        load_student_elo_events(path),
+        list(user_ids),
+        step_size,
+        label_lookup=_load_label_lookup(label_path),
+    )
+
+
+@st.cache_data(show_spinner=False)
+def _load_label_lookup(path: Path) -> pl.DataFrame:
+    """Load readable module/objective/activity labels for Elo hover content."""
+    return load_student_elo_label_lookup(path)
 
 
 def _parquet_columns(path: Path) -> list[str]:
@@ -141,9 +151,6 @@ Returns
 list[str]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     return list(pq.ParquetFile(path).schema_arrow.names)
 
@@ -157,9 +164,6 @@ Returns
 None
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     bootstrap_runtime_assets()
     settings = get_settings()
@@ -200,43 +204,57 @@ Notes
         st.stop()
 
     st.title("Student Elo Evolution")
-    st.caption(
-        "Replay one or two student trajectories against fixed exercise difficulty. "
-        "Exercise Elo is frozen; only the student rating changes over time."
-    )
 
-    st.sidebar.header("Selection")
-    min_attempts = int(
-        st.sidebar.number_input(
-            "Minimum attempts",
-            min_value=1,
-            max_value=5000,
-            value=100,
+    eligible_profiles = profiles.filter(pl.col("eligible_for_replay"))
+    if eligible_profiles.height == 0:
+        st.info("No student Elo trajectories are eligible for replay.")
+        st.stop()
+
+    min_attempt_count = int(eligible_profiles["total_attempts"].min() or 0)
+    max_attempt_count = int(eligible_profiles["total_attempts"].max() or 0)
+    median_attempt_count = int(eligible_profiles["total_attempts"].median() or min_attempt_count or 1)
+
+    st.caption(
+        f"Eligible students range from **{min_attempt_count}** to **{max_attempt_count}** attempts."
+    )
+    target_attempts = int(
+        st.number_input(
+            "Target attempt count",
+            min_value=max(1, min_attempt_count),
+            max_value=max(1, max_attempt_count),
+            value=min(max(1, median_attempt_count), max(1, max_attempt_count)),
             step=10,
         )
     )
 
-    eligible_profiles = profiles.filter(pl.col("total_attempts") >= min_attempts)
-    if eligible_profiles.height == 0:
-        st.info("No students match the current minimum-attempt threshold.")
-        st.stop()
+    selection_signature = ("student_elo_attempt_target", target_attempts)
+    selection_state_key = "student_elo_selected_students"
+    selection_signature_key = "student_elo_attempt_target_signature"
+    if st.session_state.get(selection_signature_key) != selection_signature:
+        sampled = select_students_near_attempt_target(
+            profiles,
+            target_attempts=target_attempts,
+            tolerance_ratio=0.10,
+            max_students=2,
+            seed=SystemRandom().randrange(0, 2**31 - 1),
+        )
+        st.session_state[selection_signature_key] = selection_signature
+        st.session_state[selection_state_key] = sampled
 
-    default_students = select_default_students(profiles, min_attempts=min_attempts, max_students=2)
-    options = eligible_profiles["user_id"].to_list()
-    selected_students = st.sidebar.multiselect(
-        "Students to display",
-        options=options,
-        default=default_students,
-    )
-    normalized_students = [str(user_id) for user_id in selected_students if str(user_id).strip()]
-    if len(normalized_students) > 2:
-        normalized_students = normalized_students[:2]
-        st.warning("Only the first two selected students are displayed.")
+    normalized_students = [
+        str(user_id)
+        for user_id in st.session_state.get(selection_state_key, [])
+        if str(user_id).strip()
+    ][:2]
     if not normalized_students:
-        normalized_students = default_students[:2]
-    if not normalized_students:
-        st.info("Select at least one student to render a trajectory.")
+        lower = int(target_attempts * 0.9)
+        upper = int(target_attempts * 1.1)
+        st.info(
+            f"No students found in the {lower}-{upper} attempt range. Please try another range."
+        )
         st.stop()
+    if len(normalized_students) == 1:
+        st.caption("Only one student was found in the requested attempt range.")
 
     st.sidebar.header("Replay")
     step_size = int(
@@ -258,7 +276,12 @@ Notes
         )
     )
 
-    payload = _load_payload(events_path, tuple(normalized_students), step_size)
+    payload = _load_payload(
+        events_path,
+        settings.learning_catalog_path,
+        tuple(normalized_students),
+        step_size,
+    )
     student_ids = payload.get("student_ids") or []
     if not student_ids:
         st.info("No Elo event rows are available for the selected students.")
@@ -266,7 +289,7 @@ Notes
 
     frame_cutoffs = payload.get("frame_cutoffs") or [0]
     max_frame_idx = max(0, len(frame_cutoffs) - 1)
-    state_signature = (tuple(student_ids), int(step_size), int(min_attempts))
+    state_signature = (tuple(student_ids), int(step_size), int(target_attempts))
     signature_key = "student_elo_signature"
     frame_key = "student_elo_frame_idx"
     playing_key = "student_elo_playing"
@@ -280,6 +303,8 @@ Notes
         st.session_state[playing_key] = False
 
     selected_profiles = profiles.filter(pl.col("user_id").is_in(student_ids))
+    st.markdown("**Student Summary Cards**")
+    render_figure_info("student_elo_summary_cards")
     summary_cols = st.columns(max(1, len(student_ids)))
     for idx, user_id in enumerate(student_ids):
         row = selected_profiles.filter(pl.col("user_id") == user_id).to_dicts()
@@ -296,6 +321,8 @@ Notes
                 f"{entry.get('first_attempt_at')} -> {entry.get('last_attempt_at')}"
             )
 
+    st.markdown("**Elo Replay Chart**")
+    render_figure_info("student_elo_replay_chart")
     c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
     with c1:
         if st.button("Play" if not st.session_state[playing_key] else "Pause", width="stretch"):

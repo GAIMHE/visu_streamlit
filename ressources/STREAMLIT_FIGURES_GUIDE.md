@@ -11,23 +11,39 @@ Important note:
 
 ## Page: Learning Analytics Overview
 
-### 1) Work Mode Footprint and Depth (grouped bar chart)
+### 1) Overview KPIs (metric cards)
 **What it shows**
-- For each work mode (`zpdes`, `playlist`, etc.), how much content was explored:
-  - number of modules
-  - number of objectives
-  - number of activities
-- The page also shows two success-rate views by work mode:
-  - attempt-weighted success rate
-  - exercise-balanced success rate (each exercise weighted equally)
+- A compact snapshot of the currently filtered attempt history:
+  - total attempts
+  - unique students
+  - unique exercises
 
 **Question it can answer**
-- Which work mode leads to broader exploration of the curriculum?
-- Do students in one mode visit more content than in another mode?
+- How large is the current slice?
+- How many learners and exercises are represented in this slice?
 
 ---
 
-### 2) Bottleneck Candidates (horizontal bar chart)
+### 2) Work Mode Summary Table
+**What it shows**
+- One row per work mode with:
+  - attempts
+  - attempt-weighted success rate
+  - exercise-balanced success rate
+  - unique students
+  - curriculum width metrics
+  - median attempts per activity
+  - repeat-attempt rate
+
+**Question it can answer**
+- Which work modes combine broad exploration with strong success?
+- Which work modes rely more on repetition than on breadth?
+
+---
+
+## Page: Bottlenecks and Transitions
+
+### 3) Bottleneck Candidates (horizontal bar chart)
 **What it shows**
 - Ranks modules/objectives/activities (you choose the level) where students struggle the most.
 - Score combines:
@@ -40,7 +56,7 @@ Important note:
 
 ---
 
-### 3) Path Transitions (horizontal bar chart)
+### 4) Path Transitions (horizontal bar chart)
 **What it shows**
 - Most frequent transitions from one activity to the next (focused on cross-objective transitions).
 - Also shows how often the destination attempt is successful (as a count).
@@ -51,66 +67,9 @@ Important note:
 
 ---
 
-## Page: Usage, Playlist and Engagement
-
-### 4) Exposure Bucket Distribution by Module (stacked bar chart)
-**What it shows**
-- For each module, student-module pairs are split into exposure buckets:
-  - low (`<=10` attempts)
-  - medium (`11-50`)
-  - high (`>50`)
-
-**Question it can answer**
-- Are students lightly exposed or deeply exposed in each module?
-- Which modules are mostly used for quick practice vs intensive work?
-
----
-
-### 5) Attempts Over Time by Module (line chart)
-**What it shows**
-- Daily number of attempts per module.
-
-**Question it can answer**
-- When does usage increase or decrease?
-- Which modules are most used during a given period?
-
----
-
-### 6) Unique Students Over Time by Module (area chart)
-**What it shows**
-- Daily number of distinct students active in each module.
-
-**Question it can answer**
-- Is module usage broad (many students) or concentrated (few students)?
-- Are changes in attempts caused by more students or just heavier use by the same students?
-
----
-
-### 7) Average Activities per Playlist by Module (bar chart)
-**What it shows**
-- Average number of distinct activities included in playlists, by module.
-
-**Question it can answer**
-- In playlists, which modules are used in a broader vs narrower way?
-- Are playlists in some modules very focused (few activities) or diversified?
-
----
-
-### 8) Activity Usage Within Module (horizontal bar chart)
-**What it shows**
-- Top activities in the selected module, ranked by:
-  - attempts, or
-  - unique students (toggle)
-
-**Question it can answer**
-- Which activities receive most practice?
-- Which activities are central for many learners, and which are underused?
-
----
-
 ## Page: Objective-Activity Matrix Heatmap
 
-### 9) Objective-Activity Matrix (heatmap)
+### 5) Objective-Activity Matrix (heatmap)
 **What it shows**
 - Rows = objectives in the selected module.
 - Columns = local activity positions (`A1..An`) within each objective.
@@ -122,6 +81,10 @@ Important note:
   - repeat attempt rate
   - first-attempt success rate (if available)
   - playlist unique exercises
+- A `Cohort population` control can restrict the non-Elo metrics to:
+  - all modes
+  - `zpdes`
+  - `playlist`
 - Interaction: click populated squares directly to open exercise drilldown.
 
 **Question it can answer**
@@ -131,26 +94,51 @@ Important note:
 
 ---
 
-## Page: ZPDES Dependency Graph
+## Page: ZPDES Transition Efficiency
 
-### 10) Dependency Graph (network/lanes graph)
+### 6) Transition-Efficiency Graph (network/lanes graph with cohort hover metrics)
 **What it shows**
-- Objective lanes and activity nodes.
-- Edges represent dependency rules:
-  - activation rules
-  - deactivation rules
-- Optional node overlay for attempts/success/repeat rate.
+- The structural ZPDES lane layout for one module.
+- Activity circles are colored either by:
+  - first-attempt success rate in `zpdes`, or
+  - activity mean exercise Elo
+- Hover always shows ZPDES first-attempt success and event counts for the activity.
+- A typed threshold input defines how many prior later-activity attempts are required for the `after` cohort
+- Hover on one activity shows:
+  - `before` cohort success rate, eligible event count, unique-student count, and total previous attempts
+  - `after` cohort success rate, eligible event count, unique-student count, and total previous attempts
+  - `in-activity` cohort success rate, eligible event count, unique-student count, and total previous attempts
 
 **Question it can answer**
-- Which prerequisites unlock which parts of a module?
-- Where do dependency chains look fragile (low performance on key prerequisite nodes)?
-- Which nodes are likely critical for progression flow?
+- Do students attempting a new exercise from strictly earlier content perform differently from students who already explored later content?
+- Which activities attract many event-level `after` or `in-activity` attempts?
+- Are weak outcomes concentrated among these `after` or `in-activity` cohorts?
+
+---
+
+## Page: Classroom Progression Replay
+
+### 7) Student x Activity Replay Matrix (animated heatmap)
+**What it shows**
+- A classroom matrix:
+  - X-axis = students (anonymized)
+  - Y-axis = activities
+- The page first narrows classrooms by target student count inside the selected work-mode scope.
+- Matching classrooms are ordered by activity coverage first, then attempts, then students.
+- Replay starts empty, then fills in synchronized steps.
+- Each cell color = cumulative success rate for that student on that activity.
+- The color scale uses a fixed `75%` reference threshold.
+
+**Question it can answer**
+- How does progression spread across a class over time?
+- Are students progressing together or diverging?
+- Which activities become class-wide bottlenecks during the sequence?
 
 ---
 
 ## Page: Student Elo Evolution
 
-### 11) Student Elo Evolution (replay line chart)
+### 8) Student Elo Evolution (replay line chart)
 **What it shows**
 - One or two students' Elo trajectories over their own attempt sequence.
 - Exercise difficulty is fixed from the historical calibration.
@@ -163,29 +151,12 @@ Important note:
 
 ---
 
-## Page: Classroom Progression Replay
-
-### 12) Student x Activity Replay Matrix (animated heatmap)
-**What it shows**
-- A classroom matrix:
-  - X-axis = students (anonymized)
-  - Y-axis = activities
-- Replay starts empty, then fills in synchronized steps.
-- Each cell color = cumulative success rate for that student on that activity.
-
-**Question it can answer**
-- How does progression spread across a class over time?
-- Are students progressing together or diverging?
-- Which activities become class-wide bottlenecks during the sequence?
-
----
-
 ## Quick reading tips
 
 - Use filters first (date/module/objective/activity/classroom) to avoid mixed signals.
-- Start with broad figures (trends, footprint), then drill down (matrix, bottlenecks, dependency graph).
+- Start with the broad overview, then move to bottlenecks/transitions or drill down into the matrix and graph pages.
 - For intervention decisions:
-  1. Find weak points (bottlenecks/matrix),
+  1. Find weak points (overview, bottlenecks, matrix),
   2. Check path context (transitions/dependencies),
   3. Compare individual trajectories if needed (Student Elo),
   4. Check class-level dynamics (replay page).

@@ -279,9 +279,6 @@ Returns
 list[tuple[str, str]]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     found: list[tuple[str, str]] = []
     if isinstance(obj, str):
@@ -317,9 +314,6 @@ Returns
 list[tuple[str, str]]
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     found: list[tuple[str, str]] = []
     if isinstance(obj, dict):
@@ -345,9 +339,6 @@ Returns
 int
         Result produced by this routine.
 
-Notes
------
-    Behavior is intentionally documented for maintainability and traceability.
 """
     parser = argparse.ArgumentParser(
         description="Sanitize learning_catalog/zpdes_rules to a standalone 4-file metadata contract."
