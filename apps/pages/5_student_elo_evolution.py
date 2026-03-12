@@ -205,6 +205,7 @@ None
         st.stop()
 
     st.title("Student Elo Evolution")
+    render_figure_info("student_elo_page")
 
     eligible_profiles = profiles.filter(pl.col("eligible_for_replay"))
     if eligible_profiles.height == 0:
@@ -304,8 +305,6 @@ None
         st.session_state[playing_key] = False
 
     selected_profiles = profiles.filter(pl.col("user_id").is_in(student_ids))
-    st.markdown("**Student Summary Cards**")
-    render_figure_info("student_elo_summary_cards")
     summary_cols = st.columns(max(1, len(student_ids)))
     for idx, user_id in enumerate(student_ids):
         row = selected_profiles.filter(pl.col("user_id") == user_id).to_dicts()
@@ -322,8 +321,6 @@ None
                 f"{entry.get('first_attempt_at')} -> {entry.get('last_attempt_at')}"
             )
 
-    st.markdown("**Elo Replay Chart**")
-    render_figure_info("student_elo_replay_chart")
     c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
     with c1:
         if st.button("Play" if not st.session_state[playing_key] else "Pause", width="stretch"):

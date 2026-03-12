@@ -124,40 +124,22 @@ FIGURE_INFO: dict[str, dict[str, tuple[str, ...]]] = {
             "`Show cell values` writes the current cumulative success rate percentage only on populated cells.",
         ),
     },
-    "student_elo_summary_cards": {
-        "What it shows": (
-            "A compact summary for the one or two currently selected student trajectories.",
-        ),
-        "Why it matters": (
-            "It frames the comparison before you interpret the replay chart.",
-        ),
-        "Metrics": (
-            "Each card shows total attempts, final student Elo, and the first/last attempt timestamps from the profile artifact.",
-        ),
-        "Controls that affect it": (
-            "The target attempt-count field determines which randomly sampled student trajectories appear.",
-        ),
-        "How to read / interact": (
-            "Use these cards to compare trajectory length and end-state Elo before reading the line chart.",
-        ),
-    },
-    "student_elo_replay_chart": {
+    "student_elo_page": {
         "What it shows": (
             "A replayable Elo trajectory chart for one or two students over their own attempt sequences.",
-        ),
-        "Why it matters": (
-            "It helps compare pace, stability, and recovery patterns under a fixed exercise-difficulty scale.",
+            "The small cards above the chart summarize the sampled students with their total attempts, final Elo, and first/last timestamps.",
         ),
         "Metrics": (
-            "The plotted value is post-attempt student Elo.",
-            "Exercise difficulty is fixed from calibrated exercise Elo; only the student rating moves during replay.",
+            "The plotted value is post-attempt student Elo after each first visible update.",
+            "The hover reports the timestamp, module, objective, activity, exercise, work mode, outcome, expected success, exercise Elo, and the student's Elo before and after that attempt.",
+            "Expected success is computed from the gap between the student's current Elo and the fixed Elo of the exercise.",
+            "After each attempt, the student Elo is updated by adding a correction proportional to `(outcome - expected success)`; correct answers above expectation increase Elo less than correct answers below expectation.",
+            "Exercise Elo stays fixed during replay and comes from a separate historical calibration stage based on first-attempt data.",
         ),
-        "Controls that affect it": (
-            "The target attempt-count field, step size, autoplay speed, replay buttons, and frame slider affect this chart.",
-        ),
-        "How to read / interact": (
-            "Use `Play`, `Pause`, `Reset`, and `Step +1` to step through the local attempt timeline.",
-            "The frame caption shows the current local attempt cutoff shared across displayed students.",
+        "How to use": (
+            "Choose a target attempt count to sample one or two students whose total attempts fall within about +/- 10% of that value.",
+            "Use the replay controls to step through the local attempt timeline with a chosen step size and autoplay speed.",
+            "If no students are found in the requested attempt range, try another target count.",
         ),
     },
     "zpdes_transition_efficiency_graph": {
