@@ -1098,8 +1098,6 @@ None
     selected_instruction = str(selected_exercise.get("exercise_label") or "").strip()
     placeholder_image_path = ROOT_DIR / "images" / "placeholder_exo.png"
 
-    st.markdown("**Instruction Panel**")
-    render_figure_info("matrix_exercise_instruction_panel")
     st.markdown(f"**Instruction - Exercise `{selected_exercise_short}`**")
     if selected_instruction:
         st.write(selected_instruction)

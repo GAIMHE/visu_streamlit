@@ -89,24 +89,6 @@ FIGURE_INFO: dict[str, dict[str, tuple[str, ...]]] = {
             "For the Elo metric, the table switches to exercise Elo, calibration attempts, and calibration success rate.",
         ),
     },
-    "matrix_exercise_instruction_panel": {
-        "What it shows": (
-            "Instruction text and a placeholder screenshot for the currently selected exercise row.",
-        ),
-        "Why it matters": (
-            "It gives immediate exercise context without leaving the analytics page.",
-        ),
-        "Metrics": (
-            "This block does not compute new metrics.",
-        ),
-        "Controls that affect it": (
-            "It updates only when one row is selected in the exercise drilldown table.",
-        ),
-        "How to read / interact": (
-            "If no row is selected, this panel stays empty.",
-            "The instruction text is currently sourced from the exercise label shown in the drilldown.",
-        ),
-    },
     "classroom_progression_replay_heatmap": {
         "What it shows": (
             "An animated student-by-activity heatmap for one classroom.",
