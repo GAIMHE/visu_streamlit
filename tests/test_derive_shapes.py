@@ -40,6 +40,7 @@ from visu2.derive import (
     build_agg_activity_elo_from_exercise_elo,
     build_agg_exercise_daily_from_fact,
     build_agg_exercise_elo_from_fact,
+    build_agg_exercise_elo_iterative_from_fact,
     build_agg_module_activity_usage_from_fact,
     build_agg_module_usage_daily_from_fact,
     build_agg_objective_daily_from_fact,
@@ -404,6 +405,22 @@ Examples
         "calibrated_exercise_count",
         "catalog_exercise_count",
         "calibration_coverage_ratio",
+    }.issubset(set(agg.columns))
+
+
+def test_iterative_exercise_elo_shape_and_keys() -> None:
+    """Test iterative exercise Elo shape and keys."""
+    from visu2.config import get_settings
+
+    agg = build_agg_exercise_elo_iterative_from_fact(_sample_fact(), settings=get_settings())
+    assert {
+        "exercise_id",
+        "exercise_elo",
+        "calibration_attempts",
+        "calibration_success_rate",
+        "calibrated",
+        "smoothed_calibration_success_rate",
+        "activity_id",
     }.issubset(set(agg.columns))
 
 

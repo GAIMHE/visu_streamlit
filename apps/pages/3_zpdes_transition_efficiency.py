@@ -17,11 +17,14 @@ if str(SRC_DIR) not in sys.path:
 if str(APPS_DIR) not in sys.path:
     sys.path.insert(0, str(APPS_DIR))
 
+from figure_analysis import render_figure_analysis
 from figure_info import render_figure_info
+from plotly_config import build_plotly_chart_config
 from runtime_bootstrap import bootstrap_runtime_assets
 from runtime_paths import ZPDES_TRANSITION_EFFICIENCY_RUNTIME_RELATIVE_PATHS
 
 from visu2.config import get_settings
+from visu2.figure_analysis import analyze_zpdes_transition_population
 from visu2.zpdes_dependencies import (
     build_dependency_tables_from_metadata,
     list_supported_module_codes_from_metadata,
@@ -91,6 +94,131 @@ def _load_dependency_tables(
         module_code=module_code,
         learning_catalog_path=learning_catalog_path,
         zpdes_rules_path=zpdes_rules_path,
+    )
+
+
+@st.cache_data(show_spinner=False)
+def _load_zpdes_population_summary(path: Path, work_mode: str, later_attempt_threshold: int) -> pl.DataFrame:
+    """Aggregate global ZPDES cohort metrics across all supported modules."""
+    threshold = max(1, int(later_attempt_threshold))
+    before_condition = (
+        (pl.col("prior_same_activity_attempt_count") == 0)
+        & (pl.col("prior_before_activity_attempt_count") > 0)
+        & (pl.col("prior_later_activity_attempt_count") == 0)
+    )
+    after_condition = pl.col("prior_later_activity_attempt_count") >= threshold
+    in_activity_condition = (
+        (pl.col("prior_same_activity_attempt_count") > 0)
+        & (pl.col("prior_later_activity_attempt_count") < threshold)
+    )
+    return (
+        pl.scan_parquet(path)
+        .select(
+            [
+                "module_code",
+                "module_label",
+                "objective_id",
+                "objective_label",
+                "activity_id",
+                "activity_label",
+                "work_mode",
+                "user_id",
+                "exercise_first_attempt_outcome",
+                "prior_before_activity_attempt_count",
+                "prior_same_activity_attempt_count",
+                "prior_later_activity_attempt_count",
+            ]
+        )
+        .filter(pl.col("work_mode") == work_mode)
+        .group_by(
+            [
+                "module_code",
+                "module_label",
+                "objective_id",
+                "objective_label",
+                "activity_id",
+                "activity_label",
+            ]
+        )
+        .agg(
+            pl.len().cast(pl.Int64).alias("zpdes_first_attempt_event_count"),
+            pl.col("exercise_first_attempt_outcome")
+            .cast(pl.Int64)
+            .sum()
+            .cast(pl.Int64)
+            .alias("zpdes_first_attempt_success_count"),
+            pl.col("exercise_first_attempt_outcome")
+            .cast(pl.Float64)
+            .mean()
+            .alias("zpdes_first_attempt_success_rate"),
+            pl.col("exercise_first_attempt_outcome")
+            .filter(before_condition)
+            .count()
+            .cast(pl.Int64)
+            .alias("before_event_count"),
+            pl.col("exercise_first_attempt_outcome")
+            .filter(before_condition)
+            .cast(pl.Int64)
+            .sum()
+            .cast(pl.Int64)
+            .alias("before_success_count"),
+            pl.col("user_id")
+            .filter(before_condition)
+            .drop_nulls()
+            .n_unique()
+            .cast(pl.Int64)
+            .alias("before_unique_students"),
+            pl.col("exercise_first_attempt_outcome")
+            .filter(before_condition)
+            .cast(pl.Float64)
+            .mean()
+            .alias("before_success_rate"),
+            pl.col("exercise_first_attempt_outcome")
+            .filter(after_condition)
+            .count()
+            .cast(pl.Int64)
+            .alias("after_event_count"),
+            pl.col("exercise_first_attempt_outcome")
+            .filter(after_condition)
+            .cast(pl.Int64)
+            .sum()
+            .cast(pl.Int64)
+            .alias("after_success_count"),
+            pl.col("user_id")
+            .filter(after_condition)
+            .drop_nulls()
+            .n_unique()
+            .cast(pl.Int64)
+            .alias("after_unique_students"),
+            pl.col("exercise_first_attempt_outcome")
+            .filter(after_condition)
+            .cast(pl.Float64)
+            .mean()
+            .alias("after_success_rate"),
+            pl.col("exercise_first_attempt_outcome")
+            .filter(in_activity_condition)
+            .count()
+            .cast(pl.Int64)
+            .alias("in_activity_event_count"),
+            pl.col("exercise_first_attempt_outcome")
+            .filter(in_activity_condition)
+            .cast(pl.Int64)
+            .sum()
+            .cast(pl.Int64)
+            .alias("in_activity_success_count"),
+            pl.col("user_id")
+            .filter(in_activity_condition)
+            .drop_nulls()
+            .n_unique()
+            .cast(pl.Int64)
+            .alias("in_activity_unique_students"),
+            pl.col("exercise_first_attempt_outcome")
+            .filter(in_activity_condition)
+            .cast(pl.Float64)
+            .mean()
+            .alias("in_activity_success_rate"),
+        )
+        .collect()
     )
 
 
@@ -269,7 +397,20 @@ def main() -> None:
         figure,
         width="stretch",
         key="zpdes_transition_efficiency_graph",
-        config={"modeBarButtonsToRemove": ["select2d", "lasso2d"]},
+        config=build_plotly_chart_config(
+            modebar_buttons_to_remove=["select2d", "lasso2d"]
+        ),
+    )
+    population_summary = _load_zpdes_population_summary(
+        arrival_path,
+        selected_work_mode,
+        later_attempt_threshold,
+    )
+    render_figure_analysis(
+        analyze_zpdes_transition_population(
+            population_summary,
+            later_attempt_threshold=later_attempt_threshold,
+        )
     )
 
     if metric == "activity_mean_exercise_elo":

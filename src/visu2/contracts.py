@@ -18,7 +18,7 @@ Functions
 from __future__ import annotations
 
 DERIVED_MANIFEST_VERSION = "1.0"
-DERIVED_SCHEMA_VERSION = "phase0_thin_slice_v6_zpdes_exercise_progression"
+DERIVED_SCHEMA_VERSION = "phase0_thin_slice_v8_iterative_elo_comparison"
 ACTIVE_CANONICAL_MODULE_CODES = ("M1", "M31", "M32", "M33", "M41", "M42", "M43")
 
 EXPECTED_BASELINE = {
@@ -197,6 +197,22 @@ REQUIRED_AGG_COLUMNS = {
         "calibration_success_rate",
         "calibrated",
     ],
+    "agg_exercise_elo_iterative": [
+        "exercise_id",
+        "exercise_label",
+        "exercise_type",
+        "module_id",
+        "module_code",
+        "module_label",
+        "objective_id",
+        "objective_label",
+        "activity_id",
+        "activity_label",
+        "exercise_elo",
+        "calibration_attempts",
+        "calibration_success_rate",
+        "calibrated",
+    ],
     "agg_activity_elo": [
         "module_id",
         "module_code",
@@ -237,6 +253,33 @@ REQUIRED_AGG_COLUMNS = {
         "final_student_elo",
         "eligible_for_replay",
     ],
+    "student_elo_events_iterative": [
+        "user_id",
+        "attempt_ordinal",
+        "created_at",
+        "date_utc",
+        "work_mode",
+        "module_code",
+        "objective_id",
+        "activity_id",
+        "exercise_id",
+        "outcome",
+        "expected_success",
+        "exercise_elo",
+        "student_elo_pre",
+        "student_elo_post",
+    ],
+    "student_elo_profiles_iterative": [
+        "user_id",
+        "total_attempts",
+        "first_attempt_at",
+        "last_attempt_at",
+        "unique_modules",
+        "unique_objectives",
+        "unique_activities",
+        "final_student_elo",
+        "eligible_for_replay",
+    ],
     "zpdes_exercise_progression_events": [
         "user_id",
         "created_at",
@@ -256,6 +299,15 @@ REQUIRED_AGG_COLUMNS = {
         "prior_before_activity_attempt_count",
         "prior_same_activity_attempt_count",
         "prior_later_activity_attempt_count",
+    ],
+    "work_mode_transition_paths": [
+        "user_id",
+        "first_work_mode",
+        "transition_count_total",
+        "transition_1_mode",
+        "transition_2_mode",
+        "transition_3_mode",
+        "continues_after_transition_3",
     ],
 }
 
@@ -353,6 +405,17 @@ RUNTIME_CORE_COLUMNS = {
         "calibration_success_rate",
         "calibrated",
     ],
+    "agg_exercise_elo_iterative": [
+        "exercise_id",
+        "module_id",
+        "module_code",
+        "objective_id",
+        "activity_id",
+        "exercise_elo",
+        "calibration_attempts",
+        "calibration_success_rate",
+        "calibrated",
+    ],
     "agg_activity_elo": [
         "module_id",
         "module_code",
@@ -390,6 +453,33 @@ RUNTIME_CORE_COLUMNS = {
         "final_student_elo",
         "eligible_for_replay",
     ],
+    "student_elo_events_iterative": [
+        "user_id",
+        "attempt_ordinal",
+        "created_at",
+        "date_utc",
+        "work_mode",
+        "module_code",
+        "objective_id",
+        "activity_id",
+        "exercise_id",
+        "outcome",
+        "expected_success",
+        "exercise_elo",
+        "student_elo_pre",
+        "student_elo_post",
+    ],
+    "student_elo_profiles_iterative": [
+        "user_id",
+        "total_attempts",
+        "first_attempt_at",
+        "last_attempt_at",
+        "unique_modules",
+        "unique_objectives",
+        "unique_activities",
+        "final_student_elo",
+        "eligible_for_replay",
+    ],
     "zpdes_exercise_progression_events": [
         "user_id",
         "created_at",
@@ -405,6 +495,15 @@ RUNTIME_CORE_COLUMNS = {
         "prior_before_activity_attempt_count",
         "prior_same_activity_attempt_count",
         "prior_later_activity_attempt_count",
+    ],
+    "work_mode_transition_paths": [
+        "user_id",
+        "first_work_mode",
+        "transition_count_total",
+        "transition_1_mode",
+        "transition_2_mode",
+        "transition_3_mode",
+        "continues_after_transition_3",
     ],
 }
 
@@ -445,6 +544,12 @@ RUNTIME_LABEL_COLUMNS = {
         "exercise_label",
     ],
     "agg_exercise_elo": [
+        "module_label",
+        "objective_label",
+        "activity_label",
+        "exercise_label",
+    ],
+    "agg_exercise_elo_iterative": [
         "module_label",
         "objective_label",
         "activity_label",

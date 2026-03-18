@@ -55,10 +55,14 @@ DEFAULT_RUNTIME_RELATIVE_PATHS: tuple[str, ...] = (
     "artifacts/derived/agg_module_activity_usage.parquet",
     "artifacts/derived/agg_exercise_daily.parquet",
     "artifacts/derived/agg_exercise_elo.parquet",
+    "artifacts/derived/agg_exercise_elo_iterative.parquet",
     "artifacts/derived/agg_activity_elo.parquet",
     "artifacts/derived/student_elo_events.parquet",
     "artifacts/derived/student_elo_profiles.parquet",
+    "artifacts/derived/student_elo_events_iterative.parquet",
+    "artifacts/derived/student_elo_profiles_iterative.parquet",
     "artifacts/derived/zpdes_exercise_progression_events.parquet",
+    "artifacts/derived/work_mode_transition_paths.parquet",
 )
 
 

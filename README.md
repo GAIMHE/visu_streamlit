@@ -5,6 +5,9 @@ https://adaptivisu.streamlit.app/
 ## Project and Data Context
 VISU2 is a learning analytics and visualization project built on Adaptiv'Math interaction traces.  
 The repository supports an interactive web app for exploration, visualisation and analysis.  
+Active Streamlit figures now pair their visual output with:
+- an `Info` expander for human-readable methodology,
+- an `Analysis` expander for deterministic, page-scope findings tied to the figure theme, with ranked summaries, lightweight statistical checks when the page data supports them, and caveats when the evidence is too thin.
 
 ## Runtime Data Contract (4 Main Sources)
 The pedagogical hierarchy is: `module -> objective -> activity -> exercise`.
@@ -104,12 +107,16 @@ uv run python scripts/sync_runtime_assets.py --repo-id <org/repo> --revision <ta
 
 ### Page 1: Learning Analytics Overview (`apps/streamlit_app.py`)
 This page is the compact entrypoint into the dashboard.  
-It keeps only the high-level volume KPIs and the work-mode summary table.
+It keeps the high-level volume KPIs, the work-mode summary table, a concentration view of attempt volume across both content and students, and a global Sankey of work-mode changes across full student histories.
 
 - KPI cards (attempts, unique students, unique exercises)  
   Dataset: `artifacts/derived/fact_attempt_core.parquet`
 - Work Mode Summary Table  
   Dataset: `artifacts/derived/fact_attempt_core.parquet`
+- Attempt Concentration chart + drilldown table  
+  Datasets: `artifacts/derived/fact_attempt_core.parquet`, `data/learning_catalog.json`
+- Work Mode Transitions Sankey  
+  Dataset: `artifacts/derived/work_mode_transition_paths.parquet`
 
 ### Page 2: Bottlenecks and Transitions (`apps/pages/1_bottlenecks_and_transitions.py`)
 This page focuses on friction points and navigation flows.  
@@ -153,13 +160,22 @@ Classrooms are selected by target student count inside the current work-mode sco
   Dataset: `artifacts/derived/fact_attempt_core.parquet`
 
 ### Page 6: Student Elo Evolution (`apps/pages/5_student_elo_evolution.py`)
-This page replays one or two student Elo trajectories over their own local attempt sequence.  
-It is useful for comparing progression pace, stability, and recovery after failures against fixed exercise difficulty.
+This page compares one student Elo trajectory over that student's own local attempt sequence under two fixed-difficulty systems.  
+It is useful for comparing how the current retrospective item-Elo calibration and the new iterative offline calibration change the same student replay.
 
-- Student Elo replay line chart  
-  Dataset: `artifacts/derived/student_elo_events.parquet`
+- Student Elo comparison replay line chart  
+  Datasets: `artifacts/derived/student_elo_events.parquet`, `artifacts/derived/student_elo_events_iterative.parquet`
 - Student selector and summary cards  
-  Dataset: `artifacts/derived/student_elo_profiles.parquet`
+  Datasets: `artifacts/derived/student_elo_profiles.parquet`, `artifacts/derived/student_elo_profiles_iterative.parquet`
+- Exercise-difficulty comparison  
+  Datasets: `artifacts/derived/agg_exercise_elo.parquet`, `artifacts/derived/agg_exercise_elo_iterative.parquet`
+
+### Page 7: Classroom Progression Sankey (`apps/pages/6_classroom_progression_sankey.py`)
+This page renders a static, stage-based Sankey for one selected classroom.  
+It keeps the replay page's classroom-selection workflow, but summarizes the final first-time activity paths instead of animating synchronized frames.
+
+- Classroom activity-progression Sankey  
+  Dataset: `artifacts/derived/fact_attempt_core.parquet`
 
 ## Further Reading
 - `ressources/README_HF.md`

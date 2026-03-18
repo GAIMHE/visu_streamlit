@@ -17,6 +17,7 @@ if str(SRC_DIR) not in sys.path:
 if str(APPS_DIR) not in sys.path:
     sys.path.insert(0, str(APPS_DIR))
 
+from figure_analysis import render_figure_analysis
 from figure_info import render_figure_info
 from overview_shared import (
     collect_core_compatibility,
@@ -30,12 +31,14 @@ from overview_shared import (
     render_curriculum_filters,
     render_dashboard_style,
 )
+from plotly_config import build_plotly_chart_config
 from runtime_bootstrap import bootstrap_runtime_assets
 from runtime_paths import BOTTLENECKS_TRANSITIONS_RUNTIME_RELATIVE_PATHS
 
 from visu2.bottleneck import apply_bottleneck_filters, build_bottleneck_frame
 from visu2.config import get_settings
 from visu2.contracts import ACTIVE_CANONICAL_MODULE_CODES
+from visu2.figure_analysis import analyze_bottleneck_chart, analyze_transition_chart
 
 st.set_page_config(
     page_title="Bottlenecks and Transitions",
@@ -170,29 +173,30 @@ def main() -> None:
                 strict=False,
             )
         ]
-        bottleneck_df["score_text"] = bottleneck_df["bottleneck_score"].map(lambda value: f"{value:.2f}")
+        bottleneck_df["failure_text"] = bottleneck_df["failure_rate"].map(lambda value: f"{value:.0%}")
         chart_rows = len(bottleneck_df.index)
         chart_height = max(420, 30 * chart_rows)
         fig_bottleneck = px.bar(
-            bottleneck_df.sort_values("bottleneck_score", ascending=True),
-            x="bottleneck_score",
+            bottleneck_df.sort_values("failure_rate", ascending=True),
+            x="failure_rate",
             y="entity_axis_label",
             orientation="h",
-            color="failure_rate",
-            color_continuous_scale="YlGnBu",
-            text="score_text",
+            color="repeat_attempt_rate",
+            color_continuous_scale="YlOrRd",
+            text="failure_text",
             custom_data=[
                 "entity_hover",
                 "level",
                 "attempts",
                 "failure_rate",
                 "repeat_attempt_rate",
+                "bottleneck_score",
             ],
-            title=f"Top {bottleneck_level.lower()} bottleneck candidates by combined score",
+            title=f"Top {bottleneck_level.lower()} bottleneck candidates: failure rate with repeat-attempt intensity",
             labels={
-                "bottleneck_score": "Bottleneck score",
-                "entity_axis_label": f"{bottleneck_level} entity",
                 "failure_rate": "Failure rate",
+                "entity_axis_label": f"{bottleneck_level} entity",
+                "repeat_attempt_rate": "Repeat attempt rate",
             },
         )
         fig_bottleneck.update_traces(
@@ -200,21 +204,30 @@ def main() -> None:
             hovertemplate=(
                 "<b>%{customdata[0]}</b><br>"
                 "Level: %{customdata[1]}<br>"
-                "Bottleneck score: %{x:.3f}<br>"
+                "Failure rate: %{x:.2%}<br>"
                 "Attempts: %{customdata[2]:,}<br>"
-                "Failure rate: %{customdata[3]:.2%}<br>"
-                "Repeat attempt rate: %{customdata[4]:.2%}<extra></extra>"
+                "Repeat attempt rate: %{customdata[4]:.2%}<br>"
+                "Combined bottleneck score: %{customdata[5]:.3f}<extra></extra>"
             ),
         )
         fig_bottleneck.update_layout(
             height=chart_height,
             margin={"l": 340, "r": 20, "t": 56, "b": 36},
             font={"size": 13},
-            coloraxis_colorbar={"title": "Failure rate"},
+            coloraxis_colorbar={"title": "Repeat attempt rate"},
         )
-        fig_bottleneck.update_xaxes(showgrid=True, gridcolor="rgba(23,34,27,0.14)")
+        fig_bottleneck.update_xaxes(
+            showgrid=True,
+            gridcolor="rgba(23,34,27,0.14)",
+            tickformat=".0%",
+        )
         fig_bottleneck.update_yaxes(showgrid=False)
-        st.plotly_chart(fig_bottleneck, width="stretch")
+        st.plotly_chart(
+            fig_bottleneck,
+            width="stretch",
+            config=build_plotly_chart_config(),
+        )
+    render_figure_analysis(analyze_bottleneck_chart(bottleneck_df))
 
     st.subheader("Path Transitions")
     render_figure_info("bottlenecks_transitions_path_chart")
@@ -229,6 +242,7 @@ def main() -> None:
     ).to_pandas()
     if transition_edges.empty:
         st.info("No cross-objective transition rows after filters.")
+        render_figure_analysis(analyze_transition_chart(None))
         return
 
     transition_edges["from_display_raw"] = [
@@ -332,7 +346,12 @@ def main() -> None:
     )
     fig_edges.update_xaxes(showgrid=True, gridcolor="rgba(23,34,27,0.14)")
     fig_edges.update_yaxes(showgrid=False)
-    st.plotly_chart(fig_edges, width="stretch")
+    st.plotly_chart(
+        fig_edges,
+        width="stretch",
+        config=build_plotly_chart_config(),
+    )
+    render_figure_analysis(analyze_transition_chart(transition_edges))
 
 
 if __name__ == "__main__":

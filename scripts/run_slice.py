@@ -31,10 +31,14 @@ def _required_artifacts(settings_root: Path) -> list[Path]:
         settings_root / "artifacts" / "derived" / "agg_module_activity_usage.parquet",
         settings_root / "artifacts" / "derived" / "agg_exercise_daily.parquet",
         settings_root / "artifacts" / "derived" / "agg_exercise_elo.parquet",
+        settings_root / "artifacts" / "derived" / "agg_exercise_elo_iterative.parquet",
         settings_root / "artifacts" / "derived" / "agg_activity_elo.parquet",
         settings_root / "artifacts" / "derived" / "student_elo_events.parquet",
         settings_root / "artifacts" / "derived" / "student_elo_profiles.parquet",
+        settings_root / "artifacts" / "derived" / "student_elo_events_iterative.parquet",
+        settings_root / "artifacts" / "derived" / "student_elo_profiles_iterative.parquet",
         settings_root / "artifacts" / "derived" / "zpdes_exercise_progression_events.parquet",
+        settings_root / "artifacts" / "derived" / "work_mode_transition_paths.parquet",
     ]
 
 

@@ -36,6 +36,7 @@ from visu2.config import Settings
 from visu2.derive import (
     build_agg_activity_elo_from_exercise_elo,
     build_agg_exercise_elo_from_fact,
+    build_agg_exercise_elo_iterative_from_fact,
     build_student_elo_events_from_fact,
     build_student_elo_profiles_from_events,
 )
@@ -419,3 +420,305 @@ Examples
     assert row["unique_objectives"] == 1
     assert row["unique_activities"] == 1
     assert row["eligible_for_replay"] is True
+
+
+def test_orphan_exercises_are_calibrated_and_replayed_with_fallback_context(
+    tmp_path: Path,
+) -> None:
+    """Test orphan exercises still receive Elo and remain visible in replay."""
+    settings = _build_settings(tmp_path)
+    fact = _fact(
+        [
+            {
+                "created_at": datetime(2025, 1, 1, 9, 0, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "seed",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p1",
+                "objective_id": "o1",
+                "objective_label": "Objective 1",
+                "activity_id": "a1",
+                "activity_label": "Activity 1",
+                "exercise_id": "e1",
+                "data_correct": True,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "zpdes",
+                "attempt_number": 1,
+                "module_id": "m1",
+                "module_code": "M1",
+                "module_label": "Module 1",
+            },
+            {
+                "created_at": datetime(2025, 1, 1, 10, 0, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "u_orphan",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p1",
+                "objective_id": "orphan_o",
+                "objective_label": None,
+                "activity_id": "orphan_a",
+                "activity_label": None,
+                "exercise_id": "e_orphan",
+                "data_correct": True,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "initial-test",
+                "attempt_number": 1,
+                "module_id": "m1",
+                "module_code": "M1",
+                "module_label": "Module 1",
+            },
+            {
+                "created_at": datetime(2025, 1, 1, 10, 5, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "u_orphan",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p1",
+                "objective_id": "orphan_o",
+                "objective_label": None,
+                "activity_id": "orphan_a",
+                "activity_label": None,
+                "exercise_id": "e_orphan",
+                "data_correct": False,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "initial-test",
+                "attempt_number": 2,
+                "module_id": "m1",
+                "module_code": "M1",
+                "module_label": "Module 1",
+            },
+        ]
+    )
+
+    exercise_elo = build_agg_exercise_elo_from_fact(fact, settings=settings)
+    orphan_row = exercise_elo.filter(pl.col("exercise_id") == "e_orphan").to_dicts()[0]
+
+    assert orphan_row["calibrated"] is True
+    assert orphan_row["calibration_attempts"] == 1
+    assert orphan_row["module_code"] == "M1"
+    assert orphan_row["objective_id"] == "orphan_o"
+    assert orphan_row["activity_id"] == "orphan_a"
+    assert orphan_row["objective_label"] == "Unmapped initial-test objective (M1)"
+    assert orphan_row["activity_label"] == "Unmapped initial-test activity (M1)"
+
+    events = build_student_elo_events_from_fact(fact, exercise_elo)
+    orphan_events = events.filter(pl.col("exercise_id") == "e_orphan").sort("attempt_ordinal")
+
+    assert orphan_events.height == 2
+    assert orphan_events["user_id"].to_list() == ["u_orphan", "u_orphan"]
+    assert orphan_events["activity_id"].to_list() == ["orphan_a", "orphan_a"]
+    assert orphan_events["objective_id"].to_list() == ["orphan_o", "orphan_o"]
+    assert orphan_events["work_mode"].to_list() == ["initial-test", "initial-test"]
+
+
+def test_iterative_exercise_elo_shrinks_sparse_items_toward_global_mean(tmp_path: Path) -> None:
+    """Test iterative initialization keeps sparse items closer to the global center."""
+    settings = _build_settings(tmp_path)
+    fact = _fact(
+        [
+            {
+                "created_at": datetime(2025, 1, 1, 9, 0, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "u1",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p1",
+                "objective_id": "o1",
+                "objective_label": "Objective 1",
+                "activity_id": "a1",
+                "activity_label": "Activity 1",
+                "exercise_id": "e1",
+                "data_correct": True,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "zpdes",
+                "attempt_number": 1,
+                "module_id": "m1",
+                "module_code": "M1",
+                "module_label": "Module 1",
+            },
+            {
+                "created_at": datetime(2025, 1, 1, 9, 5, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "u2",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p1",
+                "objective_id": "o1",
+                "objective_label": "Objective 1",
+                "activity_id": "a1",
+                "activity_label": "Activity 1",
+                "exercise_id": "e2",
+                "data_correct": False,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "zpdes",
+                "attempt_number": 1,
+                "module_id": "m1",
+                "module_code": "M1",
+                "module_label": "Module 1",
+            },
+            {
+                "created_at": datetime(2025, 1, 1, 9, 10, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "u3",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p1",
+                "objective_id": "o1",
+                "objective_label": "Objective 1",
+                "activity_id": "a1",
+                "activity_label": "Activity 1",
+                "exercise_id": "e2",
+                "data_correct": False,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "zpdes",
+                "attempt_number": 1,
+                "module_id": "m1",
+                "module_code": "M1",
+                "module_label": "Module 1",
+            },
+        ]
+    )
+
+    iterative = build_agg_exercise_elo_iterative_from_fact(fact, settings=settings)
+    e1 = iterative.filter(pl.col("exercise_id") == "e1").to_dicts()[0]
+    e2 = iterative.filter(pl.col("exercise_id") == "e2").to_dicts()[0]
+
+    assert abs(float(e1["smoothed_calibration_success_rate"]) - 0.3650793651) < 1e-6
+    assert abs(float(e2["smoothed_calibration_success_rate"]) - 0.3030303030) < 1e-6
+    assert float(e1["exercise_elo"]) < float(e2["exercise_elo"])
+
+
+def test_iterative_exercise_elo_recenters_mean_to_base_rating(tmp_path: Path) -> None:
+    """Test iterative exercise Elo keeps the calibrated mean at the Elo anchor."""
+    settings = _build_settings(tmp_path)
+    fact = _fact(
+        [
+            {
+                "created_at": datetime(2025, 1, 1, 9, 0, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "u1",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p1",
+                "objective_id": "o1",
+                "objective_label": "Objective 1",
+                "activity_id": "a1",
+                "activity_label": "Activity 1",
+                "exercise_id": "e1",
+                "data_correct": True,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "zpdes",
+                "attempt_number": 1,
+                "module_id": "m1",
+                "module_code": "M1",
+                "module_label": "Module 1",
+            },
+            {
+                "created_at": datetime(2025, 1, 1, 9, 5, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "u2",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p1",
+                "objective_id": "o1",
+                "objective_label": "Objective 1",
+                "activity_id": "a1",
+                "activity_label": "Activity 1",
+                "exercise_id": "e2",
+                "data_correct": False,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "zpdes",
+                "attempt_number": 1,
+                "module_id": "m1",
+                "module_code": "M1",
+                "module_label": "Module 1",
+            },
+        ]
+    )
+
+    iterative = build_agg_exercise_elo_iterative_from_fact(fact, settings=settings)
+    mean_rating = (
+        iterative.filter(pl.col("calibrated"))
+        .select(pl.col("exercise_elo").mean().alias("mean_rating"))
+        .item()
+    )
+    assert abs(float(mean_rating) - 1500.0) < 1e-6
+
+
+def test_iterative_student_replay_keeps_attempt_ordinals_aligned(tmp_path: Path) -> None:
+    """Test iterative student replay preserves the same local attempt count as current replay."""
+    settings = _build_settings(tmp_path)
+    fact = _fact(
+        [
+            {
+                "created_at": datetime(2025, 1, 1, 9, 0, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "u1",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p1",
+                "objective_id": "o1",
+                "objective_label": "Objective 1",
+                "activity_id": "a1",
+                "activity_label": "Activity 1",
+                "exercise_id": "e1",
+                "data_correct": True,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "zpdes",
+                "attempt_number": 1,
+                "module_id": "m1",
+                "module_code": "M1",
+                "module_label": "Module 1",
+            },
+            {
+                "created_at": datetime(2025, 1, 1, 9, 5, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "u1",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p1",
+                "objective_id": "o1",
+                "objective_label": "Objective 1",
+                "activity_id": "a1",
+                "activity_label": "Activity 1",
+                "exercise_id": "e2",
+                "data_correct": False,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "zpdes",
+                "attempt_number": 1,
+                "module_id": "m1",
+                "module_code": "M1",
+                "module_label": "Module 1",
+            },
+            {
+                "created_at": datetime(2025, 1, 1, 9, 10, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "u1",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p1",
+                "objective_id": "o1",
+                "objective_label": "Objective 1",
+                "activity_id": "a1",
+                "activity_label": "Activity 1",
+                "exercise_id": "e2",
+                "data_correct": True,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "zpdes",
+                "attempt_number": 2,
+                "module_id": "m1",
+                "module_code": "M1",
+                "module_label": "Module 1",
+            },
+        ]
+    )
+
+    current_exercise_elo = build_agg_exercise_elo_from_fact(fact, settings=settings)
+    iterative_exercise_elo = build_agg_exercise_elo_iterative_from_fact(fact, settings=settings)
+    current_events = build_student_elo_events_from_fact(fact, current_exercise_elo)
+    iterative_events = build_student_elo_events_from_fact(fact, iterative_exercise_elo)
+
+    assert current_events["attempt_ordinal"].to_list() == iterative_events["attempt_ordinal"].to_list()
+    assert current_events["exercise_id"].to_list() == iterative_events["exercise_id"].to_list()

@@ -32,6 +32,7 @@ from visu2.classroom_progression import (
     build_classroom_mode_profiles,
     build_heatmap_figure,
     build_replay_payload,
+    select_classroom_by_id,
     select_classrooms_near_student_target,
     select_default_classroom,
 )
@@ -231,6 +232,46 @@ def test_select_classrooms_near_student_target_returns_empty_when_no_match() -> 
     )
     selected = select_classrooms_near_student_target(profiles, "zpdes", target_students=20)
     assert selected.height == 0
+
+
+def test_select_classroom_by_id_returns_exact_match_in_scope() -> None:
+    """Test classroom ID override resolves one exact classroom in the selected scope."""
+    profiles = pl.DataFrame(
+        {
+            "mode_scope": ["zpdes", "playlist", "zpdes"],
+            "classroom_id": ["cA", "cA", "cB"],
+            "students": [18, 18, 21],
+            "activities": [10, 10, 14],
+            "objectives": [4, 4, 4],
+            "modules": [1, 1, 1],
+            "attempts": [120, 100, 200],
+            "first_attempt_at": [None, None, None],
+            "last_attempt_at": [None, None, None],
+        }
+    )
+
+    assert select_classroom_by_id(profiles, "zpdes", "cA") == "cA"
+    assert select_classroom_by_id(profiles, "playlist", "cA") == "cA"
+
+
+def test_select_classroom_by_id_returns_none_for_unknown_or_wrong_scope() -> None:
+    """Test classroom ID override rejects unknown IDs and classrooms outside the current scope."""
+    profiles = pl.DataFrame(
+        {
+            "mode_scope": ["zpdes", "playlist"],
+            "classroom_id": ["cA", "cB"],
+            "students": [18, 20],
+            "activities": [10, 12],
+            "objectives": [4, 4],
+            "modules": [1, 1],
+            "attempts": [120, 100],
+            "first_attempt_at": [None, None],
+            "last_attempt_at": [None, None],
+        }
+    )
+
+    assert select_classroom_by_id(profiles, "zpdes", "missing") is None
+    assert select_classroom_by_id(profiles, "zpdes", "cB") is None
 
 
 def test_build_heatmap_figure_overlays_values_only_on_populated_cells() -> None:

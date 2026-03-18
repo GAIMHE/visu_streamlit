@@ -60,10 +60,14 @@ def _build_manifest(
         "agg_module_activity_usage",
         "agg_exercise_daily",
         "agg_exercise_elo",
+        "agg_exercise_elo_iterative",
         "agg_activity_elo",
         "student_elo_events",
         "student_elo_profiles",
+        "student_elo_events_iterative",
+        "student_elo_profiles_iterative",
         "zpdes_exercise_progression_events",
+        "work_mode_transition_paths",
     ]
     tables: dict[str, dict[str, object]] = {}
     for table_name in required_tables:

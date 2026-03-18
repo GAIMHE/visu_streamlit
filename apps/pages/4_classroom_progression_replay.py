@@ -48,11 +48,14 @@ if str(SRC_DIR) not in sys.path:
 if str(APPS_DIR) not in sys.path:
     sys.path.insert(0, str(APPS_DIR))
 
+from figure_analysis import render_figure_analysis
 from figure_info import render_figure_info
+from plotly_config import build_plotly_chart_config
 from runtime_bootstrap import bootstrap_runtime_assets
 from runtime_paths import CLASSROOM_REPLAY_RUNTIME_RELATIVE_PATHS
 
 from visu2.classroom_progression import (
+    MISSING_ACTIVITY_LABEL,
     VALID_MODE_SCOPES,
     build_classroom_mode_profiles,
     build_heatmap_figure,
@@ -60,6 +63,7 @@ from visu2.classroom_progression import (
     select_classrooms_near_student_target,
 )
 from visu2.config import get_settings
+from visu2.figure_analysis import analyze_classroom_progression_population
 
 st.set_page_config(
     page_title="Classroom Progression Replay",
@@ -157,6 +161,68 @@ dict
         end_date=date.fromisoformat(end_date_iso),
         max_frames=max_frames,
         step_size=step_size,
+    )
+
+
+@st.cache_data(show_spinner=False)
+def _load_classroom_activity_summary(fact_path: Path, mode_scope: str) -> pl.DataFrame:
+    """Aggregate activity outcomes across all classrooms in one mode scope."""
+    fact = (
+        pl.scan_parquet(fact_path)
+        .filter(pl.col("classroom_id").is_not_null() & (pl.col("classroom_id").cast(pl.Utf8) != "None"))
+        .with_columns(
+            pl.col("classroom_id").cast(pl.Utf8),
+            pl.when(
+                pl.col("activity_label").is_null()
+                | (pl.col("activity_label").cast(pl.Utf8).str.strip_chars() == "")
+            )
+            .then(pl.lit(MISSING_ACTIVITY_LABEL))
+            .otherwise(pl.col("activity_label").cast(pl.Utf8))
+            .alias("activity_analysis_label"),
+        )
+    )
+    if mode_scope != "all":
+        fact = fact.filter(pl.col("work_mode") == mode_scope)
+    per_classroom_activity = fact.group_by(["classroom_id", "activity_analysis_label"]).agg(
+        pl.len().cast(pl.Int64).alias("attempts"),
+        pl.col("data_correct").cast(pl.Int64).sum().cast(pl.Int64).alias("successes"),
+    )
+    return (
+        per_classroom_activity.with_columns(
+            pl.when(pl.col("attempts") > 0)
+            .then(pl.col("successes") / pl.col("attempts"))
+            .otherwise(None)
+            .alias("classroom_activity_success_rate")
+        )
+        .group_by("activity_analysis_label")
+        .agg(
+            pl.col("classroom_id").n_unique().cast(pl.Int64).alias("classrooms_observed"),
+            pl.col("attempts").sum().cast(pl.Int64).alias("attempts_total"),
+            pl.col("successes").sum().cast(pl.Int64).alias("successes_total"),
+            pl.col("classroom_activity_success_rate")
+            .mean()
+            .alias("mean_classroom_success_rate"),
+            pl.col("classroom_activity_success_rate")
+            .median()
+            .alias("median_classroom_success_rate"),
+            pl.col("classroom_activity_success_rate")
+            .lt(0.60)
+            .sum()
+            .cast(pl.Int64)
+            .alias("weak_classroom_count"),
+        )
+        .with_columns(
+            pl.when(pl.col("attempts_total") > 0)
+            .then(pl.col("successes_total") / pl.col("attempts_total"))
+            .otherwise(None)
+            .alias("success_rate"),
+            pl.when(pl.col("classrooms_observed") > 0)
+            .then(pl.col("weak_classroom_count") / pl.col("classrooms_observed"))
+            .otherwise(None)
+            .alias("weak_classroom_share"),
+        )
+        .rename({"activity_analysis_label": "activity_label"})
+        .collect()
     )
 
 
@@ -435,7 +501,19 @@ None
         threshold=HEATMAP_MASTERY_THRESHOLD,
         show_values=bool(show_values),
     )
-    st.plotly_chart(figure, width='stretch')
+    st.plotly_chart(
+        figure,
+        width='stretch',
+        config=build_plotly_chart_config(),
+    )
+    activity_summary = _load_classroom_activity_summary(fact_path, mode_scope)
+    render_figure_analysis(
+        analyze_classroom_progression_population(
+            scoped_profiles,
+            activity_summary,
+            mode_scope_label=_mode_label(mode_scope),
+        )
+    )
 
     if st.session_state[playing_key]:
         if frame_idx >= max_frame_idx:

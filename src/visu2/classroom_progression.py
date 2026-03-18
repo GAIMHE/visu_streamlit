@@ -506,6 +506,30 @@ def select_classrooms_near_student_target(
     )
 
 
+def select_classroom_by_id(
+    profiles: pl.DataFrame,
+    mode_scope: str,
+    classroom_id: str,
+) -> str | None:
+    """Return one classroom identifier matching an explicit ID inside one mode scope."""
+    if mode_scope not in VALID_MODE_SCOPES:
+        raise ValueError(f"Unsupported mode_scope '{mode_scope}'. Expected one of {list(VALID_MODE_SCOPES)}")
+    if profiles.height == 0:
+        return None
+
+    normalized = str(classroom_id or "").strip()
+    if not normalized:
+        return None
+
+    matches = profiles.filter(
+        (pl.col("mode_scope") == mode_scope)
+        & (pl.col("classroom_id").cast(pl.Utf8) == normalized)
+    )
+    if matches.height == 0:
+        return None
+    return normalized
+
+
 def select_default_classroom(profiles: pl.DataFrame, mode_scope: str) -> str | None:
     """Select default classroom according to locked ranking rules."""
     if mode_scope not in VALID_MODE_SCOPES:

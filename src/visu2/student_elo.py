@@ -29,6 +29,7 @@ Functions
 from __future__ import annotations
 
 from bisect import bisect_right
+from datetime import datetime
 from math import ceil
 from pathlib import Path
 from random import Random
@@ -74,13 +75,19 @@ pl.LazyFrame
     return pl.scan_parquet(path)
 
 
-def load_student_elo_label_lookup(path: Path) -> pl.DataFrame:
+def load_student_elo_label_lookup(
+    path: Path,
+    exercise_elo_path: Path | None = None,
+) -> pl.DataFrame:
     """Load a readable label lookup for student Elo hover content.
 
     Parameters
     ----------
     path : Path
         Path to `learning_catalog.json`.
+    exercise_elo_path : Path | None, optional
+        Optional path to `agg_exercise_elo.parquet` so orphan exercises can
+        reuse the fallback activity/objective labels created during calibration.
 
     Returns
     -------
@@ -89,7 +96,7 @@ def load_student_elo_label_lookup(path: Path) -> pl.DataFrame:
     """
     catalog = load_learning_catalog(path)
     frames = catalog_to_summary_frames(catalog)
-    return frames.activity_hierarchy.select(
+    catalog_lookup = frames.activity_hierarchy.select(
         [
             "activity_id",
             "module_code",
@@ -99,6 +106,31 @@ def load_student_elo_label_lookup(path: Path) -> pl.DataFrame:
             "activity_label",
         ]
     ).unique()
+    if exercise_elo_path is None or not exercise_elo_path.exists():
+        return catalog_lookup
+    orphan_lookup = (
+        pl.read_parquet(exercise_elo_path)
+        .select(
+            [
+                "activity_id",
+                "module_code",
+                "module_label",
+                "objective_id",
+                "objective_label",
+                "activity_label",
+            ]
+        )
+        .filter(
+            pl.col("module_code").is_not_null()
+            & pl.col("objective_id").is_not_null()
+            & pl.col("activity_id").is_not_null()
+        )
+        .unique(subset=["activity_id", "module_code", "objective_id"], keep="first")
+    )
+    return pl.concat([catalog_lookup, orphan_lookup], how="diagonal_relaxed").unique(
+        subset=["activity_id", "module_code", "objective_id"],
+        keep="first",
+    )
 
 
 def _as_lazy(frame: pl.DataFrame | pl.LazyFrame) -> pl.LazyFrame:
@@ -260,6 +292,23 @@ def select_students_near_attempt_target(
 
     rng = Random(seed)
     return sorted(rng.sample(normalized, k=limit))
+
+
+def select_student_by_id(
+    profiles: pl.DataFrame,
+    user_id: str,
+) -> str | None:
+    """Return one replay-eligible student matching an explicit identifier."""
+    normalized = str(user_id or "").strip()
+    if not normalized or profiles.height == 0:
+        return None
+    matches = profiles.filter(
+        pl.col("eligible_for_replay")
+        & (pl.col("user_id").cast(pl.Utf8) == normalized)
+    )
+    if matches.height == 0:
+        return None
+    return normalized
 
 
 def _empty_payload(user_ids: list[str], step_size: int) -> dict[str, Any]:
@@ -438,6 +487,56 @@ dict[str, Any]
     }
 
 
+def build_student_elo_comparison_payload(
+    current_events: pl.DataFrame | pl.LazyFrame,
+    iterative_events: pl.DataFrame | pl.LazyFrame,
+    user_ids: list[str],
+    step_size: int,
+    label_lookup: pl.DataFrame | None = None,
+) -> dict[str, Any]:
+    """Build a synchronized comparison payload for current and iterative Elo."""
+    current_payload = build_student_elo_payload(
+        current_events,
+        user_ids,
+        step_size,
+        label_lookup=label_lookup,
+    )
+    iterative_payload = build_student_elo_payload(
+        iterative_events,
+        user_ids,
+        step_size,
+        label_lookup=label_lookup,
+    )
+    current_ids = current_payload.get("student_ids") or []
+    iterative_ids = iterative_payload.get("student_ids") or []
+    if current_ids != iterative_ids:
+        raise ValueError("Current and iterative Elo payloads do not expose the same selected students.")
+    if (current_payload.get("frame_cutoffs") or [0]) != (iterative_payload.get("frame_cutoffs") or [0]):
+        raise ValueError("Current and iterative Elo payloads do not share the same replay frames.")
+
+    for user_id in current_ids:
+        current_series = (current_payload.get("series") or {}).get(user_id) or {}
+        iterative_series = (iterative_payload.get("series") or {}).get(user_id) or {}
+        current_ordinals = [int(value) for value in current_series.get("attempt_ordinal") or []]
+        iterative_ordinals = [int(value) for value in iterative_series.get("attempt_ordinal") or []]
+        if current_ordinals != iterative_ordinals:
+            raise ValueError(
+                f"Current and iterative Elo attempt ordinals do not align for student {user_id}."
+            )
+
+    return {
+        "student_ids": list(current_ids),
+        "frame_cutoffs": list(current_payload.get("frame_cutoffs") or [0]),
+        "step_size": int(current_payload.get("step_size") or step_size),
+        "max_attempts": int(current_payload.get("max_attempts") or 0),
+        "systems": ("Current Elo", "Iterative Elo"),
+        "series": {
+            "Current Elo": current_payload.get("series") or {},
+            "Iterative Elo": iterative_payload.get("series") or {},
+        },
+    }
+
+
 def build_student_elo_figure(payload: dict[str, Any], frame_idx: int) -> go.Figure:
     """Build student elo figure.
 
@@ -520,6 +619,191 @@ go.Figure
         xaxis_title="Student-local attempt ordinal",
         yaxis_title="Student Elo",
         height=540,
+        margin={"l": 56, "r": 24, "t": 72, "b": 56},
+        hovermode="x unified",
+        font={"size": 13},
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "left", "x": 0.0},
+    )
+    fig.update_xaxes(showgrid=False)
+    fig.update_yaxes(showgrid=True, gridcolor="rgba(23,34,27,0.08)")
+    return fig
+
+
+def _format_gap_label(delta_seconds: float) -> str:
+    if delta_seconds >= 86400:
+        return f"{delta_seconds / 86400:.0f}d"
+    if delta_seconds >= 3600:
+        return f"{delta_seconds / 3600:.0f}h"
+    return f"{delta_seconds / 60:.0f}m"
+
+
+def _build_module_color_map(
+    series: dict[str, Any],
+    systems: list[str],
+    student_ids: list[str],
+) -> dict[str, str]:
+    palette = [
+        "#7DB7D9",
+        "#F2B680",
+        "#8DC8A8",
+        "#C9A0DC",
+        "#E5C16F",
+        "#92C5DE",
+        "#D8A7B1",
+        "#A7C7E7",
+    ]
+    module_codes: list[str] = []
+    for system in systems:
+        system_series = series.get(system) or {}
+        for user_id in student_ids:
+            user_series = system_series.get(user_id) or {}
+            for module_code in user_series.get("module_code") or []:
+                code = str(module_code or "").strip()
+                if code and code not in module_codes:
+                    module_codes.append(code)
+    color_map = {
+        module_code: palette[idx % len(palette)]
+        for idx, module_code in enumerate(sorted(module_codes))
+    }
+    color_map["__missing__"] = "#AEB7C2"
+    return color_map
+
+
+def _work_mode_to_symbol(work_mode: str | None) -> str:
+    normalized = str(work_mode or "").strip().lower()
+    if normalized == "zpdes":
+        return "triangle-up"
+    if normalized == "adaptive-test":
+        return "circle"
+    if normalized == "playlist":
+        return "diamond"
+    if normalized == "initial-test":
+        return "square"
+    return "hexagon"
+
+
+def build_student_elo_comparison_figure(
+    payload: dict[str, Any],
+    frame_idx: int,
+    gap_days_threshold: float | None = None,
+    visible_systems: tuple[str, ...] | None = None,
+) -> go.Figure:
+    """Build a comparison figure overlaying the current and iterative Elo systems."""
+    student_ids = [str(user_id) for user_id in payload.get("student_ids") or []]
+    frame_cutoffs = payload.get("frame_cutoffs") or [0]
+    current_frame_idx = min(max(0, int(frame_idx)), len(frame_cutoffs) - 1)
+    cutoff = int(frame_cutoffs[current_frame_idx])
+    systems = list(payload.get("systems") or ["Current Elo", "Iterative Elo"])
+    if visible_systems:
+        allowed = {str(system) for system in visible_systems if str(system).strip()}
+        systems = [system for system in systems if system in allowed]
+    series = payload.get("series") or {}
+
+    colors = ["#1e7a52", "#2148a4"]
+    line_dash = {"Current Elo": "solid", "Iterative Elo": "dash"}
+    single_student = len(student_ids) == 1
+    module_color_map = _build_module_color_map(series, systems, student_ids)
+    fig = go.Figure()
+
+    for idx, user_id in enumerate(student_ids):
+        color = colors[idx % len(colors)]
+        for system in systems:
+            user_series = ((series.get(system) or {}).get(user_id)) or {}
+            ordinals = [int(value) for value in user_series.get("attempt_ordinal") or []]
+            visible_count = bisect_right(ordinals, cutoff)
+            if visible_count <= 0:
+                continue
+            marker_colors = [
+                module_color_map.get(str(module_code or "").strip(), module_color_map["__missing__"])
+                for module_code in (user_series.get("module_code") or [])[:visible_count]
+            ]
+            marker_symbols = [
+                _work_mode_to_symbol(work_mode)
+                for work_mode in (user_series.get("work_mode") or [])[:visible_count]
+            ]
+            customdata = list(
+                zip(
+                    [system] * visible_count,
+                    user_series.get("created_at", [])[:visible_count],
+                    user_series.get("exercise_id", [])[:visible_count],
+                    user_series.get("activity_label", [])[:visible_count],
+                    user_series.get("objective_label", [])[:visible_count],
+                    user_series.get("work_mode", [])[:visible_count],
+                    user_series.get("module_label", [])[:visible_count],
+                    user_series.get("outcome", [])[:visible_count],
+                    user_series.get("expected_success", [])[:visible_count],
+                    user_series.get("exercise_elo", [])[:visible_count],
+                    user_series.get("student_elo_pre", [])[:visible_count],
+                    user_series.get("student_elo_post_hover", [])[:visible_count],
+                )
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=ordinals[:visible_count],
+                    y=(user_series.get("student_elo_post") or [])[:visible_count],
+                    mode="lines+markers",
+                    name=system if single_student else f"{user_id} | {system}",
+                    legendgroup=user_id,
+                    line={"width": 3, "color": color, "dash": line_dash.get(system, "solid")},
+                    marker={
+                        "size": 7,
+                        "color": marker_colors,
+                        "symbol": marker_symbols,
+                        "line": {"width": 0.6, "color": "rgba(23,34,27,0.45)"},
+                    },
+                    customdata=customdata,
+                    hovertemplate=(
+                        "<b>User</b>: %{fullData.legendgroup}<br>"
+                        "<b>System</b>: %{customdata[0]}<br>"
+                        "<b>Attempt</b>: %{x}<br>"
+                        "<b>Elo</b>: %{y:.1f}<br>"
+                        "<b>Timestamp</b>: %{customdata[1]}<br>"
+                        "<b>Exercise</b>: %{customdata[2]}<br>"
+                        "<b>Activity</b>: %{customdata[3]}<br>"
+                        "<b>Objective</b>: %{customdata[4]}<br>"
+                        "<b>Work mode</b>: %{customdata[5]}<br>"
+                        "<b>Module</b>: %{customdata[6]}<br>"
+                        "<b>Outcome</b>: %{customdata[7]:.0f}<br>"
+                        "<b>Expected success</b>: %{customdata[8]:.3f}<br>"
+                        "<b>Exercise difficulty</b>: %{customdata[9]:.1f}<br>"
+                        "<b>Student Elo (pre)</b>: %{customdata[10]:.1f}<br>"
+                        "<b>Student Elo (post)</b>: %{customdata[11]:.1f}"
+                        "<extra></extra>"
+                    ),
+                )
+            )
+
+    if gap_days_threshold is not None and gap_days_threshold > 0 and student_ids:
+        current_series = ((series.get("Current Elo") or {}).get(student_ids[0])) or {}
+        timestamps = list(current_series.get("created_at") or [])
+        ordinals = [int(value) for value in current_series.get("attempt_ordinal") or []]
+        visible_count = bisect_right(ordinals, cutoff)
+        threshold_seconds = float(gap_days_threshold) * 86400.0
+        for idx in range(1, visible_count):
+            previous_raw = timestamps[idx - 1]
+            current_raw = timestamps[idx]
+            if not previous_raw or not current_raw:
+                continue
+            previous_dt = datetime.fromisoformat(str(previous_raw))
+            current_dt = datetime.fromisoformat(str(current_raw))
+            delta_seconds = (current_dt - previous_dt).total_seconds()
+            if delta_seconds < threshold_seconds:
+                continue
+            fig.add_vline(
+                x=ordinals[idx],
+                line_width=1.5,
+                line_dash="dot",
+                line_color="rgba(95, 104, 118, 0.65)",
+                annotation_text=_format_gap_label(delta_seconds),
+                annotation_position="top",
+                annotation_font={"size": 11, "color": "rgba(23,34,27,0.80)"},
+            )
+
+    fig.update_layout(
+        title=f"Student Elo comparison up to local attempt {cutoff}",
+        xaxis_title="Student-local attempt ordinal",
+        yaxis_title="Student Elo",
+        height=560,
         margin={"l": 56, "r": 24, "t": 72, "b": 56},
         hovermode="x unified",
         font={"size": 13},

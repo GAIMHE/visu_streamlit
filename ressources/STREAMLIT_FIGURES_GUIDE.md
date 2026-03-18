@@ -41,14 +41,48 @@ Important note:
 
 ---
 
+### 3) Attempt Concentration
+**What it shows**
+- A bar chart of attempt share after the current overview filters are applied.
+- You can switch between:
+  - content concentration
+  - student concentration
+- In content concentration, you can look at exercises, activities, objectives, or modules.
+- In student concentration, students are ranked globally across the visible slice.
+- The bars are rank buckets such as `Top 10%`, `10-20%`, and so on, except for module-level content concentration where each bar is one module.
+- Clicking a bar opens the relevant drilldown table below the chart.
+
+**Question it can answer**
+- How much of the total attempt volume is covered by the most-used exercises, activities, or objectives?
+- How much of the visible work is done by the top 10% students?
+- Which exact entities or students sit inside a dominant bucket?
+
+---
+
+### 4) Work Mode Transitions
+**What it shows**
+- A global Sankey diagram of student work-mode histories.
+- Each student starts in their first observed mode, then follows up to the first three mode changes seen in the raw attempt history.
+- Students who never change mode end in `No transition`.
+- Students who continue changing after the third visible change end in `More than 3 transitions`.
+- This figure ignores the page filters above so it can preserve full student histories.
+- Very small links are hidden when they involve fewer than 10 students.
+
+**Question it can answer**
+- What is the most common first work mode?
+- How often do students stay in one mode versus move across modes?
+- Which work-mode changes are the most common first, second, or third transitions?
+
+---
+
 ## Page: Bottlenecks and Transitions
 
-### 3) Bottleneck Candidates (horizontal bar chart)
+### 5) Bottleneck Candidates (horizontal bar chart)
 **What it shows**
 - Ranks modules/objectives/activities (you choose the level) where students struggle the most.
-- Score combines:
-  - low success
-  - many repeated attempts
+- Bar length shows failure rate directly.
+- Bar color shows repeat attempt rate.
+- The combined score is still kept in analysis/hover as a secondary summary signal.
 
 **Question it can answer**
 - Where are students getting stuck the most?
@@ -56,7 +90,7 @@ Important note:
 
 ---
 
-### 4) Path Transitions (horizontal bar chart)
+### 6) Path Transitions (horizontal bar chart)
 **What it shows**
 - Most frequent transitions from one activity to the next (focused on cross-objective transitions).
 - Also shows how often the destination attempt is successful (as a count).
@@ -69,7 +103,7 @@ Important note:
 
 ## Page: Objective-Activity Matrix Heatmap
 
-### 5) Objective-Activity Matrix (heatmap)
+### 7) Objective-Activity Matrix (heatmap)
 **What it shows**
 - Rows = objectives in the selected module.
 - Columns = local activity positions (`A1..An`) within each objective.
@@ -96,7 +130,7 @@ Important note:
 
 ## Page: ZPDES Transition Efficiency
 
-### 6) Transition-Efficiency Graph (network/lanes graph with cohort hover metrics)
+### 8) Transition-Efficiency Graph (network/lanes graph with cohort hover metrics)
 **What it shows**
 - The structural ZPDES lane layout for one module.
 - Activity circles are colored either by:
@@ -118,7 +152,7 @@ Important note:
 
 ## Page: Classroom Progression Replay
 
-### 7) Student x Activity Replay Matrix (animated heatmap)
+### 9) Student x Activity Replay Matrix (animated heatmap)
 **What it shows**
 - A classroom matrix:
   - X-axis = students (anonymized)
@@ -136,23 +170,53 @@ Important note:
 
 ---
 
-## Page: Student Elo Evolution
+## Page: Classroom Progression Sankey
 
-### 8) Student Elo Evolution (replay line chart)
+### 10) Classroom Activity Sankey (static Sankey)
 **What it shows**
-- One or two students' Elo trajectories over their own attempt sequence.
-- Exercise difficulty is fixed from the historical calibration.
-- The line replay advances in synchronized local steps (for example every 10 attempts).
+- A static Sankey diagram for one selected classroom in the chosen work-mode scope.
+- Each student contributes the ordered sequence of activities they reach for the first time.
+- Revisits to already-seen activities are intentionally ignored so the diagram focuses on progression breadth rather than loops.
+- A `Visible activity steps` control keeps only the first few reached activities visible before sending longer paths to `More than N activities`.
+- The page keeps the current size-based matching workflow and also allows a direct classroom-ID override inside the selected scope.
 
 **Question it can answer**
-- Is a student improving steadily, plateauing, or oscillating?
-- Do two students with similar attempt volume progress at the same pace?
-- Do failures cause short dips followed by recovery, or longer stagnation?
+- What is the dominant classroom entry activity?
+- Do students mostly share one progression route, or does the classroom split across many paths?
+- How many students stop early versus continue beyond the visible path depth?
+
+---
+
+## Page: Student Elo Evolution
+
+### 11) Student Elo Evolution (replay line chart)
+**What it shows**
+- One student's Elo trajectory over that student's own attempt sequence under two systems:
+  - the current retrospective item-Elo calibration
+  - the new iterative offline calibration
+- Both systems replay the same student histories and use the same student update rule.
+- The line replay advances in synchronized local steps (for example every 10 attempts).
+- Optional dotted markers can flag large timestamp gaps without changing the attempt-ordinal x-axis.
+
+**Question it can answer**
+- How much does the student trajectory depend on the item calibration method?
+- Does the iterative system mostly change early burn-in behavior, or does it also change later progression?
+- Where are the long inactivity gaps in the selected student's history?
 
 ---
 
 ## Quick reading tips
 
+- Each active analytical block now pairs the visualization with two collapsed helpers:
+  - `Info`: what is shown, the metrics, and the main controls.
+  - `Analysis`: deterministic findings tied to the broader analytical scope of the page, with caveats shown when the evidence is too thin.
+- `Analysis` panels are intentionally cautious:
+  - they reuse the page's existing synced data,
+  - they may ignore narrow example selectors when the page is meant to surface a broader population pattern,
+  - they only promote stronger comparisons when the scope is large enough,
+  - they can surface ranked lists rather than a single top item,
+  - and, when clean counts or Elo deltas are available, they may add lightweight statistical checks to distinguish strong signals from noise,
+  - and any explanation is phrased as a plausible interpretation rather than a proven cause.
 - Use filters first (date/module/objective/activity/classroom) to avoid mixed signals.
 - Start with the broad overview, then move to bottlenecks/transitions or drill down into the matrix and graph pages.
 - For intervention decisions:

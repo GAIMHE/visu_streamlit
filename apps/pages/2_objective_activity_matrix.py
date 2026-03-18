@@ -49,13 +49,16 @@ if str(SRC_DIR) not in sys.path:
 if str(APPS_DIR) not in sys.path:
     sys.path.insert(0, str(APPS_DIR))
 
+from figure_analysis import render_figure_analysis
 from figure_info import render_figure_info
 from overview_shared import normalize_date_input_range
+from plotly_config import build_plotly_chart_config
 from runtime_bootstrap import bootstrap_runtime_assets
 from runtime_paths import MATRIX_RUNTIME_RELATIVE_PATHS
 
 from visu2.config import get_settings
 from visu2.contracts import RUNTIME_CORE_COLUMNS
+from visu2.figure_analysis import analyze_matrix_drilldown_table, analyze_matrix_heatmap
 from visu2.loaders import load_learning_catalog
 from visu2.objective_activity_matrix import (
     VALID_MATRIX_METRICS,
@@ -952,9 +955,9 @@ None
         width='stretch',
         on_select="rerun",
         selection_mode=("points",),
-        config={
-            "modeBarButtonsToRemove": ["select2d", "lasso2d"],
-        },
+        config=build_plotly_chart_config(
+            modebar_buttons_to_remove=["select2d", "lasso2d"]
+        ),
     )
     selected_from_event = _extract_selected_cell(
         event,
@@ -964,6 +967,13 @@ None
     )
     if selected_from_event is not None:
         st.session_state[selected_cell_key] = selected_from_event
+    render_figure_analysis(
+        analyze_matrix_heatmap(
+            cells_df,
+            metric=metric,
+            module_label=selected_module_display,
+        )
+    )
 
     st.subheader("Exercise Drilldown")
     render_figure_info("matrix_exercise_drilldown_table")
@@ -973,14 +983,23 @@ None
             "Exercise drilldown is unavailable because `agg_exercise_daily.parquet` is missing. "
             "Run `uv run python scripts/build_derived.py --strict-checks`."
         )
+        render_figure_analysis(
+            analyze_matrix_drilldown_table(None, metric=metric)
+        )
         return
     if requires_exercise_daily and exercise_daily_status == "incompatible":
         st.info("Exercise drilldown is disabled until artifacts are rebuilt.")
+        render_figure_analysis(
+            analyze_matrix_drilldown_table(None, metric=metric)
+        )
         return
 
     selected_cell = st.session_state.get(selected_cell_key)
     if not isinstance(selected_cell, dict):
         st.info("Click a matrix cell to view exercise-level metrics for that activity.")
+        render_figure_analysis(
+            analyze_matrix_drilldown_table(None, metric=metric)
+        )
         return
 
     c1, c2 = st.columns([4, 1])
@@ -1007,6 +1026,9 @@ None
     except ValueError as err:
         st.error(str(err))
         st.code("uv run python scripts/build_derived.py --strict-checks")
+        render_figure_analysis(
+            analyze_matrix_drilldown_table(None, metric=metric, activity_label=str(selected_cell.get("activity_label") or ""))
+        )
         return
 
     if drilldown.height == 0:
@@ -1014,6 +1036,13 @@ None
             st.info("No calibrated exercise Elo rows for the selected activity.")
         else:
             st.info("No exercise-level rows for the selected activity in this date range.")
+        render_figure_analysis(
+            analyze_matrix_drilldown_table(
+                drilldown,
+                metric=metric,
+                activity_label=str(selected_cell.get("activity_label") or ""),
+            )
+        )
         return
 
     if metric == "activity_mean_exercise_elo":
@@ -1072,6 +1101,13 @@ None
             f"{selected_module_code}::{selected_cell.get('objective_id')}::"
             f"{selected_cell.get('activity_id')}::{start_date}::{end_date}"
         ),
+    )
+    render_figure_analysis(
+        analyze_matrix_drilldown_table(
+            drilldown,
+            metric=metric,
+            activity_label=str(selected_cell.get("activity_label") or ""),
+        )
     )
 
     selected_row_idx: int | None = None
