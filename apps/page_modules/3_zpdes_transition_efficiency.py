@@ -100,6 +100,7 @@ def _load_zpdes_population_summary(
         pl.scan_parquet(path)
         .select(
             [
+                "date_utc",
                 "module_code",
                 "module_label",
                 "objective_id",

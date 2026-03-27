@@ -213,8 +213,9 @@ def render_population_filters(
     if (start_date, end_date) != (clamped_start, clamped_end):
         set_filter_date_range(source_id, start_date=start_date, end_date=end_date)
     elif (stored_start, stored_end) != (clamped_start, clamped_end):
+        # Persist the clamped range without mutating the date-input widget key after
+        # instantiation; Streamlit treats that as an illegal post-render widget update.
         set_filter_date_range(source_id, start_date=clamped_start, end_date=clamped_end)
-        st.session_state[f"{source_id}_population_date_range"] = (clamped_start, clamped_end)
 
     min_student_attempts = int(
         st.sidebar.number_input(
