@@ -188,10 +188,9 @@ def build_classroom_activity_paths(
         .map_elements(_normalize_activity_label, return_dtype=pl.Utf8)
         .alias("activity_label_normalized"),
     )
-    scoped = (
-        lf.filter(pl.col("classroom_id") == classroom_key)
-        .filter(pl.col("date_utc").is_between(start_date, end_date))
-    )
+    scoped = lf.filter(pl.col("date_utc").is_between(start_date, end_date))
+    if classroom_key != SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID:
+        scoped = scoped.filter(pl.col("classroom_id") == classroom_key)
     if mode_scope != "all":
         scoped = scoped.filter(pl.col("work_mode") == mode_scope)
 

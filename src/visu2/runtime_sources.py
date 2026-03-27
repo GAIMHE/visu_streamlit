@@ -76,6 +76,7 @@ CAPABILITY_HAS_DURATION_FIELDS = "has_duration_fields"
 CAPABILITY_HAS_ZPDES_TOPOLOGY = "has_zpdes_topology"
 CAPABILITY_HAS_EXERCISE_METADATA = "has_exercise_metadata"
 CAPABILITY_HAS_EXACT_MIN_STUDENT_ATTEMPT_FILTER = "has_exact_min_student_attempt_filter"
+CAPABILITY_HAS_CLASSROOM_ALL_DATA_OPTION = "has_classroom_all_data_option"
 
 
 def _derived_runtime_relative_paths(table_names: tuple[str, ...]) -> tuple[str, ...]:
@@ -141,14 +142,14 @@ RUNTIME_SOURCES: dict[str, RuntimeSourceSpec] = {
         source_id="maureen_m16fr",
         label="Maureen M16 FR",
         description=(
-            "Single-module remediation dataset adapted into the shared runtime contract. "
-            "Sources without classroom ids are treated as one synthetic all-students classroom in supported classroom views."
+            "Single-module remediation dataset adapted into the shared runtime contract, "
+            "using the researcher export with real classroom identifiers."
         ),
         runtime_root_relative=Path("artifacts") / "sources" / "maureen_m16fr",
         build_profile="maureen",
         raw_inputs={
             "attempts_csv": Path("data_maureen")
-            / "score-progression-f253161a-d2d6-11ed-afa1-0242ac120002 1(in).csv",
+            / "researcher_data_Comprendre les mots pour mieux les lire(in).csv",
             "module_config_csv": Path("data_maureen") / "M16FR_modules_config 1(M16-Fr).csv",
         },
         supported_pages=(
@@ -162,8 +163,10 @@ RUNTIME_SOURCES: dict[str, RuntimeSourceSpec] = {
         ),
         capability_flags=frozenset(
             {
+                CAPABILITY_HAS_CLASSROOMS,
                 CAPABILITY_HAS_EXERCISE_METADATA,
                 CAPABILITY_HAS_EXACT_MIN_STUDENT_ATTEMPT_FILTER,
+                CAPABILITY_HAS_CLASSROOM_ALL_DATA_OPTION,
             }
         ),
         remote_config_key="maureen_m16fr",
@@ -203,3 +206,9 @@ def source_supports_exact_min_student_attempt_filter(source_id: str | None = Non
     """Return whether one source should expose the exact min-attempts population filter."""
     source = get_runtime_source(source_id)
     return CAPABILITY_HAS_EXACT_MIN_STUDENT_ATTEMPT_FILTER in source.capability_flags
+
+
+def source_supports_classroom_all_data_option(source_id: str | None = None) -> bool:
+    """Return whether one source exposes an explicit All data classroom selection."""
+    source = get_runtime_source(source_id)
+    return CAPABILITY_HAS_CLASSROOM_ALL_DATA_OPTION in source.capability_flags

@@ -108,6 +108,8 @@ def _build_one_source(
     ensure_artifact_directories(settings)
     source = get_runtime_source(source_id)
     source_input_snapshot = build_source_input_snapshot(settings, source.raw_inputs)
+    rebuild_all_tables = bool(force)
+    reuse_reason = ""
 
     if not force:
         can_reuse, reuse_reason = can_reuse_derived_build(
@@ -126,6 +128,10 @@ def _build_one_source(
                 skip_checks=skip_checks,
             )
         print(f"Source '{source_id}' requires rebuild. {reuse_reason}")
+        rebuild_all_tables = reuse_reason in {
+            "Raw source inputs changed since the last successful build.",
+            "Derived manifest is missing.",
+        } or reuse_reason.startswith("Runtime input is missing:")
 
     materialization = materialize_source_runtime_inputs(settings)
     print(f"Materialized source '{source_id}' into {settings.runtime_root}")
@@ -145,34 +151,43 @@ def _build_one_source(
             print(json.dumps(report, indent=2))
             return 1
 
-    legacy_derived_dir = settings.root_dir / "artifacts" / "derived"
     outputs: dict[str, Path] = {}
-    missing_tables: list[str] = []
-    for table_name in source.derived_tables:
-        dst_path = settings.artifacts_derived_dir / f"{table_name}.parquet"
-        if dst_path.exists():
-            outputs[table_name] = dst_path
-            continue
-
-        legacy_path = legacy_derived_dir / f"{table_name}.parquet"
-        if source.source_id == "main" and sample_rows is None and legacy_path.exists():
-            dst_path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(legacy_path, dst_path)
-            outputs[table_name] = dst_path
-            continue
-
-        missing_tables.append(table_name)
-
-    if missing_tables:
+    if rebuild_all_tables:
         built_outputs = write_derived_tables(
             settings,
             sample_rows=sample_rows,
-            table_names=tuple(missing_tables),
+            table_names=tuple(source.derived_tables),
         )
         outputs.update(built_outputs)
-        print(f"Built missing derived tables for source '{source_id}': {', '.join(missing_tables)}")
+        print(f"Rebuilt derived tables for source '{source_id}': {', '.join(source.derived_tables)}")
     else:
-        print(f"All derived tables for source '{source_id}' were already present; refreshed the manifest only.")
+        legacy_derived_dir = settings.root_dir / "artifacts" / "derived"
+        missing_tables: list[str] = []
+        for table_name in source.derived_tables:
+            dst_path = settings.artifacts_derived_dir / f"{table_name}.parquet"
+            if dst_path.exists():
+                outputs[table_name] = dst_path
+                continue
+
+            legacy_path = legacy_derived_dir / f"{table_name}.parquet"
+            if source.source_id == "main" and sample_rows is None and legacy_path.exists():
+                dst_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(legacy_path, dst_path)
+                outputs[table_name] = dst_path
+                continue
+
+            missing_tables.append(table_name)
+
+        if missing_tables:
+            built_outputs = write_derived_tables(
+                settings,
+                sample_rows=sample_rows,
+                table_names=tuple(missing_tables),
+            )
+            outputs.update(built_outputs)
+            print(f"Built missing derived tables for source '{source_id}': {', '.join(missing_tables)}")
+        else:
+            print(f"All derived tables for source '{source_id}' were already present; refreshed the manifest only.")
     manifest = _build_manifest(
         source_id=source_id,
         outputs=outputs,

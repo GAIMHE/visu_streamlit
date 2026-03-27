@@ -17,6 +17,7 @@ from visu2.runtime_sources import (
     get_runtime_source,
     list_runtime_sources,
     runtime_relative_paths_for_source,
+    source_supports_classroom_all_data_option,
     source_supports_exact_min_student_attempt_filter,
 )
 
@@ -62,3 +63,8 @@ def test_visible_pages_hide_unsupported_maureen_views() -> None:
 def test_exact_min_student_attempt_filter_is_only_enabled_for_maureen() -> None:
     assert source_supports_exact_min_student_attempt_filter("main") is False
     assert source_supports_exact_min_student_attempt_filter("maureen_m16fr") is True
+
+
+def test_classroom_all_data_option_is_only_enabled_for_maureen() -> None:
+    assert source_supports_classroom_all_data_option("main") is False
+    assert source_supports_classroom_all_data_option("maureen_m16fr") is True

@@ -21,6 +21,30 @@ UUID_RE = re.compile(
     r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 )
 
+_MAUREEN_RESEARCHER_HEADERS: tuple[str, ...] = (
+    "UAI",
+    "classroom_id",
+    "teacher_id",
+    "user_id",
+    "playlist_or_module_id",
+    "objective_id",
+    "activity_id",
+    "exercise_id",
+    "module_short_title",
+    "module_long_title",
+    "created_at",
+    "login_time",
+    "is_initial_test",
+    "data_score",
+    "data_correct",
+    "data_nb_tries",
+    "data_test_context",
+    "data_answer",
+    "data_duration",
+    "session_duration",
+    "work_mode",
+)
+
 
 @dataclass(frozen=True)
 class SourceMaterializationReport:
@@ -34,6 +58,19 @@ class SourceMaterializationReport:
 def _clean_text(value: object) -> str | None:
     text = str(value or "").strip()
     return text or None
+
+
+def _strip_trailing_semicolon(value: object) -> str:
+    return str(value or "").strip().removesuffix(";").strip()
+
+
+def _optional_text_expr(column: str) -> pl.Expr:
+    normalized = pl.col(column).cast(pl.Utf8).str.strip_chars()
+    return (
+        pl.when(normalized.is_null() | normalized.is_in(["", "None", "none", "NULL", "null"]))
+        .then(None)
+        .otherwise(normalized)
+    )
 
 
 def _bool_expr(column: str) -> pl.Expr:
@@ -73,6 +110,101 @@ def _load_maureen_config_rows(path: Path) -> list[dict[str, str | None]]:
     return rows
 
 
+def _repair_maureen_researcher_row(raw_line: str, expected_length: int) -> list[str] | None:
+    text = raw_line.rstrip("\r\n")
+    if not text:
+        return None
+    text = _strip_trailing_semicolon(text)
+    if text.startswith('"') and text.endswith('"'):
+        text = text[1:-1]
+    left = text.split(",", 17)
+    if len(left) != 18:
+        return None
+    head = left[:17]
+    remainder = left[17]
+    right = remainder.rsplit(",", 3)
+    if len(right) != 4:
+        return None
+    data_answer, data_duration, session_duration, work_mode = right
+    repaired = [*head, data_answer, data_duration, session_duration, work_mode]
+    if len(repaired) != expected_length:
+        return None
+    return repaired
+
+
+def _load_maureen_researcher_attempts(path: Path) -> tuple[pl.DataFrame, tuple[str, ...]]:
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        header_line = handle.readline()
+        if not header_line:
+            raise ValueError("Maureen researcher CSV is empty.")
+        parsed_header = [
+            _strip_trailing_semicolon(value)
+            for value in next(csv.reader([header_line], delimiter=","))
+        ]
+        if tuple(parsed_header) != _MAUREEN_RESEARCHER_HEADERS:
+            raise ValueError(
+                "Maureen researcher CSV has an unexpected header. "
+                f"Expected {list(_MAUREEN_RESEARCHER_HEADERS)}, got {parsed_header}."
+            )
+
+        rows: list[dict[str, str | None]] = []
+        repaired_rows = 0
+        skipped_rows = 0
+        for raw_line in handle:
+            if not raw_line.strip():
+                continue
+            parsed = next(csv.reader([raw_line], delimiter=","))
+            if len(parsed) != len(parsed_header):
+                repaired = _repair_maureen_researcher_row(raw_line, len(parsed_header))
+                if repaired is None:
+                    skipped_rows += 1
+                    continue
+                parsed = repaired
+                repaired_rows += 1
+            normalized = {
+                parsed_header[idx]: _clean_text(_strip_trailing_semicolon(parsed[idx]))
+                for idx in range(len(parsed_header))
+            }
+            rows.append(normalized)
+
+    attempts = pl.DataFrame(rows) if rows else pl.DataFrame(schema={name: pl.Utf8 for name in parsed_header})
+    attempts = attempts.with_columns(
+        _optional_text_expr("UAI").alias("UAI"),
+        _optional_text_expr("classroom_id").alias("classroom_id"),
+        _optional_text_expr("teacher_id").alias("teacher_id"),
+        _optional_text_expr("user_id").alias("user_id"),
+        _optional_text_expr("playlist_or_module_id").alias("playlist_or_module_id"),
+        _optional_text_expr("objective_id").alias("objective_id"),
+        _optional_text_expr("activity_id").alias("activity_id"),
+        _optional_text_expr("exercise_id").alias("exercise_id"),
+        _optional_text_expr("module_short_title").alias("module_short_title"),
+        _optional_text_expr("module_long_title").alias("module_long_title"),
+        _optional_text_expr("data_test_context").alias("data_test_context"),
+        _optional_text_expr("work_mode").alias("work_mode"),
+        _bool_expr("data_correct").alias("data_correct"),
+        _bool_expr("is_initial_test").alias("is_initial_test"),
+        pl.col("data_score").cast(pl.Float64, strict=False).alias("data_score"),
+        pl.col("data_nb_tries").cast(pl.Int64, strict=False).alias("data_nb_tries"),
+        pl.col("data_duration").cast(pl.Float64, strict=False).alias("data_duration"),
+        pl.col("session_duration").cast(pl.Float64, strict=False).alias("session_duration"),
+        pl.col("created_at")
+        .map_elements(_parse_created_at, return_dtype=pl.Datetime(time_zone="UTC"))
+        .alias("created_at"),
+        pl.col("login_time")
+        .map_elements(_parse_created_at, return_dtype=pl.Datetime(time_zone="UTC"))
+        .alias("login_time"),
+    ).with_columns(
+        pl.coalesce([pl.col("work_mode"), pl.col("data_test_context")]).alias("work_mode"),
+    )
+
+    warnings: list[str] = []
+    if repaired_rows > 0:
+        warnings.append(f"Repaired {repaired_rows} malformed row(s) in the Maureen researcher CSV.")
+    if skipped_rows > 0:
+        warnings.append(f"Skipped {skipped_rows} row(s) that could not be repaired in the Maureen researcher CSV.")
+    return attempts, tuple(warnings)
+
+
 def _parse_created_at(value: str | None) -> datetime | None:
     text = str(value or "").strip()
     if not text:
@@ -105,23 +237,7 @@ def _build_maureen_catalog_and_raw(
     module_config_csv_path: Path,
 ) -> tuple[pl.DataFrame, dict[str, Any], dict[str, Any], dict[str, Any], tuple[str, ...]]:
     config_rows = _load_maureen_config_rows(module_config_csv_path)
-    attempts = pl.read_csv(
-        attempts_csv_path,
-        infer_schema_length=1000,
-        truncate_ragged_lines=True,
-    )
-    attempts = attempts.with_columns(
-        pl.col("user_id").cast(pl.Utf8).str.strip_chars().alias("user_id"),
-        pl.col("module_id").cast(pl.Utf8).str.strip_chars().alias("module_id"),
-        pl.col("objective_id").cast(pl.Utf8).str.strip_chars().alias("objective_id"),
-        pl.col("activity_id").cast(pl.Utf8).str.strip_chars().alias("activity_id"),
-        pl.col("exercise_id").cast(pl.Utf8).str.strip_chars().alias("exercise_id"),
-        pl.col("data_test_context").cast(pl.Utf8).str.strip_chars().alias("work_mode"),
-        _bool_expr("data_correct").alias("data_correct"),
-        pl.col("created_at")
-        .map_elements(_parse_created_at, return_dtype=pl.Datetime(time_zone="UTC"))
-        .alias("created_at"),
-    ).sort(["user_id", "created_at", "exercise_id"])
+    attempts, parse_warnings = _load_maureen_researcher_attempts(attempts_csv_path)
 
     module_row = next(
         (row for row in config_rows if str(row.get("type") or "").strip().lower() == "module"),
@@ -134,6 +250,20 @@ def _build_maureen_catalog_and_raw(
     module_code = str(module_row.get("code") or "").strip() or "M0"
     module_short = str(module_row.get("short_title") or module_code).strip()
     module_long = str(module_row.get("long_title") or module_short).strip()
+    attempts = attempts.with_columns(
+        pl.coalesce(
+            [
+                pl.col("playlist_or_module_id"),
+                pl.lit(module_id, dtype=pl.Utf8),
+            ]
+        ).alias("module_id"),
+        pl.coalesce(
+            [
+                pl.col("module_long_title"),
+                pl.lit(module_long, dtype=pl.Utf8),
+            ]
+        ).alias("module_long_title"),
+    ).sort(["user_id", "created_at", "exercise_id"])
 
     objective_rows = [
         row
@@ -201,7 +331,7 @@ def _build_maureen_catalog_and_raw(
     attempt_exercises_by_activity: defaultdict[str, list[str]] = defaultdict(list)
     attempt_objective_by_activity: dict[str, str] = {}
     objective_ids_seen_in_attempts: set[str] = set()
-    warnings: list[str] = []
+    warnings: list[str] = list(parse_warnings)
     for row in attempt_rows:
         objective_id = str(row.get("objective_id") or "").strip()
         activity_id = str(row.get("activity_id") or "").strip()
@@ -480,13 +610,14 @@ def _build_maureen_catalog_and_raw(
 
     raw_attempts = (
         attempts.with_columns(
-            pl.col("module_id").alias("playlist_or_module_id"),
-            pl.col("created_at").alias("login_time"),
-            pl.lit(None, dtype=pl.Utf8).alias("teacher_id"),
-            pl.lit(None, dtype=pl.Utf8).alias("classroom_id"),
-            pl.lit(None, dtype=pl.Float64).alias("data_duration"),
-            pl.lit(None, dtype=pl.Float64).alias("session_duration"),
-            pl.lit(module_long, dtype=pl.Utf8).alias("module_long_title"),
+            pl.lit(None, dtype=pl.Utf8).alias("variation"),
+            pl.lit(None, dtype=pl.Float64).alias("progression_score"),
+            pl.lit(None, dtype=pl.Float64).alias("initial_test_max_success"),
+            pl.lit(None, dtype=pl.Float64).alias("initial_test_weighted_max_success"),
+            pl.lit(None, dtype=pl.Float64).alias("initial_test_success_rate"),
+            pl.lit(None, dtype=pl.Float64).alias("finished_module_mean_score"),
+            pl.lit(None, dtype=pl.Float64).alias("finished_module_graphe_coverage_rate"),
+            pl.lit(None, dtype=pl.Boolean).alias("is_gar"),
         )
         .sort(["user_id", "created_at", "exercise_id"])
         .with_columns(

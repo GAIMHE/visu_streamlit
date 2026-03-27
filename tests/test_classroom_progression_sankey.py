@@ -111,6 +111,21 @@ def test_build_classroom_activity_paths_uses_synthetic_classroom_when_missing() 
     assert payload["student_count"] == 4
 
 
+def test_build_classroom_activity_paths_all_data_spans_explicit_classrooms() -> None:
+    payload = build_classroom_activity_paths(
+        _fact_fixture(),
+        classroom_id=SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID,
+        mode_scope="zpdes",
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 1),
+    )
+
+    assert payload["classroom_id"] == SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID
+    assert payload["classroom_label"] == "All students"
+    assert payload["student_count"] == 4
+    assert sorted(payload["student_ids"]) == ["u1", "u2", "u3", "u4"]
+
+
 def test_build_classroom_activity_paths_uses_activity_codes_when_available() -> None:
     payload = build_classroom_activity_paths(
         _fact_fixture(),

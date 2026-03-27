@@ -706,10 +706,11 @@ def build_replay_payload(
         return _empty_payload(classroom_id="", mode_scope=mode_scope, start_date=start_date, end_date=end_date)
 
     scoped = lf.filter(
-        (pl.col("classroom_id") == classroom_txt)
-        & (pl.col("date_utc") >= pl.lit(start_date))
+        (pl.col("date_utc") >= pl.lit(start_date))
         & (pl.col("date_utc") <= pl.lit(end_date))
     )
+    if classroom_txt != SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID:
+        scoped = scoped.filter(pl.col("classroom_id") == classroom_txt)
     if mode_scope in {"zpdes", "playlist"}:
         scoped = scoped.filter(pl.col("work_mode") == mode_scope)
 
@@ -874,6 +875,9 @@ def build_replay_payload(
 
     return {
         "classroom_id": classroom_txt,
+        "classroom_label": (
+            "All students" if classroom_txt == SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID else classroom_txt
+        ),
         "mode_scope": mode_scope,
         "start_date": start_date.isoformat(),
         "end_date": end_date.isoformat(),

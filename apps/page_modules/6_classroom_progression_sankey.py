@@ -41,6 +41,7 @@ from visu2.config import get_settings
 from visu2.contracts import RUNTIME_CORE_COLUMNS
 from visu2.figure_analysis import analyze_classroom_progression_sankey
 from visu2.remote_query import query_fact_attempts_for_classroom
+from visu2.runtime_sources import source_supports_classroom_all_data_option
 
 MODE_OPTIONS = {
     "ZPDES": "zpdes",
@@ -185,6 +186,7 @@ div, p, label {
 
     min_students = int(scoped_profiles["students"].min() or 0)
     max_students = int(scoped_profiles["students"].max() or 0)
+    allow_all_data = source_supports_classroom_all_data_option(settings.source_id)
     synthetic_only_scope = (
         scoped_profiles.height == 1
         and str(scoped_profiles["classroom_id"][0]) == SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID
@@ -198,57 +200,70 @@ div, p, label {
         st.caption(
             f"Classrooms in this scope range from **{min_students}** to **{max_students}** students."
         )
-
-        default_target = int(scoped_profiles["students"].median() or min_students or 1)
-        target_students = int(
-            st.number_input(
-                "Target classroom size (students)",
-                min_value=max(1, min_students),
-                max_value=max(1, max_students),
-                value=min(max(1, default_target), max(1, max_students)),
-                step=1,
+        population_scope = "Specific classroom"
+        if allow_all_data:
+            population_scope = st.radio(
+                "Population scope",
+                ["Specific classroom", "All data"],
+                horizontal=True,
             )
-        )
-        manual_classroom_id = st.text_input(
-            "Classroom ID override (optional)",
-            value="",
-            help=(
-                "If you enter a classroom ID here, the page will use that classroom directly "
-                "inside the selected work-mode scope instead of the currently selected matching classroom."
-            ),
-        ).strip()
-        lower = max(1, int(math.floor(target_students * 0.9)))
-        upper = max(lower, int(math.ceil(target_students * 1.1)))
-        matching_profiles = select_classrooms_near_student_target(
-            profiles,
-            mode_scope=mode_scope,
-            target_students=target_students,
-            tolerance_ratio=0.10,
-        )
-        if matching_profiles.height == 0:
-            st.info("No classrooms found in that range, please try another range.")
-            st.stop()
-
-        st.caption(
-            f"Showing classrooms with **{lower}** to **{upper}** students in **{_mode_label(mode_scope)}** scope."
-        )
-        rows = matching_profiles.to_dicts()
-        option_map = {_format_classroom_option(row): str(row.get("classroom_id")) for row in rows}
-        selected_option = st.selectbox("Matching classrooms", list(option_map.keys()), index=0)
-        selected_classroom_id = option_map[selected_option]
-        if manual_classroom_id:
-            override_classroom_id = select_classroom_by_id(profiles, mode_scope, manual_classroom_id)
-            if override_classroom_id is None:
-                st.info(
-                    "No classroom in the selected work-mode scope matches that ID. Please check the ID or clear the field."
+        if allow_all_data and population_scope == "All data":
+            selected_classroom_id = SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID
+            st.caption(
+                f"Using all available classroom data in **{_mode_label(mode_scope)}** scope "
+                f"across **{scoped_profiles.height}** classrooms."
+            )
+        else:
+            default_target = int(scoped_profiles["students"].median() or min_students or 1)
+            target_students = int(
+                st.number_input(
+                    "Target classroom size (students)",
+                    min_value=max(1, min_students),
+                    max_value=max(1, max_students),
+                    value=min(max(1, default_target), max(1, max_students)),
+                    step=1,
                 )
+            )
+            manual_classroom_id = st.text_input(
+                "Classroom ID override (optional)",
+                value="",
+                help=(
+                    "If you enter a classroom ID here, the page will use that classroom directly "
+                    "inside the selected work-mode scope instead of the currently selected matching classroom."
+                ),
+            ).strip()
+            lower = max(1, int(math.floor(target_students * 0.9)))
+            upper = max(lower, int(math.ceil(target_students * 1.1)))
+            matching_profiles = select_classrooms_near_student_target(
+                profiles,
+                mode_scope=mode_scope,
+                target_students=target_students,
+                tolerance_ratio=0.10,
+            )
+            if matching_profiles.height == 0:
+                st.info("No classrooms found in that range, please try another range.")
                 st.stop()
-            override_rows = scoped_profiles.filter(pl.col("classroom_id") == override_classroom_id).to_dicts()
-            if not override_rows:
-                st.info("The typed classroom ID is not available in the selected work-mode scope.")
-                st.stop()
-            selected_classroom_id = override_classroom_id
-            st.caption("Using the typed classroom ID override.")
+
+            st.caption(
+                f"Showing classrooms with **{lower}** to **{upper}** students in **{_mode_label(mode_scope)}** scope."
+            )
+            rows = matching_profiles.to_dicts()
+            option_map = {_format_classroom_option(row): str(row.get("classroom_id")) for row in rows}
+            selected_option = st.selectbox("Matching classrooms", list(option_map.keys()), index=0)
+            selected_classroom_id = option_map[selected_option]
+            if manual_classroom_id:
+                override_classroom_id = select_classroom_by_id(profiles, mode_scope, manual_classroom_id)
+                if override_classroom_id is None:
+                    st.info(
+                        "No classroom in the selected work-mode scope matches that ID. Please check the ID or clear the field."
+                    )
+                    st.stop()
+                override_rows = scoped_profiles.filter(pl.col("classroom_id") == override_classroom_id).to_dicts()
+                if not override_rows:
+                    st.info("The typed classroom ID is not available in the selected work-mode scope.")
+                    st.stop()
+                selected_classroom_id = override_classroom_id
+                st.caption("Using the typed classroom ID override.")
     source_first_ts = profiles.select(pl.col("first_attempt_at").min()).item()
     source_last_ts = profiles.select(pl.col("last_attempt_at").max()).item()
     if not (hasattr(source_first_ts, "date") and hasattr(source_last_ts, "date")):

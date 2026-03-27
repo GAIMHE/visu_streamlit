@@ -178,6 +178,23 @@ def test_build_classroom_mode_profiles_uses_synthetic_classroom_when_missing() -
     assert int(zpdes_profile["students"][0]) == 3
 
 
+def test_build_replay_payload_all_data_spans_explicit_classrooms() -> None:
+    payload = build_replay_payload(
+        fact=_base_fact_fixture(),
+        classroom_id=SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID,
+        mode_scope="all",
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 1),
+        max_frames=2000,
+        step_size=1,
+    )
+
+    assert payload["classroom_id"] == SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID
+    assert payload["classroom_label"] == "All students"
+    assert payload["total_events_valid_timestamp"] == 5
+    assert sorted(payload["student_ids"]) == ["u1", "u2", "u5"]
+
+
 def test_build_classroom_activity_summary_by_mode_matches_expected_rates() -> None:
     summary = build_classroom_activity_summary_by_mode(_base_fact_fixture())
 
