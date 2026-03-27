@@ -78,6 +78,29 @@ REQUIRED_FACT_COLUMNS = [
 ]
 
 REQUIRED_AGG_COLUMNS = {
+    "classroom_mode_profiles": [
+        "mode_scope",
+        "classroom_id",
+        "students",
+        "activities",
+        "objectives",
+        "modules",
+        "attempts",
+        "first_attempt_at",
+        "last_attempt_at",
+    ],
+    "classroom_activity_summary_by_mode": [
+        "mode_scope",
+        "activity_label",
+        "classrooms_observed",
+        "attempts_total",
+        "successes_total",
+        "mean_classroom_success_rate",
+        "median_classroom_success_rate",
+        "weak_classroom_count",
+        "success_rate",
+        "weak_classroom_share",
+    ],
     "agg_activity_daily": [
         "date_utc",
         "activity_id",
@@ -312,6 +335,21 @@ REQUIRED_AGG_COLUMNS = {
 }
 
 RUNTIME_CORE_COLUMNS = {
+    "classroom_mode_profiles": [
+        "mode_scope",
+        "classroom_id",
+        "students",
+        "activities",
+        "attempts",
+    ],
+    "classroom_activity_summary_by_mode": [
+        "mode_scope",
+        "activity_label",
+        "classrooms_observed",
+        "attempts_total",
+        "success_rate",
+        "weak_classroom_share",
+    ],
     "fact_attempt_core": [
         "created_at",
         "date_utc",

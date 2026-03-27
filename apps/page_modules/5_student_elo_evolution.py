@@ -36,46 +36,39 @@ if str(APPS_DIR) not in sys.path:
 from figure_analysis import render_figure_analysis
 from figure_info import render_figure_info
 from plotly_config import build_plotly_chart_config
-from runtime_bootstrap import bootstrap_runtime_assets
-from runtime_paths import STUDENT_ELO_RUNTIME_RELATIVE_PATHS
+from source_state import get_active_source_id
 
 from visu2.config import get_settings
 from visu2.contracts import RUNTIME_CORE_COLUMNS
 from visu2.figure_analysis import analyze_student_elo_comparison
+from visu2.remote_query import query_student_elo_events
 from visu2.student_elo import (
     build_student_elo_comparison_figure,
     build_student_elo_comparison_payload,
-    load_student_elo_events,
+    build_student_elo_payload,
     load_student_elo_label_lookup,
     load_student_elo_profiles,
     select_student_by_id,
     select_students_near_attempt_target,
 )
 
-st.set_page_config(
-    page_title="Student Elo Evolution",
-    page_icon=":bar_chart:",
-    layout="wide",
-)
-
-
-st.markdown(
-    """
-<style>
-h1, h2, h3 {
-  font-family: "Fraunces", Georgia, serif !important;
-}
-div, p, label {
-  font-family: "IBM Plex Sans", sans-serif !important;
-}
-[data-testid="stMetric"] {
-  border: 1px solid rgba(23, 34, 27, 0.10);
-  border-radius: 14px;
-  padding: 0.85rem;
-}
-</style>
-""",
-    unsafe_allow_html=True,
+CURRENT_EVENTS_RELATIVE_PATH = "artifacts/derived/student_elo_events.parquet"
+ITERATIVE_EVENTS_RELATIVE_PATH = "artifacts/derived/student_elo_events_iterative.parquet"
+ELO_EVENT_QUERY_COLUMNS: tuple[str, ...] = (
+    "user_id",
+    "attempt_ordinal",
+    "created_at",
+    "date_utc",
+    "work_mode",
+    "module_code",
+    "objective_id",
+    "activity_id",
+    "exercise_id",
+    "outcome",
+    "expected_success",
+    "exercise_elo",
+    "student_elo_pre",
+    "student_elo_post",
 )
 
 
@@ -138,21 +131,61 @@ def _load_comparison_profiles(
 
 
 @st.cache_data(show_spinner=False)
-def _load_comparison_payload(
-    current_events_path: Path,
-    iterative_events_path: Path,
+def _load_payload(
+    source_id: str,
     label_path: Path,
     exercise_elo_path: Path,
     user_ids: tuple[str, ...],
     step_size: int,
+    display_choice: str,
 ) -> dict[str, object]:
-    return build_student_elo_comparison_payload(
-        load_student_elo_events(current_events_path),
-        load_student_elo_events(iterative_events_path),
-        list(user_ids),
-        step_size,
-        label_lookup=_load_label_lookup(label_path, exercise_elo_path),
+    settings = get_settings(source_id)
+    label_lookup = _load_label_lookup(label_path, exercise_elo_path)
+    users = list(user_ids)
+
+    if display_choice == "Both":
+        return build_student_elo_comparison_payload(
+            query_student_elo_events(
+                settings,
+                relative_path=CURRENT_EVENTS_RELATIVE_PATH,
+                user_ids=users,
+                columns=ELO_EVENT_QUERY_COLUMNS,
+            ),
+            query_student_elo_events(
+                settings,
+                relative_path=ITERATIVE_EVENTS_RELATIVE_PATH,
+                user_ids=users,
+                columns=ELO_EVENT_QUERY_COLUMNS,
+            ),
+            users,
+            step_size,
+            label_lookup=label_lookup,
+        )
+
+    relative_path = (
+        CURRENT_EVENTS_RELATIVE_PATH
+        if display_choice == "Current Elo"
+        else ITERATIVE_EVENTS_RELATIVE_PATH
     )
+    system_payload = build_student_elo_payload(
+        query_student_elo_events(
+            settings,
+            relative_path=relative_path,
+            user_ids=users,
+            columns=ELO_EVENT_QUERY_COLUMNS,
+        ),
+        users,
+        step_size,
+        label_lookup=label_lookup,
+    )
+    return {
+        "student_ids": list(system_payload.get("student_ids") or []),
+        "frame_cutoffs": list(system_payload.get("frame_cutoffs") or [0]),
+        "step_size": int(system_payload.get("step_size") or step_size),
+        "max_attempts": int(system_payload.get("max_attempts") or 0),
+        "systems": (display_choice,),
+        "series": {display_choice: system_payload.get("series") or {}},
+    }
 
 
 @st.cache_data(show_spinner=False)
@@ -210,21 +243,34 @@ def _parquet_columns(path: Path) -> list[str]:
 
 
 def main() -> None:
-    bootstrap_runtime_assets(STUDENT_ELO_RUNTIME_RELATIVE_PATHS)
-    settings = get_settings()
+    st.markdown(
+        """
+<style>
+h1, h2, h3 {
+  font-family: "Fraunces", Georgia, serif !important;
+}
+div, p, label {
+  font-family: "IBM Plex Sans", sans-serif !important;
+}
+[data-testid="stMetric"] {
+  border: 1px solid rgba(23, 34, 27, 0.10);
+  border-radius: 14px;
+  padding: 0.85rem;
+}
+</style>
+""",
+        unsafe_allow_html=True,
+    )
+    settings = get_settings(get_active_source_id())
     current_profiles_path = settings.artifacts_derived_dir / "student_elo_profiles.parquet"
-    current_events_path = settings.artifacts_derived_dir / "student_elo_events.parquet"
     current_exercise_elo_path = settings.artifacts_derived_dir / "agg_exercise_elo.parquet"
     iterative_profiles_path = settings.artifacts_derived_dir / "student_elo_profiles_iterative.parquet"
-    iterative_events_path = settings.artifacts_derived_dir / "student_elo_events_iterative.parquet"
     iterative_exercise_elo_path = settings.artifacts_derived_dir / "agg_exercise_elo_iterative.parquet"
 
     required = [
         current_profiles_path,
-        current_events_path,
         current_exercise_elo_path,
         iterative_profiles_path,
-        iterative_events_path,
         iterative_exercise_elo_path,
     ]
     missing = [path for path in required if not path.exists()]
@@ -235,15 +281,10 @@ def main() -> None:
 
     compatibility_checks = {
         "student_elo_profiles": (current_profiles_path, RUNTIME_CORE_COLUMNS["student_elo_profiles"]),
-        "student_elo_events": (current_events_path, RUNTIME_CORE_COLUMNS["student_elo_events"]),
         "agg_exercise_elo": (current_exercise_elo_path, RUNTIME_CORE_COLUMNS["agg_exercise_elo"]),
         "student_elo_profiles_iterative": (
             iterative_profiles_path,
             RUNTIME_CORE_COLUMNS["student_elo_profiles_iterative"],
-        ),
-        "student_elo_events_iterative": (
-            iterative_events_path,
-            RUNTIME_CORE_COLUMNS["student_elo_events_iterative"],
         ),
         "agg_exercise_elo_iterative": (
             iterative_exercise_elo_path,
@@ -373,15 +414,15 @@ def main() -> None:
     )
 
     try:
-        payload = _load_comparison_payload(
-            current_events_path,
-            iterative_events_path,
+        payload = _load_payload(
+            settings.source_id,
             settings.learning_catalog_path,
             current_exercise_elo_path,
             tuple(normalized_students),
             step_size,
+            display_choice,
         )
-    except ValueError as exc:
+    except (FileNotFoundError, ValueError) as exc:
         st.error(str(exc))
         st.stop()
 
@@ -395,6 +436,7 @@ def main() -> None:
     state_signature = (
         tuple(student_ids),
         int(step_size),
+        display_choice,
         manual_student_id or int(target_attempts),
     )
     signature_key = "student_elo_comparison_signature"

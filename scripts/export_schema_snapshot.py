@@ -79,7 +79,7 @@ def _runtime_relative_paths() -> list[str]:
         Relative file paths that define the runtime data surface.
     """
 
-    paths = {"data/adaptiv_math_history.parquet", *DEFAULT_RUNTIME_RELATIVE_PATHS}
+    paths = {"data/student_interaction.parquet", *DEFAULT_RUNTIME_RELATIVE_PATHS}
     return sorted(paths)
 
 

@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""CLI entrypoint for prefetching runtime files from Hugging Face."""
+﻿#!/usr/bin/env python3
+"""CLI entrypoint for prefetching source-local runtime files from Hugging Face."""
 
 from __future__ import annotations
 
@@ -16,37 +16,24 @@ if str(SRC_DIR) not in sys.path:
 
 from visu2.config import get_settings
 from visu2.hf_sync import ensure_runtime_assets_from_hf, load_hf_repo_config
+from visu2.runtime_sources import DEFAULT_SOURCE_ID
 
 
 def main() -> int:
-    """Resolve sync config, download runtime files, and print a JSON summary."""
     parser = argparse.ArgumentParser(
-        description="Prefetch runtime assets from a Hugging Face dataset repository."
+        description="Prefetch source-local runtime assets from Hugging Face dataset repositories."
     )
-    parser.add_argument("--repo-id", type=str, default=None, help="HF dataset repo id (`org/name`).")
-    parser.add_argument("--revision", type=str, default=None, help="Pinned HF revision/tag.")
+    parser.add_argument("--repo-id", type=str, default=None, help="Legacy single-source HF dataset repo id (`org/name`).")
+    parser.add_argument("--revision", type=str, default=None, help="Legacy single-source pinned HF revision/tag.")
+    parser.add_argument("--repo-type", type=str, default="dataset", help="HF repo type. Default: dataset.")
+    parser.add_argument("--token-env", type=str, default="HF_TOKEN", help="Environment variable name containing HF token.")
+    parser.add_argument("--allow-patterns-json", type=str, default=None, help="Optional JSON array override for allow_patterns.")
+    parser.add_argument("--strict", action="store_true", help="Exit non-zero if no HF config is provided.")
     parser.add_argument(
-        "--repo-type",
+        "--source",
         type=str,
-        default="dataset",
-        help="HF repo type. Default: dataset.",
-    )
-    parser.add_argument(
-        "--token-env",
-        type=str,
-        default="HF_TOKEN",
-        help="Environment variable name containing HF token.",
-    )
-    parser.add_argument(
-        "--allow-patterns-json",
-        type=str,
-        default=None,
-        help="Optional JSON array override for allow_patterns.",
-    )
-    parser.add_argument(
-        "--strict",
-        action="store_true",
-        help="Exit non-zero if no HF config is provided.",
+        default=DEFAULT_SOURCE_ID,
+        help=f"Runtime source id to sync. Default: {DEFAULT_SOURCE_ID}",
     )
     args = parser.parse_args()
 
@@ -65,16 +52,16 @@ def main() -> int:
         env["HF_TOKEN"] = token
 
     try:
-        config = load_hf_repo_config(environ=env)
+        config = load_hf_repo_config(source_id=args.source, environ=env)
     except Exception as err:
         print(f"Configuration error: {err}")
         return 1
 
     if config is None:
-        print("No VISU2_HF_REPO_ID configured; skipping HF runtime sync.")
+        print(f"No HF runtime repo configured for source '{args.source}'; skipping sync.")
         return 1 if args.strict else 0
 
-    settings = get_settings()
+    settings = get_settings(args.source)
     try:
         result = ensure_runtime_assets_from_hf(settings, config)
     except Exception as err:
@@ -84,6 +71,7 @@ def main() -> int:
     print(
         json.dumps(
             {
+                "source_id": args.source,
                 "mode": result.mode,
                 "repo_id": result.repo_id,
                 "revision": result.revision,

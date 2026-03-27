@@ -205,6 +205,24 @@ Important note:
 
 ---
 
+## Page: Student Objective Spider
+
+### 12) Student Objective Spider (radar chart)
+**What it shows**
+- One selected student inside one selected module.
+- One spoke per catalog objective in that module.
+- Two overlaid traces:
+  - all-attempt success rate
+  - coverage percentage based on distinct attempted exercises
+- Objectives the student never touched remain visible so breadth gaps are explicit.
+
+**Question it can answer**
+- Which objectives has this student explored broadly versus only lightly?
+- Are there objectives where coverage is high but success is still weak?
+- Which parts of the selected module remain untouched for this student?
+
+---
+
 ## Quick reading tips
 
 - Each active analytical block now pairs the visualization with two collapsed helpers:

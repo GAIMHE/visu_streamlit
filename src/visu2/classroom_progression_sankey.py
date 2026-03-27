@@ -13,9 +13,11 @@ import polars as pl
 
 from visu2.classroom_progression import (
     MISSING_ACTIVITY_LABEL,
+    SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID,
     VALID_MODE_SCOPES,
     _make_unique_axis_labels,
     _normalize_activity_label,
+    _with_effective_classroom_ids,
 )
 from visu2.loaders import catalog_to_summary_frames, load_learning_catalog
 
@@ -177,8 +179,7 @@ def build_classroom_activity_paths(
     if not classroom_key:
         raise ValueError("classroom_id must be a non-empty string.")
 
-    lf = _as_lazy(fact).with_columns(
-        pl.col("classroom_id").cast(pl.Utf8).alias("classroom_id"),
+    lf = _with_effective_classroom_ids(fact).with_columns(
         _normalized_text_expr("user_id").alias("user_id_normalized"),
         _normalized_text_expr("activity_id").alias("activity_id_normalized"),
         pl.col("exercise_id").cast(pl.Utf8).alias("exercise_id"),
@@ -280,6 +281,11 @@ def build_classroom_activity_paths(
 
     return {
         "classroom_id": classroom_key,
+        "classroom_label": (
+            "All students"
+            if classroom_key == SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID
+            else classroom_key
+        ),
         "mode_scope": mode_scope,
         "start_date": start_date.isoformat(),
         "end_date": end_date.isoformat(),

@@ -32,21 +32,12 @@ from overview_shared import (
     render_dashboard_style,
 )
 from plotly_config import build_plotly_chart_config
-from runtime_bootstrap import bootstrap_runtime_assets
-from runtime_paths import BOTTLENECKS_TRANSITIONS_RUNTIME_RELATIVE_PATHS
+from source_state import get_active_source_id
 
 from visu2.bottleneck import apply_bottleneck_filters, build_bottleneck_frame
 from visu2.config import get_settings
 from visu2.contracts import ACTIVE_CANONICAL_MODULE_CODES
 from visu2.figure_analysis import analyze_bottleneck_chart, analyze_transition_chart
-
-st.set_page_config(
-    page_title="Bottlenecks and Transitions",
-    page_icon=":twisted_rightwards_arrows:",
-    layout="wide",
-)
-
-render_dashboard_style()
 
 BOTTLENECKS_RUNTIME_TABLES: tuple[str, ...] = ("agg_activity_daily", "agg_transition_edges")
 
@@ -59,8 +50,8 @@ def load_activity_aggregate(path: Path) -> pl.DataFrame:
 
 def main() -> None:
     """Render the bottleneck and transition analysis page."""
-    bootstrap_runtime_assets(BOTTLENECKS_TRANSITIONS_RUNTIME_RELATIVE_PATHS)
-    settings = get_settings()
+    render_dashboard_style()
+    settings = get_settings(get_active_source_id())
     derived_dir = settings.artifacts_derived_dir
     activity_path = derived_dir / "agg_activity_daily.parquet"
     transition_path = derived_dir / "agg_transition_edges.parquet"

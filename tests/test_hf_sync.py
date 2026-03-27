@@ -1,30 +1,8 @@
-"""
-test_hf_sync.py
+﻿"""Validate source-aware HF runtime sync configuration parsing and synchronization behavior."""
 
-Validate HF runtime sync configuration parsing and synchronization behavior.
-
-Dependencies
-------------
-- pytest
-- visu2
-
-Classes
--------
-- None.
-
-Functions
----------
-- _build_settings: Utility for build settings.
-- _write_runtime_files: Utility for write runtime files.
-- test_load_hf_repo_config_from_env: Test scenario for load hf repo config from env.
-- test_load_hf_repo_config_secrets_override_env: Test scenario for load hf repo config secrets override env.
-- test_load_hf_repo_config_missing_required_values: Test scenario for load hf repo config missing required values.
-- test_load_hf_repo_config_returns_none_without_repo_id: Test scenario for load hf repo config returns none without repo id.
-- test_ensure_runtime_assets_from_hf_success: Test scenario for ensure runtime assets from hf success.
-- test_ensure_runtime_assets_from_hf_respects_required_paths_subset: Test scenario for ensure runtime assets from hf respects required paths subset.
-- test_ensure_runtime_assets_from_hf_raises_on_missing_files: Test scenario for ensure runtime assets from hf raises on missing files.
-"""
 from __future__ import annotations
+
+import json
 
 import pytest
 
@@ -37,22 +15,10 @@ from visu2.hf_sync import (
 )
 
 
-def _build_settings(tmp_path) -> Settings:
-    """Build settings.
-
-Parameters
-----------
-tmp_path : Any
-        Input parameter used by this routine.
-
-Returns
--------
-Settings
-        Result produced by this routine.
-
-"""
-    data_dir = tmp_path / "data"
-    artifacts_dir = tmp_path / "artifacts"
+def _build_settings(tmp_path, *, source_id: str = "main") -> Settings:
+    runtime_root = tmp_path / source_id
+    data_dir = runtime_root / "data"
+    artifacts_dir = runtime_root / "artifacts"
     derived_dir = artifacts_dir / "derived"
     reports_dir = artifacts_dir / "reports"
     resources_dir = tmp_path / "ressources"
@@ -67,51 +33,26 @@ Settings
         artifacts_dir=artifacts_dir,
         artifacts_derived_dir=derived_dir,
         artifacts_reports_dir=reports_dir,
-        parquet_path=data_dir / "adaptiv_math_history.parquet",
+        parquet_path=data_dir / "student_interaction.parquet",
         learning_catalog_path=data_dir / "learning_catalog.json",
         zpdes_rules_path=data_dir / "zpdes_rules.json",
         exercises_json_path=data_dir / "exercises.json",
         consistency_report_path=reports_dir / "consistency_report.json",
         derived_manifest_path=reports_dir / "derived_manifest.json",
+        runtime_root_dir=runtime_root,
+        source_id=source_id,
+        source_label=source_id,
     )
 
 
 def _write_runtime_files(root_dir, relative_paths: tuple[str, ...]) -> None:
-    """Write runtime files.
-
-Parameters
-----------
-root_dir : Any
-        Input parameter used by this routine.
-relative_paths : tuple[str, ...]
-        Input parameter used by this routine.
-
-Returns
--------
-None
-        Result produced by this routine.
-
-"""
     for rel_path in relative_paths:
         path = root_dir / rel_path
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"placeholder")
 
 
-def test_load_hf_repo_config_from_env() -> None:
-    """Test load hf repo config from env.
-
-
-Returns
--------
-None
-        Result produced by this routine.
-
-
-Examples
---------
-    This function is validated through the test suite execution path.
-"""
+def test_load_hf_repo_config_from_legacy_env() -> None:
     config = load_hf_repo_config(
         environ={
             "VISU2_HF_REPO_ID": "org/repo",
@@ -120,6 +61,7 @@ Examples
         }
     )
     assert config is not None
+    assert config.source_id == "main"
     assert config.repo_id == "org/repo"
     assert config.revision == "v1"
     assert config.repo_type == "dataset"
@@ -127,102 +69,63 @@ Examples
     assert config.allow_patterns == DEFAULT_RUNTIME_RELATIVE_PATHS
 
 
-def test_load_hf_repo_config_secrets_override_env() -> None:
-    """Test load hf repo config secrets override env.
-
-
-Returns
--------
-None
-        Result produced by this routine.
-
-
-Examples
---------
-    This function is validated through the test suite execution path.
-"""
+def test_load_hf_repo_config_from_multisource_json() -> None:
     config = load_hf_repo_config(
-        secrets={
-            "VISU2_HF_REPO_ID": "secret/repo",
-            "VISU2_HF_REVISION": "v2",
-            "HF_TOKEN": "secret-token",
-        },
+        source_id="maureen_m16fr",
         environ={
-            "VISU2_HF_REPO_ID": "env/repo",
-            "VISU2_HF_REVISION": "env-v1",
-            "HF_TOKEN": "env-token",
+            "VISU2_HF_SOURCES_JSON": json.dumps(
+                {
+                    "main": {"repo_id": "org/main", "revision": "main-v1"},
+                    "maureen_m16fr": {
+                        "repo_id": "org/maureen",
+                        "revision": "m16-v1",
+                        "allow_patterns": ["data/learning_catalog.json"],
+                    },
+                }
+            ),
+            "HF_TOKEN": "token",
         },
     )
     assert config is not None
-    assert config.repo_id == "secret/repo"
-    assert config.revision == "v2"
-    assert config.token == "secret-token"
+    assert config.source_id == "maureen_m16fr"
+    assert config.repo_id == "org/maureen"
+    assert config.revision == "m16-v1"
+    assert config.allow_patterns == ("data/learning_catalog.json",)
+
+
+def test_load_hf_repo_config_returns_none_without_matching_source() -> None:
+    config = load_hf_repo_config(
+        source_id="maureen_m16fr",
+        environ={
+            "VISU2_HF_SOURCES_JSON": json.dumps(
+                {"main": {"repo_id": "org/main", "revision": "main-v1"}}
+            ),
+            "HF_TOKEN": "token",
+        },
+    )
+    assert config is None
 
 
 def test_load_hf_repo_config_missing_required_values() -> None:
-    """Test load hf repo config missing required values.
-
-
-Returns
--------
-None
-        Result produced by this routine.
-
-
-Examples
---------
-    This function is validated through the test suite execution path.
-"""
     with pytest.raises(ValueError):
         load_hf_repo_config(environ={"VISU2_HF_REPO_ID": "org/repo"})
     with pytest.raises(ValueError):
         load_hf_repo_config(
             environ={
-                "VISU2_HF_REPO_ID": "org/repo",
-                "VISU2_HF_REVISION": "v1",
+                "VISU2_HF_SOURCES_JSON": json.dumps({"main": {"repo_id": "org/repo"}}),
+                "HF_TOKEN": "token",
             }
         )
 
 
-def test_load_hf_repo_config_returns_none_without_repo_id() -> None:
-    """Test load hf repo config returns none without repo id.
-
-
-Returns
--------
-None
-        Result produced by this routine.
-
-
-Examples
---------
-    This function is validated through the test suite execution path.
-"""
+def test_load_hf_repo_config_returns_none_without_any_repo_config() -> None:
     assert load_hf_repo_config(environ={}) is None
 
 
 def test_ensure_runtime_assets_from_hf_success(tmp_path, monkeypatch) -> None:
-    """Test ensure runtime assets from hf success.
-
-Parameters
-----------
-tmp_path : Any
-        Input parameter used by this routine.
-monkeypatch : Any
-        Input parameter used by this routine.
-
-Returns
--------
-None
-        Result produced by this routine.
-
-
-Examples
---------
-    This function is validated through the test suite execution path.
-"""
     settings = _build_settings(tmp_path)
     config = HFRepoConfig(
+        source_id="main",
         repo_id="org/repo",
         revision="v1",
         repo_type="dataset",
@@ -231,26 +134,11 @@ Examples
     )
 
     def fake_snapshot_download(**kwargs):
-        """Fake snapshot download.
-
-Parameters
-----------
-kwargs : Any
-            Input parameter used by this routine.
-
-Returns
--------
-Any
-            Result produced by this routine.
-
-Notes
------
-        Behavior is intentionally documented for maintainability and traceability.
-"""
         assert kwargs["repo_id"] == "org/repo"
         assert kwargs["revision"] == "v1"
-        _write_runtime_files(settings.root_dir, DEFAULT_RUNTIME_RELATIVE_PATHS)
-        return str(settings.root_dir)
+        assert kwargs["local_dir"] == str(settings.runtime_root)
+        _write_runtime_files(settings.runtime_root, DEFAULT_RUNTIME_RELATIVE_PATHS)
+        return str(settings.runtime_root)
 
     monkeypatch.setattr("visu2.hf_sync.snapshot_download", fake_snapshot_download)
     result = ensure_runtime_assets_from_hf(settings, config)
@@ -261,21 +149,22 @@ Notes
 
 
 def test_ensure_runtime_assets_from_hf_respects_required_paths_subset(tmp_path, monkeypatch) -> None:
-    """Test runtime sync only downloads and validates the requested subset."""
-    settings = _build_settings(tmp_path)
+    settings = _build_settings(tmp_path, source_id="maureen_m16fr")
     config = HFRepoConfig(
+        source_id="maureen_m16fr",
         repo_id="org/repo",
         revision="v1",
         repo_type="dataset",
         token="token",
         allow_patterns=DEFAULT_RUNTIME_RELATIVE_PATHS,
     )
-    required_subset = DEFAULT_RUNTIME_RELATIVE_PATHS[:3]
+    required_subset = ("data/learning_catalog.json", "artifacts/derived/fact_attempt_core.parquet")
 
     def fake_snapshot_download(**kwargs):
         assert tuple(kwargs["allow_patterns"]) == required_subset
-        _write_runtime_files(settings.root_dir, required_subset)
-        return str(settings.root_dir)
+        assert kwargs["local_dir"] == str(settings.runtime_root)
+        _write_runtime_files(settings.runtime_root, required_subset)
+        return str(settings.runtime_root)
 
     monkeypatch.setattr("visu2.hf_sync.snapshot_download", fake_snapshot_download)
     result = ensure_runtime_assets_from_hf(settings, config, required_paths=required_subset)
@@ -285,27 +174,9 @@ def test_ensure_runtime_assets_from_hf_respects_required_paths_subset(tmp_path, 
 
 
 def test_ensure_runtime_assets_from_hf_raises_on_missing_files(tmp_path, monkeypatch) -> None:
-    """Test ensure runtime assets from hf raises on missing files.
-
-Parameters
-----------
-tmp_path : Any
-        Input parameter used by this routine.
-monkeypatch : Any
-        Input parameter used by this routine.
-
-Returns
--------
-None
-        Result produced by this routine.
-
-
-Examples
---------
-    This function is validated through the test suite execution path.
-"""
     settings = _build_settings(tmp_path)
     config = HFRepoConfig(
+        source_id="main",
         repo_id="org/repo",
         revision="v1",
         repo_type="dataset",
@@ -314,24 +185,8 @@ Examples
     )
 
     def fake_snapshot_download(**kwargs):
-        """Fake snapshot download.
-
-Parameters
-----------
-kwargs : Any
-            Input parameter used by this routine.
-
-Returns
--------
-Any
-            Result produced by this routine.
-
-Notes
------
-        Behavior is intentionally documented for maintainability and traceability.
-"""
-        _write_runtime_files(settings.root_dir, DEFAULT_RUNTIME_RELATIVE_PATHS[:2])
-        return str(settings.root_dir)
+        _write_runtime_files(settings.runtime_root, DEFAULT_RUNTIME_RELATIVE_PATHS[:2])
+        return str(settings.runtime_root)
 
     monkeypatch.setattr("visu2.hf_sync.snapshot_download", fake_snapshot_download)
     with pytest.raises(FileNotFoundError):

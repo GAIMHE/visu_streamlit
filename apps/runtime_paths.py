@@ -49,6 +49,11 @@ STUDENT_ELO_RUNTIME_RELATIVE_PATHS: tuple[str, ...] = (
     "artifacts/derived/student_elo_events_iterative.parquet",
 )
 
+STUDENT_OBJECTIVE_SPIDER_RUNTIME_RELATIVE_PATHS: tuple[str, ...] = (
+    "data/learning_catalog.json",
+    "artifacts/derived/fact_attempt_core.parquet",
+)
+
 USAGE_PAGE_RUNTIME_RELATIVE_PATHS: tuple[str, ...] = (
     "artifacts/derived/fact_attempt_core.parquet",
     "artifacts/derived/agg_module_usage_daily.parquet",

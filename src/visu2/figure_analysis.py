@@ -1786,3 +1786,138 @@ def analyze_student_elo_comparison(
             "The comparison isolates the item-calibration choice: both systems replay the same histories, so any trajectory difference comes from how exercise difficulty is estimated."
         )
     return FigureAnalysis(findings=tuple(findings), interpretation=interpretation)
+
+
+def analyze_student_objective_spider(
+    summary: pl.DataFrame | pd.DataFrame | None,
+    *,
+    student_id: str,
+    module_code: str,
+    module_label: str | None = None,
+    total_attempts: int | None = None,
+) -> FigureAnalysis:
+    frame = _as_polars(summary)
+    if frame.height == 0:
+        return _insufficient(["Objective-level metrics are unavailable for the selected student/module."])
+
+    module_display = str(module_label or module_code or "").strip() or str(module_code or "").strip()
+    attempted = frame.filter(pl.col("has_attempts").fill_null(False))
+    findings: list[str] = []
+    if total_attempts is not None:
+        findings.append(
+            f"{student_id} has {_format_num(total_attempts, digits=0)} total attempts overall, and {_format_num(attempted.height, digits=0)} of {_format_num(frame.height, digits=0)} objectives are touched in {module_display}."
+        )
+    else:
+        findings.append(
+            f"{student_id} touches {_format_num(attempted.height, digits=0)} of {_format_num(frame.height, digits=0)} objectives in {module_display}."
+        )
+
+    untouched = frame.height - attempted.height
+    if untouched > 0:
+        findings.append(
+            f"{_format_num(untouched, digits=0)} objectives remain untouched in the selected module, so the radar still shows visible gaps in breadth."
+        )
+
+    def _objective_name(row: dict[str, Any]) -> str:
+        code = str(row.get("objective_code") or row.get("objective_id") or "").strip()
+        label = str(row.get("objective_label") or code).strip() or code
+        return f"{code} ({label})" if code and label and label != code else (code or label or "Unknown objective")
+
+    attempted_success = attempted.filter(pl.col("success_rate_all_attempts").is_not_null())
+    if attempted_success.height > 0:
+        strongest_success = attempted_success.sort(
+            ["success_rate_all_attempts", "attempts", "objective_order"],
+            descending=[True, True, False],
+        ).row(0, named=True)
+        weakest_success = attempted_success.sort(
+            ["success_rate_all_attempts", "attempts", "objective_order"],
+            descending=[False, True, False],
+        ).row(0, named=True)
+        findings.append(
+            f"Strongest success is {_objective_name(strongest_success)} at {_format_pct(_safe_float(strongest_success.get('success_rate_all_attempts')))} across {_format_num(strongest_success.get('attempts'), digits=0)} attempts."
+        )
+        findings.append(
+            f"Weakest success is {_objective_name(weakest_success)} at {_format_pct(_safe_float(weakest_success.get('success_rate_all_attempts')))} across {_format_num(weakest_success.get('attempts'), digits=0)} attempts."
+        )
+
+    coverage_supported = frame.filter(pl.col("objective_exercise_total") > 0)
+    if coverage_supported.height > 0:
+        strongest_coverage = coverage_supported.sort(
+            ["coverage_rate", "distinct_exercises_attempted", "objective_order"],
+            descending=[True, True, False],
+        ).row(0, named=True)
+        weakest_coverage = coverage_supported.sort(
+            ["coverage_rate", "objective_order"],
+            descending=[False, False],
+        ).row(0, named=True)
+        findings.append(
+            f"Broadest coverage is {_objective_name(strongest_coverage)} with {_format_num(strongest_coverage.get('distinct_exercises_attempted'), digits=0)}/{_format_num(strongest_coverage.get('objective_exercise_total'), digits=0)} exercises reached ({_format_pct(_safe_float(strongest_coverage.get('coverage_rate')))})."
+        )
+        findings.append(
+            f"Thinnest coverage is {_objective_name(weakest_coverage)} with {_format_num(weakest_coverage.get('distinct_exercises_attempted'), digits=0)}/{_format_num(weakest_coverage.get('objective_exercise_total'), digits=0)} exercises reached ({_format_pct(_safe_float(weakest_coverage.get('coverage_rate')))})."
+        )
+
+    interpretation = "The selected module shows an uneven objective profile."
+    if attempted_success.height > 1:
+        median_success = _safe_float(
+            attempted_success.select(pl.col("success_rate_all_attempts").median().alias("median_success")).item()
+        )
+        median_coverage = _safe_float(
+            coverage_supported.select(pl.col("coverage_rate").median().alias("median_coverage")).item()
+        )
+        high_coverage_low_success = (
+            attempted_success.filter(
+                (pl.col("coverage_rate") >= (median_coverage if median_coverage is not None else 0.0))
+                & (
+                    pl.col("success_rate_all_attempts")
+                    < (median_success if median_success is not None else 0.0)
+                )
+            )
+            .sort(
+                ["coverage_rate", "success_rate_all_attempts", "objective_order"],
+                descending=[True, False, False],
+            )
+        )
+        low_coverage_high_success = (
+            attempted_success.filter(
+                (pl.col("coverage_rate") < (median_coverage if median_coverage is not None else 0.0))
+                & (
+                    pl.col("success_rate_all_attempts")
+                    >= (median_success if median_success is not None else 0.0)
+                )
+            )
+            .sort(
+                ["success_rate_all_attempts", "coverage_rate", "objective_order"],
+                descending=[True, False, False],
+            )
+        )
+        if high_coverage_low_success.height > 0:
+            row = high_coverage_low_success.row(0, named=True)
+            findings.append(
+                f"{_objective_name(row)} stands out as high-coverage but below the student's module-median success, which can indicate persistence without equally strong mastery yet."
+            )
+            interpretation = (
+                "Coverage is broader than performance in at least one visible objective, so the student appears to revisit some content without equally strong accuracy."
+            )
+        elif low_coverage_high_success.height > 0:
+            row = low_coverage_high_success.row(0, named=True)
+            findings.append(
+                f"{_objective_name(row)} stands out as low-coverage but above the student's module-median success, which suggests good local performance in a still-narrow slice."
+            )
+            interpretation = (
+                "The student performs well where exposed, but objective coverage remains selective rather than broad across the module."
+            )
+        elif untouched >= max(1, frame.height // 2):
+            interpretation = (
+                "The profile is dominated by breadth gaps: many objectives remain untouched, so the radar is more informative about coverage than mastery across the full module."
+            )
+        else:
+            interpretation = (
+                "Coverage and success look relatively aligned across the attempted objectives, with the main differences coming from how far the student has spread across the module."
+            )
+    elif untouched >= max(1, frame.height // 2):
+        interpretation = (
+            "Most of the visible signal comes from what the student has not touched yet, so this module view is primarily a breadth profile."
+        )
+
+    return FigureAnalysis(findings=tuple(findings), interpretation=interpretation)

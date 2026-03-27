@@ -45,6 +45,7 @@ import polars as pl
 VALID_MODE_SCOPES = ("zpdes", "playlist", "all")
 MISSING_ACTIVITY_KEY = "__missing_activity__"
 MISSING_ACTIVITY_LABEL = "(missing activity metadata)"
+SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID = "__all_students__"
 
 _PROFILE_SCHEMA: dict[str, pl.DataType] = {
     "mode_scope": pl.Utf8,
@@ -102,6 +103,27 @@ pl.Expr
 
 """
     return pl.col("classroom_id").is_not_null() & (pl.col("classroom_id").cast(pl.Utf8) != "None")
+
+
+def _has_explicit_classrooms(frame: pl.DataFrame | pl.LazyFrame) -> bool:
+    """Return whether the fact table contains at least one explicit classroom id."""
+    result = _as_lazy(frame).select(_valid_classroom_filter().any().alias("has_explicit_classrooms")).collect()
+    return bool(result["has_explicit_classrooms"][0])
+
+
+def _with_effective_classroom_ids(frame: pl.DataFrame | pl.LazyFrame) -> pl.LazyFrame:
+    """Return a lazy frame with a usable classroom id for all rows.
+
+    Sources without a classroom dimension are treated as one synthetic classroom
+    covering all students so classroom-oriented views can still operate.
+    """
+    lf = _as_lazy(frame)
+    if _has_explicit_classrooms(frame):
+        return (
+            lf.filter(_valid_classroom_filter())
+            .with_columns(pl.col("classroom_id").cast(pl.Utf8))
+        )
+    return lf.with_columns(pl.lit(SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID).alias("classroom_id"))
 
 
 def _assert_required_columns(frame: pl.DataFrame | pl.LazyFrame, required: list[str]) -> None:
@@ -410,14 +432,7 @@ def _format_active_student_tick_labels(
 def build_classroom_mode_profiles(fact: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame:
     """Return per-(mode, classroom) and all-mode classroom profiles."""
     _assert_required_columns(fact, _REPLAY_REQUIRED_COLUMNS)
-    lf = (
-        _as_lazy(fact)
-        .filter(_valid_classroom_filter())
-        .with_columns(
-            pl.col("classroom_id").cast(pl.Utf8),
-            pl.col("work_mode").cast(pl.Utf8),
-        )
-    )
+    lf = _with_effective_classroom_ids(fact).with_columns(pl.col("work_mode").cast(pl.Utf8))
 
     by_mode = (
         lf.group_by(["work_mode", "classroom_id"])
@@ -455,6 +470,106 @@ def build_classroom_mode_profiles(fact: pl.DataFrame | pl.LazyFrame) -> pl.DataF
     return profiles.select(list(_PROFILE_SCHEMA.keys())).sort(
         ["mode_scope", "students", "attempts", "classroom_id"],
         descending=[False, True, True, False],
+    )
+
+
+def build_classroom_activity_summary_by_mode(
+    fact: pl.DataFrame | pl.LazyFrame,
+) -> pl.DataFrame:
+    """Aggregate activity outcomes across classrooms for each mode scope."""
+    _assert_required_columns(fact, _REPLAY_REQUIRED_COLUMNS)
+    lf = _with_effective_classroom_ids(fact).with_columns(
+        pl.col("work_mode").cast(pl.Utf8),
+        pl.when(
+            pl.col("activity_label").is_null()
+            | (pl.col("activity_label").cast(pl.Utf8).str.strip_chars() == "")
+        )
+        .then(pl.lit(MISSING_ACTIVITY_LABEL))
+        .otherwise(pl.col("activity_label").cast(pl.Utf8))
+        .alias("activity_label"),
+    )
+
+    def _summarize(scoped: pl.LazyFrame, *, mode_scope: str) -> pl.DataFrame:
+        per_classroom = scoped.group_by(["classroom_id", "activity_label"]).agg(
+            pl.len().cast(pl.Int64).alias("attempts"),
+            pl.col("data_correct").cast(pl.Int64).sum().cast(pl.Int64).alias("successes"),
+        )
+        return (
+            per_classroom.with_columns(
+                pl.when(pl.col("attempts") > 0)
+                .then(pl.col("successes") / pl.col("attempts"))
+                .otherwise(None)
+                .alias("classroom_activity_success_rate")
+            )
+            .group_by("activity_label")
+            .agg(
+                pl.col("classroom_id").n_unique().cast(pl.Int64).alias("classrooms_observed"),
+                pl.col("attempts").sum().cast(pl.Int64).alias("attempts_total"),
+                pl.col("successes").sum().cast(pl.Int64).alias("successes_total"),
+                pl.col("classroom_activity_success_rate")
+                .mean()
+                .alias("mean_classroom_success_rate"),
+                pl.col("classroom_activity_success_rate")
+                .median()
+                .alias("median_classroom_success_rate"),
+                pl.col("classroom_activity_success_rate")
+                .lt(0.60)
+                .sum()
+                .cast(pl.Int64)
+                .alias("weak_classroom_count"),
+            )
+            .with_columns(
+                pl.when(pl.col("attempts_total") > 0)
+                .then(pl.col("successes_total") / pl.col("attempts_total"))
+                .otherwise(None)
+                .alias("success_rate"),
+                pl.when(pl.col("classrooms_observed") > 0)
+                .then(pl.col("weak_classroom_count") / pl.col("classrooms_observed"))
+                .otherwise(None)
+                .alias("weak_classroom_share"),
+                pl.lit(mode_scope).alias("mode_scope"),
+            )
+            .select(
+                [
+                    "mode_scope",
+                    "activity_label",
+                    "classrooms_observed",
+                    "attempts_total",
+                    "successes_total",
+                    "mean_classroom_success_rate",
+                    "median_classroom_success_rate",
+                    "weak_classroom_count",
+                    "success_rate",
+                    "weak_classroom_share",
+                ]
+            )
+            .collect()
+        )
+
+    by_mode = [
+        _summarize(lf.filter(pl.col("work_mode") == mode_scope), mode_scope=mode_scope)
+        for mode_scope in ("zpdes", "playlist", "adaptive-test", "initial-test")
+    ]
+    all_mode = _summarize(lf, mode_scope="all")
+    frames = [frame for frame in [*by_mode, all_mode] if frame.height > 0]
+    if not frames:
+        return pl.DataFrame(
+            {
+                "mode_scope": pl.Series([], dtype=pl.Utf8),
+                "activity_label": pl.Series([], dtype=pl.Utf8),
+                "classrooms_observed": pl.Series([], dtype=pl.Int64),
+                "attempts_total": pl.Series([], dtype=pl.Int64),
+                "successes_total": pl.Series([], dtype=pl.Int64),
+                "mean_classroom_success_rate": pl.Series([], dtype=pl.Float64),
+                "median_classroom_success_rate": pl.Series([], dtype=pl.Float64),
+                "weak_classroom_count": pl.Series([], dtype=pl.Int64),
+                "success_rate": pl.Series([], dtype=pl.Float64),
+                "weak_classroom_share": pl.Series([], dtype=pl.Float64),
+            }
+        )
+    return pl.concat(frames, how="vertical_relaxed").sort(
+        ["mode_scope", "attempts_total", "activity_label"],
+        descending=[False, True, False],
     )
 
 
@@ -580,14 +695,18 @@ def build_replay_payload(
         pl.col("user_id").cast(pl.Utf8),
         pl.col("activity_id").cast(pl.Utf8),
     )
+    lf = _with_effective_classroom_ids(lf).with_columns(
+        pl.col("work_mode").cast(pl.Utf8),
+        pl.col("user_id").cast(pl.Utf8),
+        pl.col("activity_id").cast(pl.Utf8),
+    )
 
     classroom_txt = str(classroom_id or "").strip()
     if not classroom_txt:
         return _empty_payload(classroom_id="", mode_scope=mode_scope, start_date=start_date, end_date=end_date)
 
     scoped = lf.filter(
-        _valid_classroom_filter()
-        & (pl.col("classroom_id") == classroom_txt)
+        (pl.col("classroom_id") == classroom_txt)
         & (pl.col("date_utc") >= pl.lit(start_date))
         & (pl.col("date_utc") <= pl.lit(end_date))
     )

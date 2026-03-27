@@ -22,12 +22,11 @@ if str(APPS_DIR) not in sys.path:
 from figure_analysis import render_figure_analysis
 from figure_info import render_figure_info
 from plotly_config import build_plotly_chart_config
-from runtime_bootstrap import bootstrap_runtime_assets
-from runtime_paths import CLASSROOM_SANKEY_RUNTIME_RELATIVE_PATHS
+from source_state import get_active_source_id
 
 from visu2.classroom_progression import (
+    SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID,
     VALID_MODE_SCOPES,
-    build_classroom_mode_profiles,
     select_classroom_by_id,
     select_classrooms_near_student_target,
 )
@@ -38,32 +37,9 @@ from visu2.classroom_progression_sankey import (
     max_classroom_activity_path_length,
 )
 from visu2.config import get_settings
+from visu2.contracts import RUNTIME_CORE_COLUMNS
 from visu2.figure_analysis import analyze_classroom_progression_sankey
-
-st.set_page_config(
-    page_title="Classroom Progression Sankey",
-    page_icon=":bar_chart:",
-    layout="wide",
-)
-
-st.markdown(
-    """
-<style>
-h1, h2, h3 {
-  font-family: "Fraunces", Georgia, serif !important;
-}
-div, p, label {
-  font-family: "IBM Plex Sans", sans-serif !important;
-}
-[data-testid="stMetric"] {
-  border: 1px solid rgba(23, 34, 27, 0.10);
-  border-radius: 14px;
-  padding: 0.75rem;
-}
-</style>
-""",
-    unsafe_allow_html=True,
-)
+from visu2.remote_query import query_fact_attempts_for_classroom
 
 MODE_OPTIONS = {
     "ZPDES": "zpdes",
@@ -73,21 +49,40 @@ MODE_OPTIONS = {
 
 
 @st.cache_data(show_spinner=False)
-def _load_profiles(fact_path: Path) -> pl.DataFrame:
-    return build_classroom_mode_profiles(pl.scan_parquet(fact_path))
+def _load_profiles(profiles_path: Path) -> pl.DataFrame:
+    return pl.read_parquet(profiles_path)
 
 
 @st.cache_data(show_spinner=False)
 def _load_sankey_payload(
-    fact_path: Path,
+    source_id: str,
     learning_catalog_path: Path,
     classroom_id: str,
     mode_scope: str,
     start_date_iso: str,
     end_date_iso: str,
 ) -> dict:
+    settings = get_settings(source_id)
+    fact_slice = query_fact_attempts_for_classroom(
+        settings,
+        classroom_id=classroom_id,
+        mode_scope=mode_scope,
+        start_date=date.fromisoformat(start_date_iso),
+        end_date=date.fromisoformat(end_date_iso),
+        columns=(
+            "classroom_id",
+            "user_id",
+            "work_mode",
+            "created_at",
+            "date_utc",
+            "activity_id",
+            "activity_label",
+            "exercise_id",
+            "attempt_number",
+        ),
+    )
     return build_classroom_activity_paths(
-        fact=pl.scan_parquet(fact_path),
+        fact=fact_slice,
         classroom_id=classroom_id,
         mode_scope=mode_scope,
         start_date=date.fromisoformat(start_date_iso),
@@ -97,8 +92,14 @@ def _load_sankey_payload(
 
 
 def _format_classroom_option(row: dict[str, object]) -> str:
+    classroom_id = str(row.get("classroom_id") or "")
+    classroom_label = (
+        "All students"
+        if classroom_id == SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID
+        else classroom_id
+    )
     return (
-        f"{row.get('classroom_id')}  "
+        f"{classroom_label}  "
         f"({row.get('students')} students, {row.get('activities')} activities, {row.get('attempts')} attempts)"
     )
 
@@ -115,12 +116,29 @@ def _parquet_columns(path: Path) -> list[str]:
 
 
 def main() -> None:
-    bootstrap_runtime_assets(CLASSROOM_SANKEY_RUNTIME_RELATIVE_PATHS)
-    settings = get_settings()
-    fact_path = settings.artifacts_derived_dir / "fact_attempt_core.parquet"
+    st.markdown(
+        """
+<style>
+h1, h2, h3 {
+  font-family: "Fraunces", Georgia, serif !important;
+}
+div, p, label {
+  font-family: "IBM Plex Sans", sans-serif !important;
+}
+[data-testid="stMetric"] {
+  border: 1px solid rgba(23, 34, 27, 0.10);
+  border-radius: 14px;
+  padding: 0.75rem;
+}
+</style>
+""",
+        unsafe_allow_html=True,
+    )
+    settings = get_settings(get_active_source_id())
+    profiles_path = settings.artifacts_derived_dir / "classroom_mode_profiles.parquet"
     learning_catalog_path = settings.learning_catalog_path
-    if not fact_path.exists():
-        st.error("Missing artifact: fact_attempt_core.parquet.")
+    if not profiles_path.exists():
+        st.error("Missing artifact: classroom_mode_profiles.parquet.")
         st.code("uv run python scripts/build_derived.py --strict-checks")
         st.stop()
     if not learning_catalog_path.exists():
@@ -128,28 +146,18 @@ def main() -> None:
         st.code("uv run python scripts/build_derived.py --strict-checks")
         st.stop()
 
-    required_columns = {
-        "created_at",
-        "date_utc",
-        "user_id",
-        "activity_id",
-        "activity_label",
-        "work_mode",
-        "classroom_id",
-        "objective_id",
-        "module_code",
-        "exercise_id",
-        "attempt_number",
-    }
-    actual_columns = set(_parquet_columns(fact_path))
-    missing = sorted(required_columns - actual_columns)
-    if missing:
-        st.error("Classroom Sankey page cannot run: fact_attempt_core is missing required columns.")
-        st.markdown("- " + "\n- ".join(f"`{name}`" for name in missing))
+    missing_profiles_columns = [
+        column
+        for column in RUNTIME_CORE_COLUMNS["classroom_mode_profiles"]
+        if column not in _parquet_columns(profiles_path)
+    ]
+    if missing_profiles_columns:
+        st.error("Classroom Sankey page cannot run: classroom_mode_profiles is missing required columns.")
+        st.markdown("- " + "\n- ".join(f"`{name}`" for name in missing_profiles_columns))
         st.code("uv run python scripts/build_derived.py --strict-checks")
         st.stop()
 
-    profiles = _load_profiles(fact_path)
+    profiles = _load_profiles(profiles_path)
     if profiles.height == 0:
         st.info("No valid classroom rows found (excluding null and 'None').")
         st.stop()
@@ -174,62 +182,73 @@ def main() -> None:
 
     min_students = int(scoped_profiles["students"].min() or 0)
     max_students = int(scoped_profiles["students"].max() or 0)
-    st.caption(
-        f"Classrooms in this scope range from **{min_students}** to **{max_students}** students."
+    synthetic_only_scope = (
+        scoped_profiles.height == 1
+        and str(scoped_profiles["classroom_id"][0]) == SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID
     )
-
-    default_target = int(scoped_profiles["students"].median() or min_students or 1)
-    target_students = int(
-        st.number_input(
-            "Target classroom size (students)",
-            min_value=max(1, min_students),
-            max_value=max(1, max_students),
-            value=min(max(1, default_target), max(1, max_students)),
-            step=1,
+    if synthetic_only_scope:
+        selected_classroom_id = SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID
+        selected_row = scoped_profiles.to_dicts()[0]
+        st.caption(
+            "This source does not have a classroom dimension. The Sankey is using one synthetic classroom that groups all students."
         )
-    )
-    manual_classroom_id = st.text_input(
-        "Classroom ID override (optional)",
-        value="",
-        help=(
-            "If you enter a classroom ID here, the page will use that classroom directly "
-            "inside the selected work-mode scope instead of the currently selected matching classroom."
-        ),
-    ).strip()
-    lower = max(1, int(math.floor(target_students * 0.9)))
-    upper = max(lower, int(math.ceil(target_students * 1.1)))
-    matching_profiles = select_classrooms_near_student_target(
-        profiles,
-        mode_scope=mode_scope,
-        target_students=target_students,
-        tolerance_ratio=0.10,
-    )
-    if matching_profiles.height == 0:
-        st.info("No classrooms found in that range, please try another range.")
-        st.stop()
+    else:
+        st.caption(
+            f"Classrooms in this scope range from **{min_students}** to **{max_students}** students."
+        )
 
-    st.caption(
-        f"Showing classrooms with **{lower}** to **{upper}** students in **{_mode_label(mode_scope)}** scope."
-    )
-    rows = matching_profiles.to_dicts()
-    option_map = {_format_classroom_option(row): str(row.get("classroom_id")) for row in rows}
-    selected_option = st.selectbox("Matching classrooms", list(option_map.keys()), index=0)
-    selected_classroom_id = option_map[selected_option]
-    selected_row = next((row for row in rows if str(row.get("classroom_id")) == selected_classroom_id), rows[0])
-    if manual_classroom_id:
-        override_classroom_id = select_classroom_by_id(profiles, mode_scope, manual_classroom_id)
-        if override_classroom_id is None:
-            st.info(
-                "No classroom in the selected work-mode scope matches that ID. Please check the ID or clear the field."
+        default_target = int(scoped_profiles["students"].median() or min_students or 1)
+        target_students = int(
+            st.number_input(
+                "Target classroom size (students)",
+                min_value=max(1, min_students),
+                max_value=max(1, max_students),
+                value=min(max(1, default_target), max(1, max_students)),
+                step=1,
             )
+        )
+        manual_classroom_id = st.text_input(
+            "Classroom ID override (optional)",
+            value="",
+            help=(
+                "If you enter a classroom ID here, the page will use that classroom directly "
+                "inside the selected work-mode scope instead of the currently selected matching classroom."
+            ),
+        ).strip()
+        lower = max(1, int(math.floor(target_students * 0.9)))
+        upper = max(lower, int(math.ceil(target_students * 1.1)))
+        matching_profiles = select_classrooms_near_student_target(
+            profiles,
+            mode_scope=mode_scope,
+            target_students=target_students,
+            tolerance_ratio=0.10,
+        )
+        if matching_profiles.height == 0:
+            st.info("No classrooms found in that range, please try another range.")
             st.stop()
-        override_rows = scoped_profiles.filter(pl.col("classroom_id") == override_classroom_id).to_dicts()
-        if not override_rows:
-            st.info("The typed classroom ID is not available in the selected work-mode scope.")
-            st.stop()
-        selected_classroom_id = override_classroom_id
-        selected_row = override_rows[0]
-        st.caption("Using the typed classroom ID override.")
+
+        st.caption(
+            f"Showing classrooms with **{lower}** to **{upper}** students in **{_mode_label(mode_scope)}** scope."
+        )
+        rows = matching_profiles.to_dicts()
+        option_map = {_format_classroom_option(row): str(row.get("classroom_id")) for row in rows}
+        selected_option = st.selectbox("Matching classrooms", list(option_map.keys()), index=0)
+        selected_classroom_id = option_map[selected_option]
+        selected_row = next((row for row in rows if str(row.get("classroom_id")) == selected_classroom_id), rows[0])
+        if manual_classroom_id:
+            override_classroom_id = select_classroom_by_id(profiles, mode_scope, manual_classroom_id)
+            if override_classroom_id is None:
+                st.info(
+                    "No classroom in the selected work-mode scope matches that ID. Please check the ID or clear the field."
+                )
+                st.stop()
+            override_rows = scoped_profiles.filter(pl.col("classroom_id") == override_classroom_id).to_dicts()
+            if not override_rows:
+                st.info("The typed classroom ID is not available in the selected work-mode scope.")
+                st.stop()
+            selected_classroom_id = override_classroom_id
+            selected_row = override_rows[0]
+            st.caption("Using the typed classroom ID override.")
     first_ts = selected_row.get("first_attempt_at")
     last_ts = selected_row.get("last_attempt_at")
     if not (hasattr(first_ts, "date") and hasattr(last_ts, "date")):
@@ -238,14 +257,18 @@ def main() -> None:
     start_date = first_ts.date()
     end_date = last_ts.date()
 
-    payload = _load_sankey_payload(
-        fact_path=fact_path,
-        learning_catalog_path=learning_catalog_path,
-        classroom_id=selected_classroom_id,
-        mode_scope=mode_scope,
-        start_date_iso=start_date.isoformat(),
-        end_date_iso=end_date.isoformat(),
-    )
+    try:
+        payload = _load_sankey_payload(
+            source_id=settings.source_id,
+            learning_catalog_path=learning_catalog_path,
+            classroom_id=selected_classroom_id,
+            mode_scope=mode_scope,
+            start_date_iso=start_date.isoformat(),
+            end_date_iso=end_date.isoformat(),
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        st.error(str(exc))
+        st.stop()
     total_events = int(payload.get("total_events_valid_timestamp") or 0)
     if total_events == 0:
         st.info("No attempts found for this classroom and work-mode scope.")
@@ -285,7 +308,7 @@ def main() -> None:
         "Each student path keeps only the first time the student reaches a new activity; revisits are not displayed as new Sankey steps."
     )
     st.caption(
-        f"Scope: **{_mode_label(mode_scope)}**  |  Classroom: **{selected_classroom_id}**  "
+        f"Scope: **{_mode_label(mode_scope)}**  |  Classroom: **{payload.get('classroom_label') or selected_classroom_id}**  "
         f"|  Students: **{len(payload.get('student_ids') or [])}**  "
         f"|  Activities: **{distinct_activities}**  |  Visible steps: **{visible_steps}**"
     )

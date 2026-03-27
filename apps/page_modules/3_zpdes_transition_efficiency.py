@@ -20,8 +20,7 @@ if str(APPS_DIR) not in sys.path:
 from figure_analysis import render_figure_analysis
 from figure_info import render_figure_info
 from plotly_config import build_plotly_chart_config
-from runtime_bootstrap import bootstrap_runtime_assets
-from runtime_paths import ZPDES_TRANSITION_EFFICIENCY_RUNTIME_RELATIVE_PATHS
+from source_state import get_active_source_id
 
 from visu2.config import get_settings
 from visu2.figure_analysis import analyze_zpdes_transition_population
@@ -37,31 +36,6 @@ from visu2.zpdes_transition_efficiency import (
     attach_transition_metric_to_nodes,
     build_transition_efficiency_figure,
     objective_sort_key,
-)
-
-st.set_page_config(
-    page_title="ZPDES Transition Efficiency",
-    page_icon=":bar_chart:",
-    layout="wide",
-)
-
-st.markdown(
-    """
-<style>
-h1, h2, h3 {
-  font-family: "Fraunces", Georgia, serif !important;
-}
-div, p, label {
-  font-family: "IBM Plex Sans", sans-serif !important;
-}
-[data-testid="stMetric"] {
-  border: 1px solid rgba(23, 34, 27, 0.10);
-  border-radius: 14px;
-  padding: 0.85rem;
-}
-</style>
-""",
-    unsafe_allow_html=True,
 )
 
 
@@ -224,8 +198,25 @@ def _load_zpdes_population_summary(path: Path, work_mode: str, later_attempt_thr
 
 def main() -> None:
     """Render the transition-efficiency page."""
-    bootstrap_runtime_assets(ZPDES_TRANSITION_EFFICIENCY_RUNTIME_RELATIVE_PATHS)
-    settings = get_settings()
+    st.markdown(
+        """
+<style>
+h1, h2, h3 {
+  font-family: "Fraunces", Georgia, serif !important;
+}
+div, p, label {
+  font-family: "IBM Plex Sans", sans-serif !important;
+}
+[data-testid="stMetric"] {
+  border: 1px solid rgba(23, 34, 27, 0.10);
+  border-radius: 14px;
+  padding: 0.85rem;
+}
+</style>
+""",
+        unsafe_allow_html=True,
+    )
+    settings = get_settings(get_active_source_id())
     activity_path = settings.artifacts_derived_dir / "agg_activity_daily.parquet"
     activity_elo_path = settings.artifacts_derived_dir / "agg_activity_elo.parquet"
     arrival_path = settings.artifacts_derived_dir / "zpdes_exercise_progression_events.parquet"

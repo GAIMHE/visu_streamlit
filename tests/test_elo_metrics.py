@@ -114,7 +114,7 @@ Settings
         artifacts_dir=artifacts_dir,
         artifacts_derived_dir=derived_dir,
         artifacts_reports_dir=reports_dir,
-        parquet_path=data_dir / "adaptiv_math_history.parquet",
+        parquet_path=data_dir / "student_interaction.parquet",
         learning_catalog_path=data_dir / "learning_catalog.json",
         zpdes_rules_path=data_dir / "zpdes_rules.json",
         exercises_json_path=data_dir / "exercises.json",

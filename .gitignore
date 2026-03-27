@@ -47,7 +47,10 @@ htmlcov/
 # Local generated outputs
 artifacts/
 !artifacts/.gitkeep
+
+#data
 data/
+data_maureen/
 
 # Local Codex assistant config
 AGENTS.md

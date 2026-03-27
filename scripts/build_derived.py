@@ -1,10 +1,11 @@
-#!/usr/bin/env python3
-"""CLI entrypoint for building local derived artifacts and the manifest."""
+﻿#!/usr/bin/env python3
+"""CLI entrypoint for building source-local derived artifacts and manifests."""
 
 from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,20 +17,25 @@ SRC_DIR = ROOT_DIR / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
+from visu2.build_cache import (
+    BUILD_CACHE_VERSION,
+    build_source_input_snapshot,
+    can_reuse_derived_build,
+)
 from visu2.checks import run_all_checks
 from visu2.config import ensure_artifact_directories, get_settings
 from visu2.contracts import DERIVED_MANIFEST_VERSION, DERIVED_SCHEMA_VERSION
 from visu2.derive import write_derived_tables
 from visu2.reporting import write_derived_manifest, write_json_report
+from visu2.runtime_sources import DEFAULT_SOURCE_ID, get_runtime_source, list_runtime_sources
+from visu2.source_builders import materialize_source_runtime_inputs
 
 
 def _ts() -> str:
-    """Return the current UTC timestamp as an ISO string."""
     return datetime.now(UTC).isoformat()
 
 
 def _parquet_table_profile(path: Path) -> dict[str, object]:
-    """Read a compact schema and row-count profile for one parquet file."""
     parquet = pq.ParquetFile(path)
     schema = parquet.schema_arrow
     columns = list(schema.names)
@@ -43,43 +49,22 @@ def _parquet_table_profile(path: Path) -> dict[str, object]:
 
 
 def _build_manifest(
+    *,
+    source_id: str,
     outputs: dict[str, Path],
     sample_rows: int | None,
     strict_checks: bool,
     checks_status: str,
+    source_input_snapshot: dict[str, dict[str, int | str]],
 ) -> dict[str, object]:
-    """Build the manifest payload for the expected runtime tables."""
-    required_tables = [
-        "fact_attempt_core",
-        "agg_activity_daily",
-        "agg_objective_daily",
-        "agg_student_module_progress",
-        "agg_transition_edges",
-        "agg_module_usage_daily",
-        "agg_playlist_module_usage",
-        "agg_module_activity_usage",
-        "agg_exercise_daily",
-        "agg_exercise_elo",
-        "agg_exercise_elo_iterative",
-        "agg_activity_elo",
-        "student_elo_events",
-        "student_elo_profiles",
-        "student_elo_events_iterative",
-        "student_elo_profiles_iterative",
-        "zpdes_exercise_progression_events",
-        "work_mode_transition_paths",
-    ]
-    tables: dict[str, dict[str, object]] = {}
-    for table_name in required_tables:
-        path = outputs.get(table_name)
-        if path is None:
-            raise KeyError(f"Missing derived table output for manifest: {table_name}")
-        tables[table_name] = _parquet_table_profile(path)
-
+    tables = {table_name: _parquet_table_profile(path) for table_name, path in outputs.items()}
     return {
         "manifest_version": DERIVED_MANIFEST_VERSION,
         "generated_at_utc": _ts(),
         "schema_version": DERIVED_SCHEMA_VERSION,
+        "cache_version": BUILD_CACHE_VERSION,
+        "source_id": source_id,
+        "source_input_snapshot": source_input_snapshot,
         "build_context": {
             "sample_rows": sample_rows,
             "strict_checks": strict_checks,
@@ -89,55 +74,147 @@ def _build_manifest(
     }
 
 
-def main() -> int:
-    """Run the build pipeline and write checks and manifest outputs."""
-    parser = argparse.ArgumentParser(description="Build derived datasets for the thin Streamlit slice.")
-    parser.add_argument(
-        "--sample-rows",
-        type=int,
-        default=None,
-        help="Optional limit for fast local iteration.",
-    )
-    parser.add_argument(
-        "--skip-checks",
-        action="store_true",
-        help="Skip consistency checks before building derived datasets.",
-    )
-    parser.add_argument(
-        "--strict-checks",
-        action="store_true",
-        help="Fail build if checks are not passing.",
-    )
-    args = parser.parse_args()
+def _refresh_checks_if_needed(*, settings, source_id: str, strict_checks: bool, skip_checks: bool) -> int:
+    """Refresh checks for an unchanged source-local runtime only when needed."""
+    if skip_checks:
+        print(f"Source '{source_id}' is up to date; skipping checks and rebuild.")
+        return 0
 
-    settings = get_settings()
+    should_run_checks = strict_checks or not settings.consistency_report_path.exists()
+    if not should_run_checks:
+        print(f"Source '{source_id}' is up to date; skipping rebuild and reusing existing checks.")
+        return 0
+
+    report = run_all_checks(settings)
+    write_json_report(report, settings.consistency_report_path)
+    print(f"Consistency report refreshed at: {settings.consistency_report_path}")
+    if strict_checks and report["status"] != "pass":
+        print(f"Checks failed for source '{source_id}' and --strict-checks is enabled.")
+        print(json.dumps(report, indent=2))
+        return 1
+    print(f"Source '{source_id}' is up to date; skipped rebuild after refreshing checks.")
+    return 0
+
+
+def _build_one_source(
+    source_id: str,
+    *,
+    sample_rows: int | None,
+    skip_checks: bool,
+    strict_checks: bool,
+    force: bool,
+) -> int:
+    settings = get_settings(source_id)
     ensure_artifact_directories(settings)
-    checks_status = "skipped"
+    source = get_runtime_source(source_id)
+    source_input_snapshot = build_source_input_snapshot(settings, source.raw_inputs)
 
-    if not args.skip_checks:
+    if not force:
+        can_reuse, reuse_reason = can_reuse_derived_build(
+            settings=settings,
+            source_id=source_id,
+            expected_tables=source.derived_tables,
+            sample_rows=sample_rows,
+            source_input_snapshot=source_input_snapshot,
+        )
+        if can_reuse:
+            print(f"Source '{source_id}' is already up to date. {reuse_reason}")
+            return _refresh_checks_if_needed(
+                settings=settings,
+                source_id=source_id,
+                strict_checks=strict_checks,
+                skip_checks=skip_checks,
+            )
+        print(f"Source '{source_id}' requires rebuild. {reuse_reason}")
+
+    materialization = materialize_source_runtime_inputs(settings)
+    print(f"Materialized source '{source_id}' into {settings.runtime_root}")
+    for path in materialization.input_paths:
+        print(f"- input: {path}")
+    for warning in materialization.warnings:
+        print(f"- warning: {warning}")
+
+    checks_status = "skipped"
+    if not skip_checks:
         report = run_all_checks(settings)
         write_json_report(report, settings.consistency_report_path)
         print(f"Consistency report written to: {settings.consistency_report_path}")
         checks_status = str(report.get("status") or "unknown")
-        if args.strict_checks and report["status"] != "pass":
-            print("Checks failed and --strict-checks is enabled; aborting derived build.")
+        if strict_checks and report["status"] != "pass":
+            print(f"Checks failed for source '{source_id}' and --strict-checks is enabled; aborting derived build.")
             print(json.dumps(report, indent=2))
             return 1
 
-    outputs = write_derived_tables(settings, sample_rows=args.sample_rows)
+    legacy_derived_dir = settings.root_dir / "artifacts" / "derived"
+    outputs: dict[str, Path] = {}
+    missing_tables: list[str] = []
+    for table_name in source.derived_tables:
+        dst_path = settings.artifacts_derived_dir / f"{table_name}.parquet"
+        if dst_path.exists():
+            outputs[table_name] = dst_path
+            continue
+
+        legacy_path = legacy_derived_dir / f"{table_name}.parquet"
+        if source.source_id == "main" and sample_rows is None and legacy_path.exists():
+            dst_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(legacy_path, dst_path)
+            outputs[table_name] = dst_path
+            continue
+
+        missing_tables.append(table_name)
+
+    if missing_tables:
+        built_outputs = write_derived_tables(
+            settings,
+            sample_rows=sample_rows,
+            table_names=tuple(missing_tables),
+        )
+        outputs.update(built_outputs)
+        print(f"Built missing derived tables for source '{source_id}': {', '.join(missing_tables)}")
+    else:
+        print(f"All derived tables for source '{source_id}' were already present; refreshed the manifest only.")
     manifest = _build_manifest(
+        source_id=source_id,
         outputs=outputs,
-        sample_rows=args.sample_rows,
-        strict_checks=args.strict_checks,
+        sample_rows=sample_rows,
+        strict_checks=strict_checks,
         checks_status=checks_status,
+        source_input_snapshot=source_input_snapshot,
     )
     write_derived_manifest(manifest, settings.derived_manifest_path)
-    print("Derived outputs:")
+    print(f"Derived outputs for source '{source_id}':")
     for name, path in outputs.items():
         print(f"- {name}: {path}")
     print(f"Derived manifest: {settings.derived_manifest_path}")
-
     return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Build source-local derived datasets for the Streamlit app.")
+    parser.add_argument("--sample-rows", type=int, default=None, help="Optional limit for fast local iteration.")
+    parser.add_argument("--skip-checks", action="store_true", help="Skip consistency checks before building derived datasets.")
+    parser.add_argument("--strict-checks", action="store_true", help="Fail build if checks are not passing.")
+    parser.add_argument(
+        "--source",
+        type=str,
+        default=DEFAULT_SOURCE_ID,
+        help=f"Runtime source id to build. Default: {DEFAULT_SOURCE_ID}",
+    )
+    parser.add_argument("--all-sources", action="store_true", help="Build every registered runtime source.")
+    parser.add_argument("--force", action="store_true", help="Rebuild even when source inputs and outputs appear unchanged.")
+    args = parser.parse_args()
+
+    source_ids = [spec.source_id for spec in list_runtime_sources()] if args.all_sources else [args.source]
+    failures = 0
+    for source_id in source_ids:
+        failures += _build_one_source(
+            source_id,
+            sample_rows=args.sample_rows,
+            skip_checks=args.skip_checks,
+            strict_checks=args.strict_checks,
+            force=args.force,
+        )
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":

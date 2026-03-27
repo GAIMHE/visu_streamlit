@@ -135,6 +135,8 @@ Examples
     This function is validated through the test suite execution path.
 """
     expected_tables = {
+        "classroom_mode_profiles",
+        "classroom_activity_summary_by_mode",
         "agg_module_usage_daily",
         "agg_playlist_module_usage",
         "agg_module_activity_usage",

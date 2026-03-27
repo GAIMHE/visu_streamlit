@@ -4,7 +4,7 @@ from datetime import UTC, date, datetime, timedelta
 
 import polars as pl
 
-from visu2.classroom_progression import MISSING_ACTIVITY_LABEL
+from visu2.classroom_progression import MISSING_ACTIVITY_LABEL, SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID
 from visu2.classroom_progression_sankey import (
     build_classroom_activity_paths,
     build_classroom_activity_sankey_edges,
@@ -93,6 +93,22 @@ def test_build_classroom_activity_paths_handles_missing_and_duplicate_labels() -
         "Wrap",
         "Shared [2]",
     ]
+
+
+def test_build_classroom_activity_paths_uses_synthetic_classroom_when_missing() -> None:
+    fact = _fact_fixture().with_columns(pl.lit(None, dtype=pl.Utf8).alias("classroom_id"))
+
+    payload = build_classroom_activity_paths(
+        fact,
+        classroom_id=SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID,
+        mode_scope="zpdes",
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 1),
+    )
+
+    assert payload["classroom_id"] == SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID
+    assert payload["classroom_label"] == "All students"
+    assert payload["student_count"] == 4
 
 
 def test_build_classroom_activity_paths_uses_activity_codes_when_available() -> None:

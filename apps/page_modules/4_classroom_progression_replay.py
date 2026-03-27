@@ -51,46 +51,19 @@ if str(APPS_DIR) not in sys.path:
 from figure_analysis import render_figure_analysis
 from figure_info import render_figure_info
 from plotly_config import build_plotly_chart_config
-from runtime_bootstrap import bootstrap_runtime_assets
-from runtime_paths import CLASSROOM_REPLAY_RUNTIME_RELATIVE_PATHS
+from source_state import get_active_source_id
 
 from visu2.classroom_progression import (
-    MISSING_ACTIVITY_LABEL,
+    SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID,
     VALID_MODE_SCOPES,
-    build_classroom_mode_profiles,
     build_heatmap_figure,
     build_replay_payload,
     select_classrooms_near_student_target,
 )
 from visu2.config import get_settings
+from visu2.contracts import RUNTIME_CORE_COLUMNS
 from visu2.figure_analysis import analyze_classroom_progression_population
-
-st.set_page_config(
-    page_title="Classroom Progression Replay",
-    page_icon=":bar_chart:",
-    layout="wide",
-)
-
-
-st.markdown(
-    """
-<style>
-h1, h2, h3 {
-  font-family: "Fraunces", Georgia, serif !important;
-}
-div, p, label {
-  font-family: "IBM Plex Sans", sans-serif !important;
-}
-[data-testid="stMetric"] {
-  border: 1px solid rgba(23, 34, 27, 0.10);
-  border-radius: 14px;
-  padding: 0.75rem;
-}
-</style>
-""",
-    unsafe_allow_html=True,
-)
-
+from visu2.remote_query import query_fact_attempts_for_classroom
 
 MODE_OPTIONS = {
     "ZPDES": "zpdes",
@@ -100,27 +73,30 @@ MODE_OPTIONS = {
 HEATMAP_MASTERY_THRESHOLD = 0.75
 
 
+FACT_QUERY_COLUMNS: tuple[str, ...] = (
+    "created_at",
+    "date_utc",
+    "user_id",
+    "activity_id",
+    "activity_label",
+    "data_correct",
+    "work_mode",
+    "classroom_id",
+    "objective_id",
+    "module_code",
+    "exercise_id",
+    "attempt_number",
+)
+
+
 @st.cache_data(show_spinner=False)
-def _load_profiles(fact_path: Path) -> pl.DataFrame:
-    """Load profiles.
-
-Parameters
-----------
-fact_path : Path
-        Input parameter used by this routine.
-
-Returns
--------
-pl.DataFrame
-        Result produced by this routine.
-
-"""
-    return build_classroom_mode_profiles(pl.scan_parquet(fact_path))
+def _load_profiles(profiles_path: Path) -> pl.DataFrame:
+    return pl.read_parquet(profiles_path)
 
 
 @st.cache_data(show_spinner=False)
 def _load_replay_payload(
-    fact_path: Path,
+    source_id: str,
     classroom_id: str,
     mode_scope: str,
     start_date_iso: str,
@@ -153,8 +129,17 @@ dict
         Result produced by this routine.
 
 """
+    settings = get_settings(source_id)
+    fact_slice = query_fact_attempts_for_classroom(
+        settings,
+        classroom_id=classroom_id,
+        mode_scope=mode_scope,
+        start_date=date.fromisoformat(start_date_iso),
+        end_date=date.fromisoformat(end_date_iso),
+        columns=FACT_QUERY_COLUMNS,
+    )
     return build_replay_payload(
-        fact=pl.scan_parquet(fact_path),
+        fact=fact_slice,
         classroom_id=classroom_id,
         mode_scope=mode_scope,
         start_date=date.fromisoformat(start_date_iso),
@@ -166,64 +151,11 @@ dict
 
 @st.cache_data(show_spinner=False)
 def _load_classroom_activity_summary(fact_path: Path, mode_scope: str) -> pl.DataFrame:
-    """Aggregate activity outcomes across all classrooms in one mode scope."""
-    fact = (
-        pl.scan_parquet(fact_path)
-        .filter(pl.col("classroom_id").is_not_null() & (pl.col("classroom_id").cast(pl.Utf8) != "None"))
-        .with_columns(
-            pl.col("classroom_id").cast(pl.Utf8),
-            pl.when(
-                pl.col("activity_label").is_null()
-                | (pl.col("activity_label").cast(pl.Utf8).str.strip_chars() == "")
-            )
-            .then(pl.lit(MISSING_ACTIVITY_LABEL))
-            .otherwise(pl.col("activity_label").cast(pl.Utf8))
-            .alias("activity_analysis_label"),
-        )
-    )
-    if mode_scope != "all":
-        fact = fact.filter(pl.col("work_mode") == mode_scope)
-    per_classroom_activity = fact.group_by(["classroom_id", "activity_analysis_label"]).agg(
-        pl.len().cast(pl.Int64).alias("attempts"),
-        pl.col("data_correct").cast(pl.Int64).sum().cast(pl.Int64).alias("successes"),
-    )
-    return (
-        per_classroom_activity.with_columns(
-            pl.when(pl.col("attempts") > 0)
-            .then(pl.col("successes") / pl.col("attempts"))
-            .otherwise(None)
-            .alias("classroom_activity_success_rate")
-        )
-        .group_by("activity_analysis_label")
-        .agg(
-            pl.col("classroom_id").n_unique().cast(pl.Int64).alias("classrooms_observed"),
-            pl.col("attempts").sum().cast(pl.Int64).alias("attempts_total"),
-            pl.col("successes").sum().cast(pl.Int64).alias("successes_total"),
-            pl.col("classroom_activity_success_rate")
-            .mean()
-            .alias("mean_classroom_success_rate"),
-            pl.col("classroom_activity_success_rate")
-            .median()
-            .alias("median_classroom_success_rate"),
-            pl.col("classroom_activity_success_rate")
-            .lt(0.60)
-            .sum()
-            .cast(pl.Int64)
-            .alias("weak_classroom_count"),
-        )
-        .with_columns(
-            pl.when(pl.col("attempts_total") > 0)
-            .then(pl.col("successes_total") / pl.col("attempts_total"))
-            .otherwise(None)
-            .alias("success_rate"),
-            pl.when(pl.col("classrooms_observed") > 0)
-            .then(pl.col("weak_classroom_count") / pl.col("classrooms_observed"))
-            .otherwise(None)
-            .alias("weak_classroom_share"),
-        )
-        .rename({"activity_analysis_label": "activity_label"})
-        .collect()
-    )
+    summary = pl.read_parquet(fact_path)
+    scoped = summary.filter(pl.col("mode_scope") == mode_scope)
+    if scoped.height > 0:
+        return scoped
+    return summary.filter(pl.col("mode_scope") == "all")
 
 
 def _format_classroom_option(row: dict[str, object]) -> str:
@@ -240,8 +172,14 @@ str
         Result produced by this routine.
 
 """
+    classroom_id = str(row.get("classroom_id") or "")
+    classroom_label = (
+        "All students"
+        if classroom_id == SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID
+        else classroom_id
+    )
     return (
-        f"{row.get('classroom_id')}  "
+        f"{classroom_label}  "
         f"({row.get('students')} students, {row.get('activities')} activities, {row.get('attempts')} attempts)"
     )
 
@@ -293,37 +231,56 @@ None
         Result produced by this routine.
 
 """
-    bootstrap_runtime_assets(CLASSROOM_REPLAY_RUNTIME_RELATIVE_PATHS)
-    settings = get_settings()
-    fact_path = settings.artifacts_derived_dir / "fact_attempt_core.parquet"
-    if not fact_path.exists():
-        st.error("Missing artifact: fact_attempt_core.parquet.")
-        st.code("uv run python scripts/build_derived.py --strict-checks")
+    st.markdown(
+        """
+<style>
+h1, h2, h3 {
+  font-family: "Fraunces", Georgia, serif !important;
+}
+div, p, label {
+  font-family: "IBM Plex Sans", sans-serif !important;
+}
+[data-testid="stMetric"] {
+  border: 1px solid rgba(23, 34, 27, 0.10);
+  border-radius: 14px;
+  padding: 0.75rem;
+}
+</style>
+""",
+        unsafe_allow_html=True,
+    )
+    settings = get_settings(get_active_source_id())
+    profiles_path = settings.artifacts_derived_dir / "classroom_mode_profiles.parquet"
+    activity_summary_path = settings.artifacts_derived_dir / "classroom_activity_summary_by_mode.parquet"
+    required = [profiles_path, activity_summary_path]
+    missing_files = [path for path in required if not path.exists()]
+    if missing_files:
+        st.error("Missing classroom replay selector artifacts. Rebuild derived data.")
+        st.code("\n".join(str(path) for path in missing_files))
         st.stop()
 
-    required_columns = {
-        "created_at",
-        "date_utc",
-        "user_id",
-        "activity_id",
-        "activity_label",
-        "data_correct",
-        "work_mode",
-        "classroom_id",
-        "objective_id",
-        "module_code",
-        "exercise_id",
-        "attempt_number",
+    compatibility_checks = {
+        "classroom_mode_profiles": (
+            profiles_path,
+            RUNTIME_CORE_COLUMNS["classroom_mode_profiles"],
+        ),
+        "classroom_activity_summary_by_mode": (
+            activity_summary_path,
+            RUNTIME_CORE_COLUMNS["classroom_activity_summary_by_mode"],
+        ),
     }
-    actual_columns = set(_parquet_columns(fact_path))
-    missing = sorted(required_columns - actual_columns)
-    if missing:
-        st.error("Replay page cannot run: fact_attempt_core is missing required columns.")
-        st.markdown("- " + "\n- ".join(f"`{name}`" for name in missing))
+    missing_contracts: list[str] = []
+    for label, (path, required_columns) in compatibility_checks.items():
+        missing_columns = [col for col in required_columns if col not in _parquet_columns(path)]
+        if missing_columns:
+            missing_contracts.append(f"- `{label}`: {', '.join(missing_columns)}")
+    if missing_contracts:
+        st.error("Classroom replay selector artifacts are incompatible with the current runtime contract.")
+        st.markdown("\n".join(missing_contracts))
         st.code("uv run python scripts/build_derived.py --strict-checks")
         st.stop()
 
-    profiles = _load_profiles(fact_path)
+    profiles = _load_profiles(profiles_path)
     if profiles.height == 0:
         st.info("No valid classroom rows found (excluding null and 'None').")
         st.stop()
@@ -348,42 +305,56 @@ None
 
     min_students = int(scoped_profiles["students"].min() or 0)
     max_students = int(scoped_profiles["students"].max() or 0)
-    st.caption(
-        f"Classrooms in this scope range from **{min_students}** to **{max_students}** students."
+    synthetic_only_scope = (
+        scoped_profiles.height == 1
+        and str(scoped_profiles["classroom_id"][0]) == SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID
     )
-
-    default_target = int(scoped_profiles["students"].median() or min_students or 1)
-    target_students = int(
-        st.number_input(
-            "Target classroom size (students)",
-            min_value=max(1, min_students),
-            max_value=max(1, max_students),
-            value=min(max(1, default_target), max(1, max_students)),
-            step=1,
+    if synthetic_only_scope:
+        selected_classroom_id = SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID
+        selected_row = scoped_profiles.to_dicts()[0]
+        st.caption(
+            "This source does not have a classroom dimension. The replay is using one synthetic classroom that groups all students."
         )
-    )
+    else:
+        st.caption(
+            f"Classrooms in this scope range from **{min_students}** to **{max_students}** students."
+        )
 
-    lower = max(1, int(math.floor(target_students * 0.9)))
-    upper = max(lower, int(math.ceil(target_students * 1.1)))
-    matching_profiles = select_classrooms_near_student_target(
-        profiles,
-        mode_scope=mode_scope,
-        target_students=target_students,
-        tolerance_ratio=0.10,
-    )
-    if matching_profiles.height == 0:
-        st.info("No classrooms found in that range, please try another range.")
-        st.stop()
+        default_target = int(scoped_profiles["students"].median() or min_students or 1)
+        target_students = int(
+            st.number_input(
+                "Target classroom size (students)",
+                min_value=max(1, min_students),
+                max_value=max(1, max_students),
+                value=min(max(1, default_target), max(1, max_students)),
+                step=1,
+            )
+        )
 
-    st.caption(
-        f"Showing classrooms with **{lower}** to **{upper}** students in **{_mode_label(mode_scope)}** scope."
-    )
-    rows = matching_profiles.to_dicts()
-    option_map = {_format_classroom_option(row): str(row.get("classroom_id")) for row in rows}
-    option_keys = list(option_map.keys())
-    selected_option = st.selectbox("Matching classrooms", option_keys, index=0)
-    selected_classroom_id = option_map[selected_option]
-    selected_row = next((row for row in rows if str(row.get("classroom_id")) == selected_classroom_id), rows[0])
+        lower = max(1, int(math.floor(target_students * 0.9)))
+        upper = max(lower, int(math.ceil(target_students * 1.1)))
+        matching_profiles = select_classrooms_near_student_target(
+            profiles,
+            mode_scope=mode_scope,
+            target_students=target_students,
+            tolerance_ratio=0.10,
+        )
+        if matching_profiles.height == 0:
+            st.info("No classrooms found in that range, please try another range.")
+            st.stop()
+
+        st.caption(
+            f"Showing classrooms with **{lower}** to **{upper}** students in **{_mode_label(mode_scope)}** scope."
+        )
+        rows = matching_profiles.to_dicts()
+        option_map = {_format_classroom_option(row): str(row.get("classroom_id")) for row in rows}
+        option_keys = list(option_map.keys())
+        selected_option = st.selectbox("Matching classrooms", option_keys, index=0)
+        selected_classroom_id = option_map[selected_option]
+        selected_row = next(
+            (row for row in rows if str(row.get("classroom_id")) == selected_classroom_id),
+            rows[0],
+        )
     first_ts = selected_row.get("first_attempt_at")
     last_ts = selected_row.get("last_attempt_at")
     if not (hasattr(first_ts, "date") and hasattr(last_ts, "date")):
@@ -406,15 +377,19 @@ None
     st.sidebar.header("Display")
     show_values = st.sidebar.checkbox("Show cell values", value=False)
 
-    payload = _load_replay_payload(
-        fact_path=fact_path,
-        classroom_id=selected_classroom_id,
-        mode_scope=mode_scope,
-        start_date_iso=start_date.isoformat(),
-        end_date_iso=end_date.isoformat(),
-        max_frames=int(max_frames),
-        step_size=int(step_size),
-    )
+    try:
+        payload = _load_replay_payload(
+            source_id=settings.source_id,
+            classroom_id=selected_classroom_id,
+            mode_scope=mode_scope,
+            start_date_iso=start_date.isoformat(),
+            end_date_iso=end_date.isoformat(),
+            max_frames=int(max_frames),
+            step_size=int(step_size),
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        st.error(str(exc))
+        st.stop()
 
     total_events = int(payload.get("total_events_valid_timestamp") or 0)
     if total_events == 0:
@@ -471,7 +446,7 @@ None
             st.session_state[frame_key] = min(max_frame_idx, int(st.session_state[frame_key]) + 1)
     with col_d:
         st.caption(
-            f"Scope: **{_mode_label(mode_scope)}**  |  Classroom: **{selected_classroom_id}**  "
+            f"Scope: **{_mode_label(mode_scope)}**  |  Classroom: **{'All students' if selected_classroom_id == SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID else selected_classroom_id}**  "
             f"|  Students: **{len(payload.get('student_ids') or [])}**  "
             f"|  Activities: **{len(payload.get('activity_ids') or [])}**"
         )
@@ -506,7 +481,7 @@ None
         width='stretch',
         config=build_plotly_chart_config(),
     )
-    activity_summary = _load_classroom_activity_summary(fact_path, mode_scope)
+    activity_summary = _load_classroom_activity_summary(activity_summary_path, mode_scope)
     render_figure_analysis(
         analyze_classroom_progression_population(
             scoped_profiles,

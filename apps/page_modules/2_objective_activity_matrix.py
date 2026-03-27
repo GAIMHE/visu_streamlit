@@ -53,8 +53,7 @@ from figure_analysis import render_figure_analysis
 from figure_info import render_figure_info
 from overview_shared import normalize_date_input_range
 from plotly_config import build_plotly_chart_config
-from runtime_bootstrap import bootstrap_runtime_assets
-from runtime_paths import MATRIX_RUNTIME_RELATIVE_PATHS
+from source_state import get_active_source_id
 
 from visu2.config import get_settings
 from visu2.contracts import RUNTIME_CORE_COLUMNS
@@ -66,28 +65,6 @@ from visu2.objective_activity_matrix import (
     build_objective_activity_cells,
     build_ragged_matrix_payload,
 )
-
-st.set_page_config(
-    page_title="Objective Activity Matrix",
-    page_icon=":bar_chart:",
-    layout="wide",
-)
-
-
-st.markdown(
-    """
-<style>
-h1, h2, h3 {
-  font-family: "Fraunces", Georgia, serif !important;
-}
-div, p, label {
-  font-family: "IBM Plex Sans", sans-serif !important;
-}
-</style>
-""",
-    unsafe_allow_html=True,
-)
-
 
 METRIC_LABELS = {
     "attempts": "Attempts",
@@ -427,8 +404,20 @@ None
         Result produced by this routine.
 
 """
-    bootstrap_runtime_assets(MATRIX_RUNTIME_RELATIVE_PATHS)
-    settings = get_settings()
+    st.markdown(
+        """
+<style>
+h1, h2, h3 {
+  font-family: "Fraunces", Georgia, serif !important;
+}
+div, p, label {
+  font-family: "IBM Plex Sans", sans-serif !important;
+}
+</style>
+""",
+        unsafe_allow_html=True,
+    )
+    settings = get_settings(get_active_source_id())
     activity_path = settings.artifacts_derived_dir / "agg_activity_daily.parquet"
     exercise_daily_path = settings.artifacts_derived_dir / "agg_exercise_daily.parquet"
     activity_elo_path = settings.artifacts_derived_dir / "agg_activity_elo.parquet"

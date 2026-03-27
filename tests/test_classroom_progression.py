@@ -29,6 +29,8 @@ from datetime import UTC, date, datetime, timedelta
 import polars as pl
 
 from visu2.classroom_progression import (
+    SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID,
+    build_classroom_activity_summary_by_mode,
     build_classroom_mode_profiles,
     build_heatmap_figure,
     build_replay_payload,
@@ -162,6 +164,47 @@ Examples
     assert int(zpdes_c1["students"][0]) == 2
     assert int(zpdes_c1["activities"][0]) == 2
     assert int(zpdes_c1["attempts"][0]) == 4
+
+
+def test_build_classroom_mode_profiles_uses_synthetic_classroom_when_missing() -> None:
+    fact = _base_fact_fixture().with_columns(pl.lit(None, dtype=pl.Utf8).alias("classroom_id"))
+
+    profiles = build_classroom_mode_profiles(fact)
+
+    assert profiles.height > 0
+    assert set(profiles["classroom_id"].to_list()) == {SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID}
+    zpdes_profile = profiles.filter(pl.col("mode_scope") == "zpdes")
+    assert zpdes_profile.height == 1
+    assert int(zpdes_profile["students"][0]) == 3
+
+
+def test_build_classroom_activity_summary_by_mode_matches_expected_rates() -> None:
+    summary = build_classroom_activity_summary_by_mode(_base_fact_fixture())
+
+    zpdes_a1 = summary.filter(
+        (pl.col("mode_scope") == "zpdes") & (pl.col("activity_label") == "A1")
+    ).row(0, named=True)
+    assert zpdes_a1["classrooms_observed"] == 1
+    assert zpdes_a1["attempts_total"] == 3
+    assert zpdes_a1["successes_total"] == 2
+    assert zpdes_a1["success_rate"] == 2 / 3
+    assert zpdes_a1["weak_classroom_share"] == 0.0
+
+    playlist_a5 = summary.filter(
+        (pl.col("mode_scope") == "playlist") & (pl.col("activity_label") == "A5")
+    ).row(0, named=True)
+    assert playlist_a5["classrooms_observed"] == 1
+    assert playlist_a5["success_rate"] == 1.0
+
+
+def test_build_classroom_activity_summary_by_mode_uses_synthetic_classroom_when_missing() -> None:
+    fact = _base_fact_fixture().with_columns(pl.lit(None, dtype=pl.Utf8).alias("classroom_id"))
+
+    summary = build_classroom_activity_summary_by_mode(fact)
+
+    zpdes = summary.filter(pl.col("mode_scope") == "zpdes")
+    assert zpdes.height > 0
+    assert zpdes["classrooms_observed"].to_list() == [1, 1, 1]
 
 
 def test_select_default_classroom_uses_zpdes_eligibility_then_ranking() -> None:

@@ -161,6 +161,7 @@ FIGURE_INFO: dict[str, dict[str, tuple[str, ...]]] = {
             "Use `Target classroom size (students)` and `Matching classrooms` to keep the current size-based matching workflow.",
             "If you already know a classroom ID, type it in `Classroom ID override (optional)` to load that classroom directly inside the selected work-mode scope.",
             "The typed classroom override supersedes the currently selected matching classroom, but the matching list stays available for browsing nearby classes.",
+            "For sources without classroom identifiers, the page collapses to one synthetic classroom containing all students in the selected scope.",
         ),
     },
     "student_elo_page": {
@@ -187,6 +188,24 @@ FIGURE_INFO: dict[str, dict[str, tuple[str, ...]]] = {
             "Use the replay controls to step through the local attempt timeline with a chosen step size and autoplay speed while both systems stay synchronized when both are visible.",
             "Use `Highlight timestamp gaps >= days` to mark long inactivity periods without switching the chart away from attempt-based progression.",
             "If no students are found in the requested attempt range, try another target count, or clear the ID override if it does not match an eligible student.",
+        ),
+    },
+    "student_objective_spider": {
+        "What it shows": (
+            "A radar chart for one selected student inside one selected module.",
+            "Every catalog objective in the selected module remains visible as a spoke, even if the student never reached it.",
+            "The chart overlays all-attempt success rate with catalog-relative objective coverage.",
+        ),
+        "Metrics": (
+            "`Success rate` is the share of correct answers across all attempts the student made inside that objective.",
+            "`Coverage %` is the share of catalog exercises in the objective that the student attempted at least once; retries do not increase coverage.",
+            "Raw counts such as `distinct exercises attempted / total objective exercises` stay visible in hover and summary cards.",
+            "Untouched objectives keep `0%` coverage while the success-rate trace leaves a gap instead of inventing a zero score.",
+        ),
+        "How to use": (
+            "Use `Target attempt count` to sample one eligible student near the desired trajectory length.",
+            "If you already know the student ID, type it in `Student ID override (optional)` to load that student directly.",
+            "After a student is selected, choose one of the modules that student actually attempted; the default module is the student's most-attempted one.",
         ),
     },
     "zpdes_transition_efficiency_graph": {
