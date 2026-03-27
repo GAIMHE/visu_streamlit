@@ -37,6 +37,7 @@ from visu2.student_elo import (
     build_student_elo_figure,
     build_student_elo_payload,
     load_student_elo_label_lookup,
+    merge_student_elo_label_lookups,
     select_default_students,
     select_student_by_id,
     select_students_near_attempt_target,
@@ -312,6 +313,36 @@ def test_load_student_elo_label_lookup_includes_orphan_fallback_labels(tmp_path:
 
     assert orphan_row["objective_label"] == "Unmapped initial-test objective (M1)"
     assert orphan_row["activity_label"] == "Unmapped initial-test activity (M1)"
+
+
+def test_merge_student_elo_label_lookups_keeps_fact_specific_context() -> None:
+    """Test fact-derived labels can extend catalog/orphan lookup for reused exercises."""
+    fact_lookup = pl.DataFrame(
+        {
+            "activity_id": ["a_m51"],
+            "module_code": ["M51"],
+            "module_label": ["Fractions level 1"],
+            "objective_id": ["o_shared"],
+            "objective_label": ["Shared objective"],
+            "activity_label": ["Shared activity in M51"],
+        }
+    )
+    base_lookup = pl.DataFrame(
+        {
+            "activity_id": ["a_m52"],
+            "module_code": ["M52"],
+            "module_label": ["Fractions level 2"],
+            "objective_id": ["o_shared_2"],
+            "objective_label": ["Shared objective"],
+            "activity_label": ["Shared activity in M52"],
+        }
+    )
+
+    merged = merge_student_elo_label_lookups(fact_lookup, base_lookup)
+
+    assert merged.height == 2
+    assert merged.filter(pl.col("module_code") == "M51").to_dicts()[0]["activity_label"] == "Shared activity in M51"
+    assert merged.filter(pl.col("module_code") == "M52").to_dicts()[0]["activity_label"] == "Shared activity in M52"
 
 
 def test_build_student_elo_figure_uses_synchronized_cutoff() -> None:

@@ -192,6 +192,42 @@ def query_student_elo_events(
     )
 
 
+def query_student_fact_label_lookup(
+    settings: Settings,
+    *,
+    user_ids: Sequence[str],
+    relative_path: str = "artifacts/derived/fact_attempt_core.parquet",
+) -> pl.DataFrame:
+    """Query readable activity/objective/module labels for selected students."""
+    normalized_ids = tuple(
+        str(user_id).strip() for user_id in user_ids if str(user_id or "").strip()
+    )
+    columns = (
+        "activity_id",
+        "module_code",
+        "module_label",
+        "objective_id",
+        "objective_label",
+        "activity_label",
+    )
+    if not normalized_ids:
+        return _empty_frame(columns)
+    return (
+        query_runtime_parquet(
+            settings,
+            relative_path,
+            columns=columns,
+            filters=(("user_id", "in", normalized_ids),),
+        )
+        .filter(
+            pl.col("activity_id").is_not_null()
+            & pl.col("objective_id").is_not_null()
+            & pl.col("module_code").is_not_null()
+        )
+        .unique(subset=["activity_id", "objective_id", "module_code"], keep="first")
+    )
+
+
 def query_fact_attempts(
     settings: Settings,
     *,
@@ -323,6 +359,7 @@ __all__ = [
     "query_fact_attempts",
     "query_fact_attempts_for_classroom",
     "query_runtime_parquet",
+    "query_student_fact_label_lookup",
     "query_student_elo_events",
     "resolve_runtime_parquet_reference",
 ]

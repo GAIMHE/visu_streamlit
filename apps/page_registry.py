@@ -98,6 +98,7 @@ PAGE_SPECS: tuple[PageSpec, ...] = (
             "artifacts/derived/student_elo_profiles_iterative.parquet",
         ),
         remote_query_paths=(
+            "artifacts/derived/fact_attempt_core.parquet",
             "artifacts/derived/student_elo_events.parquet",
             "artifacts/derived/student_elo_events_iterative.parquet",
         ),

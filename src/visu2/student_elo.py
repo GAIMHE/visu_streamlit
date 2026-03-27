@@ -133,6 +133,49 @@ def load_student_elo_label_lookup(
     )
 
 
+def merge_student_elo_label_lookups(*lookups: pl.DataFrame | None) -> pl.DataFrame:
+    """Merge label lookup frames while preserving first-frame precedence."""
+    normalized_frames: list[pl.DataFrame] = []
+    for lookup in lookups:
+        if lookup is None or lookup.height == 0:
+            continue
+        normalized_frames.append(
+            lookup.select(
+                [
+                    "activity_id",
+                    "module_code",
+                    "module_label",
+                    "objective_id",
+                    "objective_label",
+                    "activity_label",
+                ]
+            )
+        )
+    if not normalized_frames:
+        return pl.DataFrame(
+            {
+                "activity_id": [],
+                "module_code": [],
+                "module_label": [],
+                "objective_id": [],
+                "objective_label": [],
+                "activity_label": [],
+            },
+            schema={
+                "activity_id": pl.Utf8,
+                "module_code": pl.Utf8,
+                "module_label": pl.Utf8,
+                "objective_id": pl.Utf8,
+                "objective_label": pl.Utf8,
+                "activity_label": pl.Utf8,
+            },
+        )
+    return pl.concat(normalized_frames, how="diagonal_relaxed").unique(
+        subset=["activity_id", "module_code", "objective_id"],
+        keep="first",
+    )
+
+
 def _as_lazy(frame: pl.DataFrame | pl.LazyFrame) -> pl.LazyFrame:
     """As lazy.
 

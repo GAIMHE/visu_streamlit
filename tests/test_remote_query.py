@@ -12,6 +12,7 @@ from visu2.remote_query import (
     query_fact_attempts,
     query_fact_attempts_for_classroom,
     query_runtime_parquet,
+    query_student_fact_label_lookup,
     resolve_runtime_parquet_reference,
 )
 
@@ -184,4 +185,42 @@ def test_query_fact_attempts_enforces_min_student_attempts(tmp_path) -> None:
     assert frame.to_dicts() == [
         {"user_id": "u1", "activity_id": "a1"},
         {"user_id": "u1", "activity_id": "a2"},
+    ]
+
+
+def test_query_student_fact_label_lookup_filters_selected_students(tmp_path) -> None:
+    settings = _build_settings(tmp_path)
+    fact_path = settings.artifacts_derived_dir / "fact_attempt_core.parquet"
+    pl.DataFrame(
+        {
+            "created_at": [
+                datetime(2025, 1, 1, 9, 0, tzinfo=UTC),
+                datetime(2025, 1, 1, 9, 5, tzinfo=UTC),
+            ],
+            "date_utc": [date(2025, 1, 1), date(2025, 1, 1)],
+            "user_id": ["u1", "u2"],
+            "activity_id": ["a_m51", "a_other"],
+            "activity_label": ["Shared activity in M51", "Other activity"],
+            "objective_id": ["o_m51", "o_other"],
+            "objective_label": ["Shared objective", "Other objective"],
+            "module_code": ["M51", "M1"],
+            "module_label": ["Fractions level 1", "Numbers"],
+            "exercise_id": ["e1", "e2"],
+            "attempt_number": [1, 1],
+            "classroom_id": ["c1", "c1"],
+            "work_mode": ["adaptive-test", "zpdes"],
+        }
+    ).write_parquet(fact_path)
+
+    lookup = query_student_fact_label_lookup(settings, user_ids=("u1",))
+
+    assert lookup.to_dicts() == [
+        {
+            "activity_id": "a_m51",
+            "module_code": "M51",
+            "module_label": "Fractions level 1",
+            "objective_id": "o_m51",
+            "objective_label": "Shared objective",
+            "activity_label": "Shared activity in M51",
+        }
     ]

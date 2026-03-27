@@ -41,13 +41,14 @@ from source_state import get_active_source_id
 from visu2.config import get_settings
 from visu2.contracts import RUNTIME_CORE_COLUMNS
 from visu2.figure_analysis import analyze_student_elo_comparison
-from visu2.remote_query import query_student_elo_events
+from visu2.remote_query import query_student_elo_events, query_student_fact_label_lookup
 from visu2.student_elo import (
     build_student_elo_comparison_figure,
     build_student_elo_comparison_payload,
     build_student_elo_payload,
     load_student_elo_label_lookup,
     load_student_elo_profiles,
+    merge_student_elo_label_lookups,
     select_student_by_id,
     select_students_near_attempt_target,
 )
@@ -140,8 +141,11 @@ def _load_payload(
     display_choice: str,
 ) -> dict[str, object]:
     settings = get_settings(source_id)
-    label_lookup = _load_label_lookup(label_path, exercise_elo_path)
     users = list(user_ids)
+    label_lookup = merge_student_elo_label_lookups(
+        query_student_fact_label_lookup(settings, user_ids=users),
+        _load_label_lookup(label_path, exercise_elo_path),
+    )
 
     if display_choice == "Both":
         return build_student_elo_comparison_payload(

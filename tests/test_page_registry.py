@@ -17,7 +17,9 @@ def test_student_elo_bootstrap_paths_exclude_heavy_event_tables() -> None:
     page = PAGE_SPEC_BY_ID["student_elo"]
     assert "artifacts/derived/student_elo_events.parquet" not in page.bootstrap_runtime_paths
     assert "artifacts/derived/student_elo_events_iterative.parquet" not in page.bootstrap_runtime_paths
+    assert "artifacts/derived/fact_attempt_core.parquet" not in page.bootstrap_runtime_paths
     assert page.remote_query_paths == (
+        "artifacts/derived/fact_attempt_core.parquet",
         "artifacts/derived/student_elo_events.parquet",
         "artifacts/derived/student_elo_events_iterative.parquet",
     )
