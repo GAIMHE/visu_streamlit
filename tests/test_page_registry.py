@@ -8,7 +8,9 @@ APPS_DIR = ROOT_DIR / "apps"
 if str(APPS_DIR) not in sys.path:
     sys.path.insert(0, str(APPS_DIR))
 
-from page_registry import PAGE_SPEC_BY_ID
+from page_registry import PAGE_SPEC_BY_ID, default_page_id_for_source
+
+from visu2.runtime_sources import get_runtime_source
 
 
 def test_student_elo_bootstrap_paths_exclude_heavy_event_tables() -> None:
@@ -36,3 +38,8 @@ def test_classroom_pages_bootstrap_only_selector_artifacts() -> None:
         "artifacts/derived/classroom_mode_profiles.parquet",
     )
     assert sankey.remote_query_paths == ("artifacts/derived/fact_attempt_core.parquet",)
+
+
+def test_default_page_id_for_source_uses_first_visible_page() -> None:
+    assert default_page_id_for_source(get_runtime_source("main")) == "overview"
+    assert default_page_id_for_source(get_runtime_source("maureen_m16fr")) == "overview"

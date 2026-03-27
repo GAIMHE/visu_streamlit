@@ -113,6 +113,13 @@ def _formatted_metric_text_expr(metric_name: str) -> pl.Expr:
     )
 
 
+def _ensure_utf8_column(frame: pl.DataFrame, column: str, fallback: pl.Expr) -> pl.DataFrame:
+    """Guarantee a Utf8-typed column before downstream string operations run."""
+    if column not in frame.columns:
+        return frame.with_columns(fallback.alias(column))
+    return frame.with_columns(pl.col(column).cast(pl.Utf8).alias(column))
+
+
 def build_exercise_drilldown_frame(
     agg_exercise_daily: pl.DataFrame | pl.LazyFrame,
     module_code: str,
@@ -354,10 +361,8 @@ def build_exercise_drilldown_frame(
             frame = frame.with_columns(pl.lit(None, dtype=pl.Float64).alias("first_attempt_success_rate"))
         if "first_attempt_count" not in frame.columns:
             frame = frame.with_columns(pl.lit(0, dtype=pl.Float64).alias("first_attempt_count"))
-    if "exercise_label" not in frame.columns:
-        frame = frame.with_columns(pl.col("exercise_id").cast(pl.Utf8).alias("exercise_label"))
-    if "exercise_type" not in frame.columns:
-        frame = frame.with_columns(pl.lit(None, dtype=pl.Utf8).alias("exercise_type"))
+    frame = _ensure_utf8_column(frame, "exercise_label", pl.col("exercise_id").cast(pl.Utf8))
+    frame = _ensure_utf8_column(frame, "exercise_type", pl.lit(None, dtype=pl.Utf8))
 
     filtered = frame.filter(
         (pl.col("module_code") == module_code)

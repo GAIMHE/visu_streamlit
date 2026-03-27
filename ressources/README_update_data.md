@@ -31,10 +31,7 @@ Keep the existing main runtime repo:
 hf upload GAIMHE/Adaptiv_Math ./artifacts/sources/main . --repo-type dataset
 ```
 
-Create the Maureen runtime repo, then upload:
-
 ```bash
-hf repos create GAIMHE/M16 --repo-type dataset
 hf upload GAIMHE/M16 ./artifacts/sources/maureen_m16fr . --repo-type dataset
 ```
 

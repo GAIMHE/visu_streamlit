@@ -21,6 +21,7 @@ if str(APPS_DIR) not in sys.path:
 
 from figure_analysis import render_figure_analysis
 from figure_info import render_figure_info
+from overview_shared import render_date_range_input
 from plotly_config import build_plotly_chart_config
 from source_state import get_active_source_id
 
@@ -254,8 +255,11 @@ div, p, label {
     if not (hasattr(first_ts, "date") and hasattr(last_ts, "date")):
         st.info("Selected classroom does not have a valid time span.")
         st.stop()
-    start_date = first_ts.date()
-    end_date = last_ts.date()
+    start_date, end_date = render_date_range_input(
+        first_ts.date(),
+        last_ts.date(),
+        key_prefix=f"classroom_sankey_{mode_scope}_{selected_classroom_id}",
+    )
 
     try:
         payload = _load_sankey_payload(
@@ -277,7 +281,13 @@ div, p, label {
     max_visible_steps = max_classroom_activity_path_length(payload)
     slider_key = "classroom_sankey_visible_steps"
     slider_signature_key = "classroom_sankey_visible_steps_signature"
-    slider_signature = (mode_scope, selected_classroom_id, max_visible_steps)
+    slider_signature = (
+        mode_scope,
+        selected_classroom_id,
+        start_date.isoformat(),
+        end_date.isoformat(),
+        max_visible_steps,
+    )
     if st.session_state.get(slider_signature_key) != slider_signature:
         current_value = st.session_state.get(slider_key)
         if isinstance(current_value, int):
@@ -304,11 +314,12 @@ div, p, label {
         st.info("This classroom reaches only one activity in the selected scope, so the Sankey mainly shows entry and stop.")
 
     st.caption(
-        "This Sankey uses the full selected-classroom history in the chosen work-mode scope. "
+        "This Sankey uses the selected-classroom history inside the chosen date range and work-mode scope. "
         "Each student path keeps only the first time the student reaches a new activity; revisits are not displayed as new Sankey steps."
     )
     st.caption(
         f"Scope: **{_mode_label(mode_scope)}**  |  Classroom: **{payload.get('classroom_label') or selected_classroom_id}**  "
+        f"|  Date range: **{start_date.isoformat()} -> {end_date.isoformat()}**  "
         f"|  Students: **{len(payload.get('student_ids') or [])}**  "
         f"|  Activities: **{distinct_activities}**  |  Visible steps: **{visible_steps}**"
     )

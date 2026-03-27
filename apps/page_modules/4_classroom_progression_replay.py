@@ -50,6 +50,7 @@ if str(APPS_DIR) not in sys.path:
 
 from figure_analysis import render_figure_analysis
 from figure_info import render_figure_info
+from overview_shared import render_date_range_input
 from plotly_config import build_plotly_chart_config
 from source_state import get_active_source_id
 
@@ -360,8 +361,11 @@ div, p, label {
     if not (hasattr(first_ts, "date") and hasattr(last_ts, "date")):
         st.info("Selected classroom does not have a valid replay time span.")
         st.stop()
-    start_date = first_ts.date()
-    end_date = last_ts.date()
+    start_date, end_date = render_date_range_input(
+        first_ts.date(),
+        last_ts.date(),
+        key_prefix=f"classroom_replay_{mode_scope}_{selected_classroom_id}",
+    )
 
     st.sidebar.header("Replay")
     speed_ms = st.sidebar.slider("Autoplay speed (ms/frame)", min_value=100, max_value=1500, value=450, step=50)
@@ -417,6 +421,8 @@ div, p, label {
     state_signature = (
         mode_scope,
         selected_classroom_id,
+        start_date.isoformat(),
+        end_date.isoformat(),
         int(step_size),
         int(max_frames),
     )
@@ -447,6 +453,7 @@ div, p, label {
     with col_d:
         st.caption(
             f"Scope: **{_mode_label(mode_scope)}**  |  Classroom: **{'All students' if selected_classroom_id == SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID else selected_classroom_id}**  "
+            f"|  Date range: **{start_date.isoformat()} -> {end_date.isoformat()}**  "
             f"|  Students: **{len(payload.get('student_ids') or [])}**  "
             f"|  Activities: **{len(payload.get('activity_ids') or [])}**"
         )

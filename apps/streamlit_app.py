@@ -16,7 +16,13 @@ if str(APPS_DIR) not in sys.path:
     sys.path.insert(0, str(APPS_DIR))
 
 from overview_shared import render_dashboard_style
-from page_registry import PAGE_SPEC_BY_ID, PageSpec, import_page_module, visible_pages_for_source
+from page_registry import (
+    PAGE_SPEC_BY_ID,
+    PageSpec,
+    default_page_id_for_source,
+    import_page_module,
+    visible_pages_for_source,
+)
 from runtime_bootstrap import bootstrap_runtime_assets
 from source_state import (
     get_active_page_id,
@@ -33,37 +39,10 @@ st.set_page_config(
     layout="wide",
 )
 
-HOME_PAGE_ID = "home"
-
 
 def _source_option_label(source_id: str) -> str:
     source = get_runtime_source(source_id)
     return f"{source.label} [{source.source_id}]"
-
-
-def _render_home(*, source_id: str) -> None:
-    source = get_runtime_source(source_id)
-    pages = visible_pages_for_source(source)
-    render_dashboard_style()
-    st.title("Learning Analytics Explorer")
-    st.markdown(
-        "Use the sidebar to choose a dataset source and then navigate to the supported analyses. "
-        "Each source keeps its own runtime assets, so we only sync and load the files that matter "
-        "for the current page."
-    )
-
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Active Source", source.label)
-    c2.metric("Supported Pages", len(pages))
-    c3.metric("Runtime Namespace", source.source_id)
-
-    st.subheader("Source")
-    st.write(source.description)
-    st.code(str(source.runtime_root(ROOT_DIR)))
-
-    st.subheader("Available Pages")
-    for page in pages:
-        st.markdown(f"- {page.icon} **{page.label}**")
 
 
 def _select_source() -> str:
@@ -87,14 +66,19 @@ def _select_source() -> str:
 def _select_page(source_id: str) -> str:
     source = get_runtime_source(source_id)
     pages = visible_pages_for_source(source)
-    visible_ids = [HOME_PAGE_ID] + [page.page_id for page in pages]
-    label_by_id = {HOME_PAGE_ID: "Home"}
-    label_by_id.update({page.page_id: page.label for page in pages})
-    requested_page_id = get_active_page_id(HOME_PAGE_ID)
+    default_page_id = default_page_id_for_source(source)
+    visible_ids = [page.page_id for page in pages]
+    label_by_id = {page.page_id: page.label for page in pages}
+    requested_page_id = get_active_page_id(default_page_id)
     if requested_page_id not in visible_ids:
-        requested_page_id = HOME_PAGE_ID
+        show_redirect_info = requested_page_id != "home"
+        requested_page_id = default_page_id
         set_active_page_id(requested_page_id)
-        st.sidebar.info("That page is not available for the selected source. Showing Home instead.")
+        if show_redirect_info:
+            fallback_label = label_by_id.get(requested_page_id, requested_page_id)
+            st.sidebar.info(
+                f"That page is not available for the selected source. Showing {fallback_label} instead."
+            )
     selected_page_id = st.sidebar.radio(
         "Page",
         options=visible_ids,
@@ -118,12 +102,9 @@ def _render_page(source_id: str, page: PageSpec) -> None:
 
 def main() -> None:
     st.sidebar.title("Learning Analytics")
+    render_dashboard_style()
     source_id = _select_source()
     selected_page_id = _select_page(source_id)
-
-    if selected_page_id == HOME_PAGE_ID:
-        _render_home(source_id=source_id)
-        return
 
     page = PAGE_SPEC_BY_ID[selected_page_id]
     _render_page(source_id, page)

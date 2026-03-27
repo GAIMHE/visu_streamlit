@@ -719,6 +719,58 @@ Examples
     assert result.height == 0
 
 
+def test_exercise_drilldown_tolerates_null_typed_optional_text_columns() -> None:
+    """Drilldown should coerce optional text columns that arrive as Null dtype."""
+    frame = pl.DataFrame(
+        {
+            "date_utc": [date(2025, 1, 1)],
+            "module_code": ["M1"],
+            "objective_id": ["o1"],
+            "activity_id": ["a1"],
+            "exercise_id": ["e1"],
+            "exercise_label": [None],
+            "exercise_type": [None],
+            "attempts": [10.0],
+            "success_rate": [0.5],
+            "first_attempt_success_rate": [0.6],
+            "first_attempt_count": [5.0],
+            "median_duration": [10.0],
+            "repeat_attempt_rate": [0.2],
+            "avg_attempt_number": [1.2],
+        },
+        schema={
+            "date_utc": pl.Date,
+            "module_code": pl.Utf8,
+            "objective_id": pl.Utf8,
+            "activity_id": pl.Utf8,
+            "exercise_id": pl.Utf8,
+            "exercise_label": pl.Null,
+            "exercise_type": pl.Null,
+            "attempts": pl.Float64,
+            "success_rate": pl.Float64,
+            "first_attempt_success_rate": pl.Float64,
+            "first_attempt_count": pl.Float64,
+            "median_duration": pl.Float64,
+            "repeat_attempt_rate": pl.Float64,
+            "avg_attempt_number": pl.Float64,
+        },
+    )
+
+    drilldown = build_exercise_drilldown_frame(
+        agg_exercise_daily=frame,
+        module_code="M1",
+        objective_id="o1",
+        activity_id="a1",
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 31),
+        metric="success_rate",
+    )
+
+    assert drilldown.height == 1
+    assert drilldown["exercise_label"].item() == "e1"
+    assert drilldown["exercise_type"].item() == "unknown"
+
+
 def test_exercise_drilldown_for_activity_elo_uses_elo_rows() -> None:
     """Test exercise drilldown for activity elo uses elo rows.
 

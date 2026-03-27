@@ -135,6 +135,14 @@ def visible_pages_for_source(source: RuntimeSourceSpec) -> tuple[PageSpec, ...]:
     return tuple(page for page in PAGE_SPECS if page.is_supported_by(source))
 
 
+def default_page_id_for_source(source: RuntimeSourceSpec) -> str:
+    """Return the first supported page id for a source."""
+    pages = visible_pages_for_source(source)
+    if not pages:
+        raise ValueError(f"Source '{source.source_id}' has no visible pages.")
+    return pages[0].page_id
+
+
 def import_page_module(page: PageSpec) -> ModuleType:
     """Import a page module on demand."""
     return importlib.import_module(page.module_path)

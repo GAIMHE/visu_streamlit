@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from datetime import date
 from pathlib import Path
 
 import polars as pl
@@ -19,6 +20,7 @@ if str(APPS_DIR) not in sys.path:
 
 from figure_analysis import render_figure_analysis
 from figure_info import render_figure_info
+from overview_shared import render_date_range_input
 from plotly_config import build_plotly_chart_config
 from source_state import get_active_source_id
 
@@ -72,7 +74,14 @@ def _load_dependency_tables(
 
 
 @st.cache_data(show_spinner=False)
-def _load_zpdes_population_summary(path: Path, work_mode: str, later_attempt_threshold: int) -> pl.DataFrame:
+def _load_zpdes_population_summary(
+    path: Path,
+    work_mode: str,
+    later_attempt_threshold: int,
+    *,
+    start_date: date | None = None,
+    end_date: date | None = None,
+) -> pl.DataFrame:
     """Aggregate global ZPDES cohort metrics across all supported modules."""
     threshold = max(1, int(later_attempt_threshold))
     before_condition = (
@@ -85,7 +94,7 @@ def _load_zpdes_population_summary(path: Path, work_mode: str, later_attempt_thr
         (pl.col("prior_same_activity_attempt_count") > 0)
         & (pl.col("prior_later_activity_attempt_count") < threshold)
     )
-    return (
+    query = (
         pl.scan_parquet(path)
         .select(
             [
@@ -104,7 +113,13 @@ def _load_zpdes_population_summary(path: Path, work_mode: str, later_attempt_thr
             ]
         )
         .filter(pl.col("work_mode") == work_mode)
-        .group_by(
+    )
+    if start_date is not None and end_date is not None:
+        query = query.filter(
+            (pl.col("date_utc") >= pl.lit(start_date)) & (pl.col("date_utc") <= pl.lit(end_date))
+        )
+    return (
+        query.group_by(
             [
                 "module_code",
                 "module_label",
@@ -286,6 +301,13 @@ div, p, label {
     render_figure_info("zpdes_transition_efficiency_graph")
 
     st.sidebar.header("Graph Controls")
+    min_date = activity["date_utc"].min()
+    max_date = activity["date_utc"].max()
+    start_date, end_date = render_date_range_input(
+        min_date,
+        max_date,
+        key_prefix="zpdes_transition_efficiency",
+    )
     selected_module = st.sidebar.selectbox("Module", module_codes, index=0)
 
     metric_label = st.sidebar.selectbox("Activity coloring", list(NODE_METRIC_OPTIONS.keys()), index=0)
@@ -332,8 +354,8 @@ div, p, label {
         agg_activity_elo=activity_elo,
         progression_events=progression_events,
         module_code=selected_module,
-        start_date=None,
-        end_date=None,
+        start_date=start_date,
+        end_date=end_date,
         metric=metric,
         work_mode=selected_work_mode,
     )
@@ -341,8 +363,8 @@ div, p, label {
         nodes=nodes_with_metric,
         progression_events=progression_events,
         module_code=selected_module,
-        start_date=None,
-        end_date=None,
+        start_date=start_date,
+        end_date=end_date,
         work_mode=selected_work_mode,
         later_attempt_threshold=later_attempt_threshold,
     )
@@ -396,6 +418,8 @@ div, p, label {
         arrival_path,
         selected_work_mode,
         later_attempt_threshold,
+        start_date=start_date,
+        end_date=end_date,
     )
     render_figure_analysis(
         analyze_zpdes_transition_population(

@@ -98,6 +98,40 @@ def normalize_date_input_range(value: object) -> tuple[date, date] | None:
     return None
 
 
+def render_date_range_input(
+    min_date: date,
+    max_date: date,
+    *,
+    label: str = "Date range (UTC)",
+    key_prefix: str | None = None,
+) -> tuple[date, date]:
+    """Render a sidebar date range input with stable reset behavior when bounds change."""
+    if min_date is None or max_date is None:
+        st.error("No dated rows available to populate filters.")
+        st.stop()
+
+    widget_key = f"{key_prefix}_date_range" if key_prefix else None
+    signature_key = f"{key_prefix}_date_range_signature" if key_prefix else None
+    signature = (min_date.isoformat(), max_date.isoformat())
+
+    if widget_key and signature_key and st.session_state.get(signature_key) != signature:
+        st.session_state[widget_key] = (min_date, max_date)
+        st.session_state[signature_key] = signature
+
+    selected_range = st.sidebar.date_input(
+        label,
+        value=st.session_state.get(widget_key, (min_date, max_date)) if widget_key else (min_date, max_date),
+        min_value=min_date,
+        max_value=max_date,
+        key=widget_key,
+    )
+    normalized_range = normalize_date_input_range(selected_range)
+    if normalized_range is None:
+        st.error("Please provide a valid start and end date.")
+        st.stop()
+    return normalized_range
+
+
 @st.cache_data(show_spinner=False)
 def parquet_columns(path: Path) -> list[str]:
     """Return parquet column names without materializing the full table."""
@@ -262,17 +296,7 @@ def render_curriculum_filters(
         st.stop()
 
     st.sidebar.header(sidebar_header)
-    selected_range = st.sidebar.date_input(
-        "Date range (UTC)",
-        value=(min_date, max_date),
-        min_value=min_date,
-        max_value=max_date,
-    )
-    normalized_range = normalize_date_input_range(selected_range)
-    if normalized_range is None:
-        st.error("Please provide a valid start and end date.")
-        st.stop()
-    start_date, end_date = normalized_range
+    start_date, end_date = render_date_range_input(min_date, max_date, key_prefix="curriculum_filters")
 
     module_frame = (
         dimension_frame.select(["module_code", "module_label"])

@@ -36,7 +36,6 @@ from source_state import get_active_source_id
 
 from visu2.bottleneck import apply_bottleneck_filters, build_bottleneck_frame
 from visu2.config import get_settings
-from visu2.contracts import ACTIVE_CANONICAL_MODULE_CODES
 from visu2.figure_analysis import analyze_bottleneck_chart, analyze_transition_chart
 
 BOTTLENECKS_RUNTIME_TABLES: tuple[str, ...] = ("agg_activity_daily", "agg_transition_edges")
@@ -46,6 +45,16 @@ BOTTLENECKS_RUNTIME_TABLES: tuple[str, ...] = ("agg_activity_daily", "agg_transi
 def load_activity_aggregate(path: Path) -> pl.DataFrame:
     """Load the activity-daily aggregate table used by the page."""
     return pl.read_parquet(path)
+
+
+def _source_module_scope(activity: pl.DataFrame) -> tuple[str, ...]:
+    """Derive the active source's module scope from the loaded activity aggregate."""
+    module_series = (
+        activity.select(pl.col("module_code").drop_nulls().unique().sort())
+        .to_series()
+        .cast(pl.Utf8)
+    )
+    return tuple(code for code in module_series.to_list() if str(code).strip())
 
 
 def main() -> None:
@@ -88,6 +97,7 @@ def main() -> None:
             "activity_label": "activity_id",
         },
     )
+    source_module_scope = _source_module_scope(activity)
     filters = render_curriculum_filters(activity)
 
     st.sidebar.subheader("Chart Controls")
@@ -128,6 +138,7 @@ def main() -> None:
         objective_id=filters.objective_id,
         activity_id=filters.activity_id,
         level=bottleneck_level,
+        canonical_modules=source_module_scope,
     )
     bottleneck_df = build_bottleneck_frame(
         filtered_activity=bottleneck_source,
@@ -136,9 +147,9 @@ def main() -> None:
         top_n=top_n_bottlenecks,
     )
     if bottleneck_df.empty:
-        canonical_scope = ", ".join(ACTIVE_CANONICAL_MODULE_CODES)
+        canonical_scope = ", ".join(source_module_scope) or "current source modules"
         st.info(
-            f"No bottleneck rows after filters in canonical module scope ({canonical_scope})."
+            f"No bottleneck rows after filters in source module scope ({canonical_scope})."
         )
     else:
         bottleneck_df["entity_axis_label"] = bottleneck_df["entity_plot_label"].map(
