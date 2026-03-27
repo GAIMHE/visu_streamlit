@@ -9,6 +9,7 @@ from visu2.classroom_progression import SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID
 from visu2.config import Settings
 from visu2.remote_query import (
     _build_hf_runtime_url,
+    query_fact_attempts,
     query_fact_attempts_for_classroom,
     query_runtime_parquet,
     resolve_runtime_parquet_reference,
@@ -147,3 +148,40 @@ def test_query_fact_attempts_for_classroom_omits_filter_for_synthetic_classroom(
 
     assert frame.height == 1
     assert frame["user_id"].to_list() == ["u1"]
+
+
+def test_query_fact_attempts_enforces_min_student_attempts(tmp_path) -> None:
+    settings = _build_settings(tmp_path)
+    fact_path = settings.artifacts_derived_dir / "fact_attempt_core.parquet"
+    pl.DataFrame(
+        {
+            "created_at": [
+                datetime(2025, 1, 1, 9, 0, tzinfo=UTC),
+                datetime(2025, 1, 1, 9, 5, tzinfo=UTC),
+                datetime(2025, 1, 1, 9, 10, tzinfo=UTC),
+            ],
+            "date_utc": [date(2025, 1, 1), date(2025, 1, 1), date(2025, 1, 1)],
+            "user_id": ["u1", "u1", "u2"],
+            "activity_id": ["a1", "a2", "a3"],
+            "exercise_id": ["e1", "e2", "e3"],
+            "attempt_number": [1, 1, 1],
+            "module_code": ["M1", "M1", "M1"],
+            "objective_id": ["o1", "o1", "o1"],
+            "work_mode": ["zpdes", "zpdes", "zpdes"],
+            "classroom_id": ["c1", "c1", "c1"],
+        }
+    ).write_parquet(fact_path)
+
+    frame = query_fact_attempts(
+        settings,
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 1),
+        columns=("user_id", "activity_id"),
+        module_code="M1",
+        min_student_attempts=2,
+    )
+
+    assert frame.to_dicts() == [
+        {"user_id": "u1", "activity_id": "a1"},
+        {"user_id": "u1", "activity_id": "a2"},
+    ]

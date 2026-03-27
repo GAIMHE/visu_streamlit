@@ -20,6 +20,7 @@ if str(APPS_DIR) not in sys.path:
 from figure_analysis import render_figure_analysis
 from figure_info import render_figure_info
 from overview_shared import (
+    apply_min_student_attempts_filter,
     build_fact_query,
     collect_core_compatibility,
     collect_lazy,
@@ -49,21 +50,18 @@ from visu2.overview_concentration import (
     extract_selected_bucket,
     load_catalog_contained_exercise_counts,
 )
-from visu2.work_mode_transitions import build_work_mode_transition_sankey
+from visu2.work_mode_transitions import (
+    build_work_mode_transition_paths,
+    build_work_mode_transition_sankey,
+)
 
-OVERVIEW_RUNTIME_TABLES: tuple[str, ...] = ("fact_attempt_core", "work_mode_transition_paths")
+OVERVIEW_RUNTIME_TABLES: tuple[str, ...] = ("fact_attempt_core",)
 
 
 @st.cache_data(show_spinner=False)
 def _load_concentration_catalog_counts(path: Path) -> dict[str, pl.DataFrame]:
     """Load catalog-based contained-exercise counts for overview concentration views."""
     return load_catalog_contained_exercise_counts(path)
-
-
-@st.cache_data(show_spinner=False)
-def _load_work_mode_transition_paths(path: Path) -> pl.DataFrame:
-    """Load global student work-mode transition paths for the overview Sankey."""
-    return pl.read_parquet(path)
 
 
 @st.cache_data(show_spinner=False)
@@ -78,6 +76,7 @@ def _load_content_concentration_frames(
     activity_id: str | None,
     work_modes: tuple[str, ...],
     level: str,
+    min_student_attempts: int,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Load entity and bucket summaries for the overview concentration chart."""
     fact_query = build_fact_query(
@@ -88,6 +87,7 @@ def _load_content_concentration_frames(
         objective_id=objective_id,
         activity_id=activity_id,
     )
+    fact_query = apply_min_student_attempts_filter(fact_query, min_student_attempts)
     catalog_counts = _load_concentration_catalog_counts(learning_catalog_path)
     entity_summary = build_entity_attempt_summary(
         fact_query,
@@ -109,6 +109,7 @@ def _load_global_student_concentration_frames(
     objective_id: str | None,
     activity_id: str | None,
     work_modes: tuple[str, ...],
+    min_student_attempts: int,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Load student-level global concentration summaries for the overview chart."""
     fact_query = build_fact_query(
@@ -119,6 +120,7 @@ def _load_global_student_concentration_frames(
         objective_id=objective_id,
         activity_id=activity_id,
     )
+    fact_query = apply_min_student_attempts_filter(fact_query, min_student_attempts)
     entity_summary = build_global_student_attempt_summary(
         fact_query,
         work_modes=work_modes,
@@ -127,14 +129,42 @@ def _load_global_student_concentration_frames(
     return entity_summary, bucket_summary
 
 
+@st.cache_data(show_spinner=False)
+def _load_work_mode_transition_paths_from_fact(
+    fact_path: Path,
+    *,
+    start_date_iso: str,
+    end_date_iso: str,
+    module_code: str | None,
+    objective_id: str | None,
+    activity_id: str | None,
+    min_student_attempts: int,
+) -> pl.DataFrame:
+    """Build work-mode transition paths from the filtered fact slice."""
+    fact_query = build_fact_query(
+        fact_path=fact_path,
+        start_date=date.fromisoformat(start_date_iso),
+        end_date=date.fromisoformat(end_date_iso),
+        module_code=module_code,
+        objective_id=objective_id,
+        activity_id=activity_id,
+    )
+    fact_query = apply_min_student_attempts_filter(fact_query, min_student_attempts)
+    fact_slice = collect_lazy(
+        fact_query.select(["user_id", "student_attempt_index", "created_at", "work_mode"])
+    )
+    if fact_slice.height == 0:
+        return pl.DataFrame()
+    return build_work_mode_transition_paths(fact_slice)
+
+
 def main() -> None:
     """Render the simplified overview page."""
     render_dashboard_style()
     settings = get_settings(get_active_source_id())
     fact_path = settings.artifacts_derived_dir / "fact_attempt_core.parquet"
-    work_mode_transition_path = settings.artifacts_derived_dir / "work_mode_transition_paths.parquet"
 
-    required = [fact_path, work_mode_transition_path]
+    required = [fact_path, settings.learning_catalog_path]
     missing = [path for path in required if not path.exists()]
     if missing:
         st.error("Missing derived artifacts. Run `python scripts/build_derived.py` first.")
@@ -144,7 +174,6 @@ def main() -> None:
     compatibility = collect_core_compatibility(
         table_columns={
             "fact_attempt_core": parquet_columns(fact_path),
-            "work_mode_transition_paths": parquet_columns(work_mode_transition_path),
         },
         required_tables=OVERVIEW_RUNTIME_TABLES,
     )
@@ -158,7 +187,7 @@ def main() -> None:
         st.stop()
 
     dimension_domain = load_fact_dimensions(fact_path)
-    filters = render_curriculum_filters(dimension_domain)
+    filters = render_curriculum_filters(dimension_domain, source_id=settings.source_id)
 
     fact_query = build_fact_query(
         fact_path=fact_path,
@@ -168,6 +197,7 @@ def main() -> None:
         objective_id=filters.objective_id,
         activity_id=filters.activity_id,
     )
+    fact_query = apply_min_student_attempts_filter(fact_query, filters.min_student_attempts)
 
     kpi = fact_query.select(
         pl.len().alias("attempts"),
@@ -370,6 +400,7 @@ def main() -> None:
             activity_id=filters.activity_id,
             work_modes=tuple(selected_chart_work_modes),
             level=selected_level,
+            min_student_attempts=filters.min_student_attempts,
         )
     else:
         entity_summary, bucket_summary = _load_global_student_concentration_frames(
@@ -380,6 +411,7 @@ def main() -> None:
             objective_id=filters.objective_id,
             activity_id=filters.activity_id,
             work_modes=tuple(selected_chart_work_modes),
+            min_student_attempts=filters.min_student_attempts,
         )
 
     if entity_summary.height == 0 or bucket_summary.height == 0:
@@ -523,8 +555,18 @@ def main() -> None:
 
     st.subheader("Work Mode Transitions")
     render_figure_info("overview_work_mode_transitions_sankey")
-    st.caption("Global full-history view across all students. This chart ignores the page filters above.")
-    transition_paths = _load_work_mode_transition_paths(work_mode_transition_path)
+    st.caption(
+        "This Sankey now uses the same visible date/module/objective/activity slice and minimum-attempt threshold as the rest of the page."
+    )
+    transition_paths = _load_work_mode_transition_paths_from_fact(
+        fact_path,
+        start_date_iso=filters.start_date.isoformat(),
+        end_date_iso=filters.end_date.isoformat(),
+        module_code=filters.module_code,
+        objective_id=filters.objective_id,
+        activity_id=filters.activity_id,
+        min_student_attempts=filters.min_student_attempts,
+    )
     if transition_paths.height == 0:
         st.info("No work-mode transition histories are available.")
         render_figure_analysis(analyze_work_mode_transitions(None))

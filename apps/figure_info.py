@@ -64,7 +64,7 @@ FIGURE_INFO: dict[str, dict[str, tuple[str, ...]]] = {
     },
     "overview_work_mode_transitions_sankey": {
         "What it shows": (
-            "A global Sankey diagram of student work-mode histories, independent of the page filters above.",
+            "A Sankey diagram of student work-mode histories inside the current overview filter slice.",
             "Each student enters through their first observed work mode, then follows up to the first three mode changes seen in the raw attempt history.",
             "Students who never change mode end in `No transition`, and students who keep changing after the third visible change end in `More than 3 transitions`.",
         ),
@@ -74,7 +74,7 @@ FIGURE_INFO: dict[str, dict[str, tuple[str, ...]]] = {
             "To keep the chart readable, links involving fewer than 10 students are hidden from the display.",
             "Hover reports the source and target stages, the student count, and the percentage of all students covered by that link.",
             "Each link uses the destination-mode color so the landing stage is easier to follow visually.",
-            "The figure is based on the raw attempt parquet ordered by `student_attempt_index`, so it reflects full student histories rather than the current overview filter slice.",
+            "The figure is rebuilt from the filtered attempt history ordered by `student_attempt_index`, so changing the date or curriculum slice changes the visible paths.",
         ),
     },
     "bottlenecks_transitions_bottleneck_chart": {

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from datetime import date
 from pathlib import Path
 
 import plotly.express as px
@@ -36,7 +37,10 @@ from source_state import get_active_source_id
 
 from visu2.bottleneck import apply_bottleneck_filters, build_bottleneck_frame
 from visu2.config import get_settings
+from visu2.derive_aggregates import build_agg_activity_daily_from_fact
 from visu2.figure_analysis import analyze_bottleneck_chart, analyze_transition_chart
+from visu2.remote_query import query_fact_attempts
+from visu2.transitions import build_transition_edges_from_fact
 
 BOTTLENECKS_RUNTIME_TABLES: tuple[str, ...] = ("agg_activity_daily", "agg_transition_edges")
 
@@ -45,6 +49,85 @@ BOTTLENECKS_RUNTIME_TABLES: tuple[str, ...] = ("agg_activity_daily", "agg_transi
 def load_activity_aggregate(path: Path) -> pl.DataFrame:
     """Load the activity-daily aggregate table used by the page."""
     return pl.read_parquet(path)
+
+
+FACT_QUERY_COLUMNS: tuple[str, ...] = (
+    "created_at",
+    "date_utc",
+    "user_id",
+    "module_id",
+    "module_code",
+    "module_label",
+    "objective_id",
+    "objective_label",
+    "activity_id",
+    "activity_label",
+    "exercise_id",
+    "data_correct",
+    "data_duration",
+    "attempt_number",
+)
+
+
+@st.cache_data(show_spinner=False)
+def _load_exact_bottleneck_sources(
+    source_id: str,
+    *,
+    start_date_iso: str,
+    end_date_iso: str,
+    module_code: str | None,
+    objective_id: str | None,
+    activity_id: str | None,
+    min_student_attempts: int,
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Recompute bottleneck sources from an exact fact slice when student-threshold filtering is active."""
+    settings = get_settings(source_id)
+    fact_slice = query_fact_attempts(
+        settings,
+        start_date=date.fromisoformat(start_date_iso),
+        end_date=date.fromisoformat(end_date_iso),
+        columns=FACT_QUERY_COLUMNS,
+        module_code=module_code,
+        objective_id=objective_id,
+        activity_id=activity_id,
+        min_student_attempts=min_student_attempts,
+    )
+    return (
+        build_agg_activity_daily_from_fact(fact_slice),
+        build_transition_edges_from_fact(fact_slice),
+    )
+
+
+def _top_transition_edges_from_frame(
+    transition_edges: pl.DataFrame,
+    *,
+    top_n: int,
+    has_same_objective_rate: bool,
+) -> pl.DataFrame:
+    """Aggregate already-filtered transition edges down to the chart-ready ranking."""
+    if transition_edges.height == 0:
+        return pl.DataFrame()
+    frame = transition_edges
+    if has_same_objective_rate and "same_objective_rate" in frame.columns:
+        frame = frame.filter(pl.col("same_objective_rate") < 1.0)
+    if frame.height == 0:
+        return pl.DataFrame()
+    return (
+        frame.group_by(
+            [
+                "from_activity_id",
+                "to_activity_id",
+                "from_activity_label",
+                "to_activity_label",
+            ]
+        )
+        .agg(
+            pl.sum("transition_count").alias("transition_count"),
+            pl.sum("success_conditioned_count").alias("success_conditioned_count"),
+        )
+        .sort("transition_count", descending=True)
+        .head(max(1, int(top_n)))
+    )
 
 
 def _source_module_scope(activity: pl.DataFrame) -> tuple[str, ...]:
@@ -98,7 +181,7 @@ def main() -> None:
         },
     )
     source_module_scope = _source_module_scope(activity)
-    filters = render_curriculum_filters(activity)
+    filters = render_curriculum_filters(activity, source_id=settings.source_id)
 
     st.sidebar.subheader("Chart Controls")
     top_n_bottlenecks = int(
@@ -119,6 +202,28 @@ def main() -> None:
     show_ids = bool(st.sidebar.checkbox("Show IDs in hover", value=False))
 
     transition_has_same_objective_rate = "same_objective_rate" in parquet_columns(transition_path)
+    exact_activity_source = activity
+    exact_transition_edges: pl.DataFrame | None = None
+    if filters.min_student_attempts > 1:
+        exact_activity_source, exact_transition_edges = _load_exact_bottleneck_sources(
+            settings.source_id,
+            start_date_iso=filters.start_date.isoformat(),
+            end_date_iso=filters.end_date.isoformat(),
+            module_code=filters.module_code,
+            objective_id=filters.objective_id,
+            activity_id=filters.activity_id,
+            min_student_attempts=filters.min_student_attempts,
+        )
+        if exact_activity_source.height > 0:
+            exact_activity_source, _ = ensure_label_columns(
+                exact_activity_source,
+                {
+                    "module_label": "module_code",
+                    "objective_label": "objective_id",
+                    "activity_label": "activity_id",
+                },
+            )
+            source_module_scope = _source_module_scope(exact_activity_source)
 
     st.title("Bottlenecks and Transitions")
 
@@ -131,7 +236,7 @@ def main() -> None:
         index=2,
     )
     bottleneck_source = apply_bottleneck_filters(
-        frame=activity,
+        frame=exact_activity_source,
         start_date=filters.start_date,
         end_date=filters.end_date,
         module_code=filters.module_code,
@@ -233,15 +338,22 @@ def main() -> None:
 
     st.subheader("Path Transitions")
     render_figure_info("bottlenecks_transitions_path_chart")
-    transition_edges = load_top_transition_edges(
-        transition_path=transition_path,
-        start_date=filters.start_date,
-        end_date=filters.end_date,
-        module_code=filters.module_code,
-        activity_id=filters.activity_id,
-        top_n=top_n_transitions,
-        has_same_objective_rate=transition_has_same_objective_rate,
-    ).to_pandas()
+    if filters.min_student_attempts > 1:
+        transition_edges = _top_transition_edges_from_frame(
+            exact_transition_edges or pl.DataFrame(),
+            top_n=top_n_transitions,
+            has_same_objective_rate=transition_has_same_objective_rate,
+        ).to_pandas()
+    else:
+        transition_edges = load_top_transition_edges(
+            transition_path=transition_path,
+            start_date=filters.start_date,
+            end_date=filters.end_date,
+            module_code=filters.module_code,
+            activity_id=filters.activity_id,
+            top_n=top_n_transitions,
+            has_same_objective_rate=transition_has_same_objective_rate,
+        ).to_pandas()
     if transition_edges.empty:
         st.info("No cross-objective transition rows after filters.")
         render_figure_analysis(analyze_transition_chart(None))

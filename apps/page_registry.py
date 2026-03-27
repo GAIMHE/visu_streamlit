@@ -36,7 +36,6 @@ PAGE_SPECS: tuple[PageSpec, ...] = (
         bootstrap_runtime_paths=(
             "data/learning_catalog.json",
             "artifacts/derived/fact_attempt_core.parquet",
-            "artifacts/derived/work_mode_transition_paths.parquet",
         ),
     ),
     PageSpec(
@@ -48,6 +47,7 @@ PAGE_SPECS: tuple[PageSpec, ...] = (
             "artifacts/derived/agg_activity_daily.parquet",
             "artifacts/derived/agg_transition_edges.parquet",
         ),
+        remote_query_paths=("artifacts/derived/fact_attempt_core.parquet",),
     ),
     PageSpec(
         page_id="matrix",
@@ -75,16 +75,14 @@ PAGE_SPECS: tuple[PageSpec, ...] = (
             "artifacts/derived/agg_activity_elo.parquet",
             "artifacts/derived/zpdes_exercise_progression_events.parquet",
         ),
+        remote_query_paths=("artifacts/derived/fact_attempt_core.parquet",),
     ),
     PageSpec(
         page_id="classroom_replay",
         label="Classroom Progression Replay",
         icon=":bar_chart:",
         module_path="page_modules.4_classroom_progression_replay",
-        bootstrap_runtime_paths=(
-            "artifacts/derived/classroom_mode_profiles.parquet",
-            "artifacts/derived/classroom_activity_summary_by_mode.parquet",
-        ),
+        bootstrap_runtime_paths=("artifacts/derived/classroom_mode_profiles.parquet",),
         remote_query_paths=("artifacts/derived/fact_attempt_core.parquet",),
     ),
     PageSpec(

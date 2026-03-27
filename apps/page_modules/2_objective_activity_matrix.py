@@ -35,6 +35,7 @@ Functions
 from __future__ import annotations
 
 import sys
+from datetime import date
 from pathlib import Path
 
 import plotly.graph_objects as go
@@ -51,12 +52,22 @@ if str(APPS_DIR) not in sys.path:
 
 from figure_analysis import render_figure_analysis
 from figure_info import render_figure_info
-from overview_shared import normalize_date_input_range
+from overview_shared import (
+    apply_min_student_attempts_filter,
+    build_fact_query,
+    collect_lazy,
+    load_fact_dimensions,
+    render_population_filters,
+)
 from plotly_config import build_plotly_chart_config
 from source_state import get_active_source_id
 
 from visu2.config import get_settings
 from visu2.contracts import RUNTIME_CORE_COLUMNS
+from visu2.derive_aggregates import (
+    build_agg_activity_daily_from_fact,
+    build_agg_exercise_daily_from_fact,
+)
 from visu2.figure_analysis import analyze_matrix_drilldown_table, analyze_matrix_heatmap
 from visu2.loaders import load_learning_catalog
 from visu2.objective_activity_matrix import (
@@ -171,6 +182,35 @@ dict
 
 """
     return load_learning_catalog(path)
+
+
+@st.cache_data(show_spinner=False)
+def load_exact_matrix_sources(
+    source_id: str,
+    fact_path: Path,
+    *,
+    start_date_iso: str,
+    end_date_iso: str,
+    module_code: str,
+    min_student_attempts: int,
+) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
+    """Build exact matrix sources from the filtered fact slice when population filtering is active."""
+    settings = get_settings(source_id)
+    fact_query = build_fact_query(
+        fact_path=fact_path,
+        start_date=date.fromisoformat(start_date_iso),
+        end_date=date.fromisoformat(end_date_iso),
+        module_code=module_code,
+        objective_id=None,
+        activity_id=None,
+    )
+    fact_query = apply_min_student_attempts_filter(fact_query, min_student_attempts)
+    fact_slice = collect_lazy(fact_query)
+    if fact_slice.height == 0:
+        return collect_lazy(fact_query.limit(0)), pl.DataFrame(), pl.DataFrame()
+    activity_daily = build_agg_activity_daily_from_fact(fact_slice)
+    exercise_daily = build_agg_exercise_daily_from_fact(fact_slice, settings)
+    return fact_slice, activity_daily, exercise_daily
 
 
 def _label_or_id(label: str | None, identifier: str | None) -> str:
@@ -469,11 +509,9 @@ div, p, label {
     }.issubset(fact_columns)
     has_playlist_unique_metric = has_fact_matrix_source
 
-    min_date = activity["date_utc"].min()
-    max_date = activity["date_utc"].max()
-    if min_date is None or max_date is None:
-        st.info("No rows available in agg_activity_daily.")
-        st.stop()
+    dimension_domain = load_fact_dimensions(fact_path)
+    min_date = dimension_domain.min_date
+    max_date = dimension_domain.max_date
 
     module_frame = (
         activity.select(["module_code", "module_label"])
@@ -596,17 +634,19 @@ div, p, label {
     selected_module_code = module_options_map[selected_module_label]
     selected_module_display = module_code_to_display.get(selected_module_code, selected_module_code)
 
-    selected_range = st.sidebar.date_input(
-        "Date range (UTC)",
-        value=(min_date, max_date),
-        min_value=min_date,
-        max_value=max_date,
+    population_filters = render_population_filters(
+        source_id=settings.source_id,
+        min_date=min_date,
+        max_date=max_date,
+        sidebar_header="Global Filters",
     )
-    normalized_range = normalize_date_input_range(selected_range)
-    if normalized_range is None:
-        st.error("Please select a valid start and end date.")
-        st.stop()
-    start_date, end_date = normalized_range
+    start_date = population_filters.start_date
+    end_date = population_filters.end_date
+    can_exactly_rebuild_from_fact = (
+        population_filters.min_student_attempts > 1 and has_fact_matrix_source
+    )
+    has_all_mode_first_attempt_metric = has_first_attempt_columns or can_exactly_rebuild_from_fact
+    has_all_mode_exercise_metric = has_exercise_balanced_metric or can_exactly_rebuild_from_fact
 
     cohort_population_label = st.sidebar.selectbox(
         "Cohort population",
@@ -624,9 +664,11 @@ div, p, label {
     available_metrics = [
         metric
         for metric in VALID_MATRIX_METRICS
-        if metric != "first_attempt_success_rate" or selected_work_mode is not None or has_first_attempt_columns
+        if metric != "first_attempt_success_rate"
+        or selected_work_mode is not None
+        or has_all_mode_first_attempt_metric
     ]
-    if selected_work_mode is None and not has_exercise_balanced_metric:
+    if selected_work_mode is None and not has_all_mode_exercise_metric:
         available_metrics = [
             metric for metric in available_metrics if metric != "exercise_balanced_success_rate"
         ]
@@ -656,23 +698,42 @@ div, p, label {
     if metric == "activity_mean_exercise_elo":
         st.info(
             "This Elo metric is globally calibrated from historical first attempts. "
-            "The date filter and cohort population are kept for consistency, but they do not change Elo values."
+            "The date, minimum-attempt, and cohort filters are kept for consistency, but they do not change Elo values."
         )
 
     show_ids_in_hover = bool(st.sidebar.checkbox("Show IDs in hover", value=False))
 
+    exact_fact_source: pl.DataFrame | pl.LazyFrame | None = (
+        pl.scan_parquet(fact_path) if has_fact_matrix_source else None
+    )
+    activity_source = activity
+    exercise_source = exercise_daily
+    if can_exactly_rebuild_from_fact:
+        exact_fact_frame, exact_activity_daily, exact_exercise_daily = load_exact_matrix_sources(
+            settings.source_id,
+            fact_path,
+            start_date_iso=start_date.isoformat(),
+            end_date_iso=end_date.isoformat(),
+            module_code=selected_module_code,
+            min_student_attempts=population_filters.min_student_attempts,
+        )
+        exact_fact_source = exact_fact_frame.lazy()
+        if selected_work_mode is None and metric != "activity_mean_exercise_elo":
+            activity_source = exact_activity_daily
+            if metric == "exercise_balanced_success_rate":
+                exercise_source = exact_exercise_daily
+
     try:
-        fact_lf = pl.scan_parquet(fact_path) if has_fact_matrix_source else None
         cells_df = build_objective_activity_cells(
-            agg_activity_daily=activity,
+            agg_activity_daily=activity_source,
             module_code=selected_module_code,
             start_date=start_date,
             end_date=end_date,
             metric=metric,
             summary_payload=summary_payload,
-            agg_exercise_daily=exercise_daily,
+            agg_exercise_daily=exercise_source,
             agg_activity_elo=activity_elo,
-            fact_attempt_core=fact_lf,
+            fact_attempt_core=exact_fact_source,
             work_mode=selected_work_mode,
         )
     except ValueError as err:
@@ -966,7 +1027,11 @@ div, p, label {
 
     st.subheader("Exercise Drilldown")
     render_figure_info("matrix_exercise_drilldown_table")
-    requires_exercise_daily = metric != "activity_mean_exercise_elo" and selected_work_mode is None
+    requires_exercise_daily = (
+        metric != "activity_mean_exercise_elo"
+        and selected_work_mode is None
+        and not can_exactly_rebuild_from_fact
+    )
     if requires_exercise_daily and exercise_daily_status == "missing":
         st.info(
             "Exercise drilldown is unavailable because `agg_exercise_daily.parquet` is missing. "
@@ -1001,7 +1066,7 @@ div, p, label {
 
     try:
         drilldown = build_exercise_drilldown_frame(
-            agg_exercise_daily=exercise_daily,
+            agg_exercise_daily=exercise_source,
             module_code=selected_module_code,
             objective_id=str(selected_cell.get("objective_id") or ""),
             activity_id=str(selected_cell.get("activity_id") or ""),
@@ -1009,7 +1074,7 @@ div, p, label {
             end_date=end_date,
             metric=metric,
             agg_exercise_elo=exercise_elo,
-            fact_attempt_core=(pl.scan_parquet(fact_path) if has_fact_matrix_source else None),
+            fact_attempt_core=exact_fact_source,
             work_mode=selected_work_mode,
         )
     except ValueError as err:

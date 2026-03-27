@@ -9,16 +9,30 @@ from pathlib import Path
 import polars as pl
 import pyarrow.parquet as pq
 import streamlit as st
+from source_state import (
+    clear_filter_state,
+    get_filter_date_range,
+    get_filter_min_attempts,
+    set_filter_date_range,
+    set_filter_min_attempts,
+)
 
 from visu2.contracts import RUNTIME_CORE_COLUMNS
 
 
 @dataclass(frozen=True, slots=True)
-class CurriculumFilters:
-    """Selected curriculum filters shared across overview-style pages."""
+class PopulationFilters:
+    """Shared cross-page population filters for non-student pages."""
 
     start_date: date
     end_date: date
+    min_student_attempts: int
+
+
+@dataclass(frozen=True, slots=True)
+class CurriculumFilters(PopulationFilters):
+    """Selected curriculum filters shared across overview-style pages."""
+
     module_code: str | None
     objective_id: str | None
     activity_id: str | None
@@ -104,6 +118,7 @@ def render_date_range_input(
     *,
     label: str = "Date range (UTC)",
     key_prefix: str | None = None,
+    default_value: tuple[date, date] | None = None,
 ) -> tuple[date, date]:
     """Render a sidebar date range input with stable reset behavior when bounds change."""
     if min_date is None or max_date is None:
@@ -120,16 +135,108 @@ def render_date_range_input(
 
     selected_range = st.sidebar.date_input(
         label,
-        value=st.session_state.get(widget_key, (min_date, max_date)) if widget_key else (min_date, max_date),
+        value=st.session_state.get(widget_key, default_value or (min_date, max_date))
+        if widget_key
+        else (default_value or (min_date, max_date)),
         min_value=min_date,
         max_value=max_date,
         key=widget_key,
+        format="YYYY-MM-DD",
     )
     normalized_range = normalize_date_input_range(selected_range)
     if normalized_range is None:
         st.error("Please provide a valid start and end date.")
         st.stop()
     return normalized_range
+
+
+def _clamp_date_range(
+    start_date: date | None,
+    end_date: date | None,
+    *,
+    min_date: date,
+    max_date: date,
+) -> tuple[date, date]:
+    start = start_date or min_date
+    end = end_date or max_date
+    if start < min_date:
+        start = min_date
+    if start > max_date:
+        start = max_date
+    if end < min_date:
+        end = min_date
+    if end > max_date:
+        end = max_date
+    if start > end:
+        start, end = min_date, max_date
+    return start, end
+
+
+def render_population_filters(
+    *,
+    source_id: str,
+    min_date: date,
+    max_date: date,
+    sidebar_header: str = "Filters",
+    reset_label: str = "Reinitialize filters",
+) -> PopulationFilters:
+    """Render shared source-scoped date and population filters."""
+    if min_date is None or max_date is None:
+        st.error("No dated rows available to populate filters.")
+        st.stop()
+
+    st.sidebar.header(sidebar_header)
+    stored_start, stored_end = get_filter_date_range(source_id)
+    clamped_start, clamped_end = _clamp_date_range(
+        stored_start,
+        stored_end,
+        min_date=min_date,
+        max_date=max_date,
+    )
+    current_min_attempts = max(1, get_filter_min_attempts(source_id))
+
+    if st.sidebar.button(reset_label, key=f"{source_id}_reset_population_filters"):
+        clear_filter_state(source_id)
+        st.session_state[f"{source_id}_population_date_range"] = (min_date, max_date)
+        st.session_state[f"{source_id}_population_min_attempts"] = 1
+        set_filter_date_range(source_id, start_date=min_date, end_date=max_date)
+        set_filter_min_attempts(source_id, 1)
+        st.rerun()
+
+    start_date, end_date = render_date_range_input(
+        min_date,
+        max_date,
+        key_prefix=f"{source_id}_population",
+        label="Date range (UTC)",
+        default_value=(clamped_start, clamped_end),
+    )
+    if (start_date, end_date) != (clamped_start, clamped_end):
+        set_filter_date_range(source_id, start_date=start_date, end_date=end_date)
+    elif (stored_start, stored_end) != (clamped_start, clamped_end):
+        set_filter_date_range(source_id, start_date=clamped_start, end_date=clamped_end)
+        st.session_state[f"{source_id}_population_date_range"] = (clamped_start, clamped_end)
+
+    min_student_attempts = int(
+        st.sidebar.number_input(
+            "Minimum attempts per student",
+            min_value=1,
+            max_value=1_000_000,
+            value=current_min_attempts,
+            step=1,
+            key=f"{source_id}_population_min_attempts",
+            help=(
+                "Keep only students with at least this many attempts inside the currently visible page scope."
+            ),
+        )
+    )
+    if min_student_attempts != current_min_attempts:
+        set_filter_min_attempts(source_id, min_student_attempts)
+
+    return PopulationFilters(
+        start_date=start_date,
+        end_date=end_date,
+        min_student_attempts=min_student_attempts,
+    )
 
 
 @st.cache_data(show_spinner=False)
@@ -275,6 +382,7 @@ def load_fact_dimensions(fact_path: Path) -> CurriculumFilterDomain:
 def render_curriculum_filters(
     dimension_source: pl.DataFrame | CurriculumFilterDomain,
     *,
+    source_id: str,
     sidebar_header: str = "Filters",
 ) -> CurriculumFilters:
     """Render the shared sidebar date/module/objective/activity filters."""
@@ -295,8 +403,12 @@ def render_curriculum_filters(
         st.error("No dated rows available to populate filters.")
         st.stop()
 
-    st.sidebar.header(sidebar_header)
-    start_date, end_date = render_date_range_input(min_date, max_date, key_prefix="curriculum_filters")
+    population_filters = render_population_filters(
+        source_id=source_id,
+        min_date=min_date,
+        max_date=max_date,
+        sidebar_header=sidebar_header,
+    )
 
     module_frame = (
         dimension_frame.select(["module_code", "module_label"])
@@ -347,8 +459,9 @@ def render_curriculum_filters(
     activity_filter = activity_options_map[selected_activity]
 
     return CurriculumFilters(
-        start_date=start_date,
-        end_date=end_date,
+        start_date=population_filters.start_date,
+        end_date=population_filters.end_date,
+        min_student_attempts=population_filters.min_student_attempts,
         module_code=module_filter,
         objective_id=objective_filter,
         activity_id=activity_filter,
@@ -374,6 +487,29 @@ def build_fact_query(
     if activity_id:
         lf = lf.filter(pl.col("activity_id") == activity_id)
     return lf
+
+
+def apply_min_student_attempts_filter(
+    fact: pl.DataFrame | pl.LazyFrame,
+    min_student_attempts: int,
+) -> pl.LazyFrame:
+    """Keep only students whose visible attempt count clears the selected threshold."""
+    lf = fact.lazy() if isinstance(fact, pl.DataFrame) else fact
+    threshold = max(1, int(min_student_attempts))
+    if threshold <= 1:
+        return lf
+
+    eligible_students = (
+        lf.filter(
+            pl.col("user_id").is_not_null()
+            & (pl.col("user_id").cast(pl.Utf8).str.strip_chars() != "")
+        )
+        .group_by("user_id")
+        .agg(pl.len().alias("visible_attempts"))
+        .filter(pl.col("visible_attempts") >= threshold)
+        .select("user_id")
+    )
+    return lf.join(eligible_students, on="user_id", how="semi")
 
 
 def apply_filters(

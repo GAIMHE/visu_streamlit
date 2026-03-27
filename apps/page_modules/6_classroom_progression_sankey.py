@@ -21,7 +21,7 @@ if str(APPS_DIR) not in sys.path:
 
 from figure_analysis import render_figure_analysis
 from figure_info import render_figure_info
-from overview_shared import render_date_range_input
+from overview_shared import render_population_filters
 from plotly_config import build_plotly_chart_config
 from source_state import get_active_source_id
 
@@ -62,6 +62,7 @@ def _load_sankey_payload(
     mode_scope: str,
     start_date_iso: str,
     end_date_iso: str,
+    min_student_attempts: int,
 ) -> dict:
     settings = get_settings(source_id)
     fact_slice = query_fact_attempts_for_classroom(
@@ -70,6 +71,7 @@ def _load_sankey_payload(
         mode_scope=mode_scope,
         start_date=date.fromisoformat(start_date_iso),
         end_date=date.fromisoformat(end_date_iso),
+        min_student_attempts=min_student_attempts,
         columns=(
             "classroom_id",
             "user_id",
@@ -189,7 +191,6 @@ div, p, label {
     )
     if synthetic_only_scope:
         selected_classroom_id = SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID
-        selected_row = scoped_profiles.to_dicts()[0]
         st.caption(
             "This source does not have a classroom dimension. The Sankey is using one synthetic classroom that groups all students."
         )
@@ -235,7 +236,6 @@ div, p, label {
         option_map = {_format_classroom_option(row): str(row.get("classroom_id")) for row in rows}
         selected_option = st.selectbox("Matching classrooms", list(option_map.keys()), index=0)
         selected_classroom_id = option_map[selected_option]
-        selected_row = next((row for row in rows if str(row.get("classroom_id")) == selected_classroom_id), rows[0])
         if manual_classroom_id:
             override_classroom_id = select_classroom_by_id(profiles, mode_scope, manual_classroom_id)
             if override_classroom_id is None:
@@ -248,18 +248,20 @@ div, p, label {
                 st.info("The typed classroom ID is not available in the selected work-mode scope.")
                 st.stop()
             selected_classroom_id = override_classroom_id
-            selected_row = override_rows[0]
             st.caption("Using the typed classroom ID override.")
-    first_ts = selected_row.get("first_attempt_at")
-    last_ts = selected_row.get("last_attempt_at")
-    if not (hasattr(first_ts, "date") and hasattr(last_ts, "date")):
-        st.info("Selected classroom does not have a valid time span.")
+    source_first_ts = profiles.select(pl.col("first_attempt_at").min()).item()
+    source_last_ts = profiles.select(pl.col("last_attempt_at").max()).item()
+    if not (hasattr(source_first_ts, "date") and hasattr(source_last_ts, "date")):
+        st.info("This source does not have a valid time span.")
         st.stop()
-    start_date, end_date = render_date_range_input(
-        first_ts.date(),
-        last_ts.date(),
-        key_prefix=f"classroom_sankey_{mode_scope}_{selected_classroom_id}",
+    population_filters = render_population_filters(
+        source_id=settings.source_id,
+        min_date=source_first_ts.date(),
+        max_date=source_last_ts.date(),
+        sidebar_header="Global Filters",
     )
+    start_date = population_filters.start_date
+    end_date = population_filters.end_date
 
     try:
         payload = _load_sankey_payload(
@@ -269,6 +271,7 @@ div, p, label {
             mode_scope=mode_scope,
             start_date_iso=start_date.isoformat(),
             end_date_iso=end_date.isoformat(),
+            min_student_attempts=population_filters.min_student_attempts,
         )
     except (FileNotFoundError, ValueError) as exc:
         st.error(str(exc))
@@ -286,6 +289,7 @@ div, p, label {
         selected_classroom_id,
         start_date.isoformat(),
         end_date.isoformat(),
+        population_filters.min_student_attempts,
         max_visible_steps,
     )
     if st.session_state.get(slider_signature_key) != slider_signature:
@@ -320,6 +324,7 @@ div, p, label {
     st.caption(
         f"Scope: **{_mode_label(mode_scope)}**  |  Classroom: **{payload.get('classroom_label') or selected_classroom_id}**  "
         f"|  Date range: **{start_date.isoformat()} -> {end_date.isoformat()}**  "
+        f"|  Min attempts: **{population_filters.min_student_attempts}**  "
         f"|  Students: **{len(payload.get('student_ids') or [])}**  "
         f"|  Activities: **{distinct_activities}**  |  Visible steps: **{visible_steps}**"
     )

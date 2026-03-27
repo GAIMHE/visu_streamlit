@@ -192,6 +192,106 @@ def query_student_elo_events(
     )
 
 
+def query_fact_attempts(
+    settings: Settings,
+    *,
+    start_date: date,
+    end_date: date,
+    columns: Sequence[str],
+    module_code: str | None = None,
+    objective_id: str | None = None,
+    activity_id: str | None = None,
+    work_mode: str | None = None,
+    classroom_id: str | None = None,
+    min_student_attempts: int = 1,
+    relative_path: str = "artifacts/derived/fact_attempt_core.parquet",
+) -> pl.DataFrame:
+    """Query one filtered fact-table slice, optionally enforcing a minimum attempt count per student."""
+    projected_columns = [_validate_identifier(column) for column in columns]
+    if not projected_columns:
+        raise ValueError("columns must contain at least one projected column.")
+
+    where_filters: list[FilterClause] = [
+        ("date_utc", ">=", start_date),
+        ("date_utc", "<=", end_date),
+    ]
+    if str(module_code or "").strip():
+        where_filters.append(("module_code", "=", str(module_code).strip()))
+    if str(objective_id or "").strip():
+        where_filters.append(("objective_id", "=", str(objective_id).strip()))
+    if str(activity_id or "").strip():
+        where_filters.append(("activity_id", "=", str(activity_id).strip()))
+    if str(work_mode or "").strip() and str(work_mode).strip() != "all":
+        where_filters.append(("work_mode", "=", str(work_mode).strip()))
+    classroom_key = str(classroom_id or "").strip()
+    if classroom_key and classroom_key != SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID:
+        where_filters.append(("classroom_id", "=", classroom_key))
+
+    where_sql, filter_params = _build_where_clause(where_filters)
+    reference, config = resolve_runtime_parquet_reference(settings, relative_path)
+
+    order_columns = (
+        "created_at",
+        "user_id",
+        "activity_id",
+        "exercise_id",
+        "attempt_number",
+    )
+    filtered_projection = list(projected_columns)
+    for helper_column in (*order_columns, "user_id"):
+        if helper_column not in filtered_projection:
+            filtered_projection.append(helper_column)
+
+    min_attempts = max(1, int(min_student_attempts))
+    eligible_join = ""
+    params: list[Any] = [reference, *filter_params]
+    if min_attempts > 1:
+        eligible_join = (
+            "INNER JOIN eligible_students USING (user_id) "
+        )
+        params.append(min_attempts)
+
+    sql = (
+        "WITH filtered AS ("
+        f"SELECT {', '.join(filtered_projection)} "
+        "FROM read_parquet(?) "
+        f"{where_sql}"
+        "), "
+        "eligible_students AS ("
+        "SELECT user_id "
+        "FROM filtered "
+        "WHERE user_id IS NOT NULL AND trim(CAST(user_id AS VARCHAR)) <> '' "
+        "GROUP BY user_id "
+        "HAVING COUNT(*) >= ?"
+        ") "
+        f"SELECT {', '.join(projected_columns)} "
+        "FROM filtered "
+        f"{eligible_join}"
+        "ORDER BY created_at ASC, user_id ASC, activity_id ASC, exercise_id ASC, attempt_number ASC"
+    )
+
+    if min_attempts <= 1:
+        sql = (
+            "WITH filtered AS ("
+            f"SELECT {', '.join(filtered_projection)} "
+            "FROM read_parquet(?) "
+            f"{where_sql}"
+            ") "
+            f"SELECT {', '.join(projected_columns)} "
+            "FROM filtered "
+            "ORDER BY created_at ASC, user_id ASC, activity_id ASC, exercise_id ASC, attempt_number ASC"
+        )
+
+    connection = duckdb.connect(database=":memory:")
+    try:
+        if config is not None:
+            _configure_hf_secret(connection, config)
+        result = connection.execute(sql, params).arrow()
+        return pl.from_arrow(result)
+    finally:
+        connection.close()
+
+
 def query_fact_attempts_for_classroom(
     settings: Settings,
     *,
@@ -200,31 +300,19 @@ def query_fact_attempts_for_classroom(
     start_date: date,
     end_date: date,
     columns: Sequence[str],
+    min_student_attempts: int = 1,
     relative_path: str = "artifacts/derived/fact_attempt_core.parquet",
 ) -> pl.DataFrame:
     """Query only the needed classroom slice from the fact table."""
-    filters: list[FilterClause] = [
-        ("date_utc", ">=", start_date),
-        ("date_utc", "<=", end_date),
-    ]
-    if str(mode_scope or "").strip() and str(mode_scope).strip() != "all":
-        filters.append(("work_mode", "=", str(mode_scope).strip()))
-    classroom_key = str(classroom_id or "").strip()
-    if classroom_key and classroom_key != SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID:
-        filters.append(("classroom_id", "=", classroom_key))
-
-    return query_runtime_parquet(
+    return query_fact_attempts(
         settings,
-        relative_path,
+        start_date=start_date,
+        end_date=end_date,
         columns=columns,
-        filters=filters,
-        order_by=(
-            ("created_at", False),
-            ("user_id", False),
-            ("activity_id", False),
-            ("exercise_id", False),
-            ("attempt_number", False),
-        ),
+        classroom_id=classroom_id,
+        work_mode=mode_scope,
+        min_student_attempts=min_student_attempts,
+        relative_path=relative_path,
     )
 
 
@@ -232,6 +320,7 @@ __all__ = [
     "FilterClause",
     "OrderClause",
     "_build_hf_runtime_url",
+    "query_fact_attempts",
     "query_fact_attempts_for_classroom",
     "query_runtime_parquet",
     "query_student_elo_events",

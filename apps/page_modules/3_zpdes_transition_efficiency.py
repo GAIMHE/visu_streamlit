@@ -20,12 +20,13 @@ if str(APPS_DIR) not in sys.path:
 
 from figure_analysis import render_figure_analysis
 from figure_info import render_figure_info
-from overview_shared import render_date_range_input
+from overview_shared import render_population_filters
 from plotly_config import build_plotly_chart_config
 from source_state import get_active_source_id
 
 from visu2.config import get_settings
 from visu2.figure_analysis import analyze_zpdes_transition_population
+from visu2.remote_query import query_fact_attempts
 from visu2.zpdes_dependencies import (
     build_dependency_tables_from_metadata,
     list_supported_module_codes_from_metadata,
@@ -81,6 +82,7 @@ def _load_zpdes_population_summary(
     *,
     start_date: date | None = None,
     end_date: date | None = None,
+    user_ids: tuple[str, ...] | None = None,
 ) -> pl.DataFrame:
     """Aggregate global ZPDES cohort metrics across all supported modules."""
     threshold = max(1, int(later_attempt_threshold))
@@ -118,6 +120,8 @@ def _load_zpdes_population_summary(
         query = query.filter(
             (pl.col("date_utc") >= pl.lit(start_date)) & (pl.col("date_utc") <= pl.lit(end_date))
         )
+    if user_ids:
+        query = query.filter(pl.col("user_id").is_in(list(user_ids)))
     return (
         query.group_by(
             [
@@ -300,14 +304,16 @@ div, p, label {
     )
     render_figure_info("zpdes_transition_efficiency_graph")
 
-    st.sidebar.header("Graph Controls")
     min_date = activity["date_utc"].min()
     max_date = activity["date_utc"].max()
-    start_date, end_date = render_date_range_input(
-        min_date,
-        max_date,
-        key_prefix="zpdes_transition_efficiency",
+    population_filters = render_population_filters(
+        source_id=settings.source_id,
+        min_date=min_date,
+        max_date=max_date,
+        sidebar_header="Graph Controls",
     )
+    start_date = population_filters.start_date
+    end_date = population_filters.end_date
     selected_module = st.sidebar.selectbox("Module", module_codes, index=0)
 
     metric_label = st.sidebar.selectbox("Activity coloring", list(NODE_METRIC_OPTIONS.keys()), index=0)
@@ -348,6 +354,26 @@ div, p, label {
             "prior_later_activity_attempt_count",
         ]
     )
+    eligible_user_ids: tuple[str, ...] | None = None
+    if population_filters.min_student_attempts > 1:
+        eligible_users = query_fact_attempts(
+            settings,
+            start_date=start_date,
+            end_date=end_date,
+            columns=("user_id",),
+            module_code=selected_module,
+            work_mode=selected_work_mode,
+            min_student_attempts=population_filters.min_student_attempts,
+        )
+        if eligible_users.height == 0:
+            st.info("No ZPDES students remain after the current minimum-attempt threshold.")
+            st.stop()
+        eligible_user_ids = tuple(
+            str(user_id)
+            for user_id in eligible_users["user_id"].to_list()
+            if str(user_id or "").strip()
+        )
+        progression_events = progression_events.filter(pl.col("user_id").is_in(list(eligible_user_ids)))
 
     nodes_with_metric = attach_transition_metric_to_nodes(
         nodes=all_nodes,
@@ -420,6 +446,7 @@ div, p, label {
         later_attempt_threshold,
         start_date=start_date,
         end_date=end_date,
+        user_ids=eligible_user_ids,
     )
     render_figure_analysis(
         analyze_zpdes_transition_population(
@@ -430,7 +457,7 @@ div, p, label {
 
     if metric == "activity_mean_exercise_elo":
         st.info(
-            "Activity mean exercise Elo is globally calibrated and does not change across the selected ZPDES history."
+            "Activity mean exercise Elo is globally calibrated and does not change across the selected ZPDES history or the minimum-attempt threshold."
         )
 
 if __name__ == "__main__":

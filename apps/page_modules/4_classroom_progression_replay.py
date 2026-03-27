@@ -50,13 +50,15 @@ if str(APPS_DIR) not in sys.path:
 
 from figure_analysis import render_figure_analysis
 from figure_info import render_figure_info
-from overview_shared import render_date_range_input
+from overview_shared import render_population_filters
 from plotly_config import build_plotly_chart_config
 from source_state import get_active_source_id
 
 from visu2.classroom_progression import (
     SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID,
     VALID_MODE_SCOPES,
+    build_classroom_activity_summary_by_mode,
+    build_classroom_mode_profiles,
     build_heatmap_figure,
     build_replay_payload,
     select_classrooms_near_student_target,
@@ -102,6 +104,7 @@ def _load_replay_payload(
     mode_scope: str,
     start_date_iso: str,
     end_date_iso: str,
+    min_student_attempts: int,
     max_frames: int,
     step_size: int,
 ) -> dict:
@@ -137,6 +140,7 @@ dict
         mode_scope=mode_scope,
         start_date=date.fromisoformat(start_date_iso),
         end_date=date.fromisoformat(end_date_iso),
+        min_student_attempts=min_student_attempts,
         columns=FACT_QUERY_COLUMNS,
     )
     return build_replay_payload(
@@ -151,12 +155,32 @@ dict
 
 
 @st.cache_data(show_spinner=False)
-def _load_classroom_activity_summary(fact_path: Path, mode_scope: str) -> pl.DataFrame:
-    summary = pl.read_parquet(fact_path)
-    scoped = summary.filter(pl.col("mode_scope") == mode_scope)
-    if scoped.height > 0:
-        return scoped
-    return summary.filter(pl.col("mode_scope") == "all")
+def _load_selected_population_summary(
+    source_id: str,
+    classroom_id: str,
+    mode_scope: str,
+    start_date_iso: str,
+    end_date_iso: str,
+    min_student_attempts: int,
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Build a summary from the exact filtered classroom slice."""
+    settings = get_settings(source_id)
+    fact_slice = query_fact_attempts_for_classroom(
+        settings,
+        classroom_id=classroom_id,
+        mode_scope=mode_scope,
+        start_date=date.fromisoformat(start_date_iso),
+        end_date=date.fromisoformat(end_date_iso),
+        min_student_attempts=min_student_attempts,
+        columns=FACT_QUERY_COLUMNS,
+    )
+    if fact_slice.height == 0:
+        return pl.DataFrame(), pl.DataFrame()
+    profiles = build_classroom_mode_profiles(fact_slice)
+    scoped_profiles = profiles.filter(pl.col("mode_scope") == mode_scope)
+    activity_summary = build_classroom_activity_summary_by_mode(fact_slice)
+    scoped_activity_summary = activity_summary.filter(pl.col("mode_scope") == mode_scope)
+    return scoped_profiles, scoped_activity_summary
 
 
 def _format_classroom_option(row: dict[str, object]) -> str:
@@ -252,8 +276,7 @@ div, p, label {
     )
     settings = get_settings(get_active_source_id())
     profiles_path = settings.artifacts_derived_dir / "classroom_mode_profiles.parquet"
-    activity_summary_path = settings.artifacts_derived_dir / "classroom_activity_summary_by_mode.parquet"
-    required = [profiles_path, activity_summary_path]
+    required = [profiles_path]
     missing_files = [path for path in required if not path.exists()]
     if missing_files:
         st.error("Missing classroom replay selector artifacts. Rebuild derived data.")
@@ -264,10 +287,6 @@ div, p, label {
         "classroom_mode_profiles": (
             profiles_path,
             RUNTIME_CORE_COLUMNS["classroom_mode_profiles"],
-        ),
-        "classroom_activity_summary_by_mode": (
-            activity_summary_path,
-            RUNTIME_CORE_COLUMNS["classroom_activity_summary_by_mode"],
         ),
     }
     missing_contracts: list[str] = []
@@ -312,7 +331,6 @@ div, p, label {
     )
     if synthetic_only_scope:
         selected_classroom_id = SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID
-        selected_row = scoped_profiles.to_dicts()[0]
         st.caption(
             "This source does not have a classroom dimension. The replay is using one synthetic classroom that groups all students."
         )
@@ -352,20 +370,19 @@ div, p, label {
         option_keys = list(option_map.keys())
         selected_option = st.selectbox("Matching classrooms", option_keys, index=0)
         selected_classroom_id = option_map[selected_option]
-        selected_row = next(
-            (row for row in rows if str(row.get("classroom_id")) == selected_classroom_id),
-            rows[0],
-        )
-    first_ts = selected_row.get("first_attempt_at")
-    last_ts = selected_row.get("last_attempt_at")
-    if not (hasattr(first_ts, "date") and hasattr(last_ts, "date")):
-        st.info("Selected classroom does not have a valid replay time span.")
+    source_first_ts = profiles.select(pl.col("first_attempt_at").min()).item()
+    source_last_ts = profiles.select(pl.col("last_attempt_at").max()).item()
+    if not (hasattr(source_first_ts, "date") and hasattr(source_last_ts, "date")):
+        st.info("This source does not have a valid replay time span.")
         st.stop()
-    start_date, end_date = render_date_range_input(
-        first_ts.date(),
-        last_ts.date(),
-        key_prefix=f"classroom_replay_{mode_scope}_{selected_classroom_id}",
+    population_filters = render_population_filters(
+        source_id=settings.source_id,
+        min_date=source_first_ts.date(),
+        max_date=source_last_ts.date(),
+        sidebar_header="Global Filters",
     )
+    start_date = population_filters.start_date
+    end_date = population_filters.end_date
 
     st.sidebar.header("Replay")
     speed_ms = st.sidebar.slider("Autoplay speed (ms/frame)", min_value=100, max_value=1500, value=450, step=50)
@@ -388,6 +405,7 @@ div, p, label {
             mode_scope=mode_scope,
             start_date_iso=start_date.isoformat(),
             end_date_iso=end_date.isoformat(),
+            min_student_attempts=population_filters.min_student_attempts,
             max_frames=int(max_frames),
             step_size=int(step_size),
         )
@@ -423,6 +441,7 @@ div, p, label {
         selected_classroom_id,
         start_date.isoformat(),
         end_date.isoformat(),
+        population_filters.min_student_attempts,
         int(step_size),
         int(max_frames),
     )
@@ -454,6 +473,7 @@ div, p, label {
         st.caption(
             f"Scope: **{_mode_label(mode_scope)}**  |  Classroom: **{'All students' if selected_classroom_id == SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID else selected_classroom_id}**  "
             f"|  Date range: **{start_date.isoformat()} -> {end_date.isoformat()}**  "
+            f"|  Min attempts: **{population_filters.min_student_attempts}**  "
             f"|  Students: **{len(payload.get('student_ids') or [])}**  "
             f"|  Activities: **{len(payload.get('activity_ids') or [])}**"
         )
@@ -488,7 +508,14 @@ div, p, label {
         width='stretch',
         config=build_plotly_chart_config(),
     )
-    activity_summary = _load_classroom_activity_summary(activity_summary_path, mode_scope)
+    scoped_profiles, activity_summary = _load_selected_population_summary(
+        settings.source_id,
+        selected_classroom_id,
+        mode_scope,
+        start_date.isoformat(),
+        end_date.isoformat(),
+        population_filters.min_student_attempts,
+    )
     render_figure_analysis(
         analyze_classroom_progression_population(
             scoped_profiles,

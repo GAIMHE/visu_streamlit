@@ -27,10 +27,7 @@ def test_classroom_pages_bootstrap_only_selector_artifacts() -> None:
     replay = PAGE_SPEC_BY_ID["classroom_replay"]
     sankey = PAGE_SPEC_BY_ID["classroom_sankey"]
 
-    assert replay.bootstrap_runtime_paths == (
-        "artifacts/derived/classroom_mode_profiles.parquet",
-        "artifacts/derived/classroom_activity_summary_by_mode.parquet",
-    )
+    assert replay.bootstrap_runtime_paths == ("artifacts/derived/classroom_mode_profiles.parquet",)
     assert replay.remote_query_paths == ("artifacts/derived/fact_attempt_core.parquet",)
 
     assert sankey.bootstrap_runtime_paths == (
