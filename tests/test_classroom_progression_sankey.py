@@ -168,6 +168,22 @@ def test_build_classroom_activity_sankey_edges_classifies_terminal_and_overflow(
     assert stop_after_two["source_share"] == 1.0
 
 
+def test_build_classroom_activity_sankey_edges_can_start_from_later_step() -> None:
+    payload = build_classroom_activity_paths(
+        _fact_fixture(),
+        classroom_id="c1",
+        mode_scope="zpdes",
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 1),
+    )
+    edges = build_classroom_activity_sankey_edges(payload, visible_steps=1, start_step=2)
+
+    assert edges.filter(pl.col("source_stage") == 0)["student_count"].sum() == 3
+    assert edges.filter(pl.col("target_label") == "More than 2 activities")["student_count"].sum() == 2
+    stop_after_two = edges.filter(pl.col("target_label") == "Stopped after 2 activities").row(0, named=True)
+    assert stop_after_two["student_count"] == 1
+
+
 def test_max_classroom_activity_path_length_reads_selected_classroom_depth() -> None:
     payload = build_classroom_activity_paths(
         _fact_fixture(),
@@ -207,3 +223,25 @@ def test_build_classroom_activity_sankey_figure_returns_single_trace() -> None:
     assert figure.data[0].node.label[0] == "M1O1A1"
     assert "Stopped after" in figure.data[0].node.label[-1]
     assert figure.data[0].node.customdata[0] == "Intro"
+
+
+def test_build_classroom_activity_sankey_figure_can_render_later_window() -> None:
+    payload = build_classroom_activity_paths(
+        _fact_fixture(),
+        classroom_id="c1",
+        mode_scope="zpdes",
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 1),
+        activity_code_lookup={
+            "a1": "M1O1A1",
+            "a2": "M1O1A2",
+            "a3": "M1O2A1",
+            "a5": "M1O3A1",
+        },
+    )
+    figure = build_classroom_activity_sankey_figure(payload, visible_steps=1, start_step=2)
+
+    assert len(figure.data) == 1
+    labels = list(figure.data[0].node.label)
+    assert "M1O1A2" in labels
+    assert "More than 2 activities" in labels

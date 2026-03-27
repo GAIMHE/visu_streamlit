@@ -304,6 +304,7 @@ def build_classroom_activity_sankey_edges(
     payload: dict[str, Any],
     *,
     visible_steps: int,
+    start_step: int = 1,
 ) -> pl.DataFrame:
     """Aggregate classroom activity paths into stage-based Sankey edges."""
     student_paths = payload.get("student_paths") or []
@@ -312,6 +313,8 @@ def build_classroom_activity_sankey_edges(
         return pl.DataFrame(schema=_EMPTY_EDGE_SCHEMA)
 
     depth = max(1, int(visible_steps))
+    start_index = max(0, int(start_step) - 1)
+    absolute_window_end = start_index + depth
     counter: Counter[tuple[str, str, str, int, str, str, str, int]] = Counter()
     source_totals: Counter[str] = Counter()
 
@@ -344,6 +347,11 @@ def build_classroom_activity_sankey_edges(
         full_labels = [str(value) for value in row.get("activity_full_labels") or []]
         if not activity_ids or not display_labels or not full_labels:
             continue
+        if len(activity_ids) <= start_index:
+            continue
+        activity_ids = activity_ids[start_index:absolute_window_end]
+        display_labels = display_labels[start_index:absolute_window_end]
+        full_labels = full_labels[start_index:absolute_window_end]
         visible_count = min(len(activity_ids), depth)
         for stage in range(max(0, visible_count - 1)):
             add_edge(
@@ -361,12 +369,13 @@ def build_classroom_activity_sankey_edges(
         last_visible_label = display_labels[last_visible_stage]
         last_visible_full = full_labels[last_visible_stage]
         terminal_stage = last_visible_stage + 1
-        if len(activity_ids) > depth:
-            terminal_label = f"More than {depth} activities"
-            terminal_key = f"stage{terminal_stage}::terminal::more_than_{depth}"
+        original_length = len(row.get("activity_ids") or [])
+        if original_length > absolute_window_end:
+            terminal_label = f"More than {absolute_window_end} activities"
+            terminal_key = f"stage{terminal_stage}::terminal::more_than_{absolute_window_end}"
         else:
-            terminal_label = _terminal_label(len(activity_ids))
-            terminal_key = f"stage{terminal_stage}::terminal::stopped_after_{len(activity_ids)}"
+            terminal_label = _terminal_label(original_length)
+            terminal_key = f"stage{terminal_stage}::terminal::stopped_after_{original_length}"
         add_edge(
             f"stage{last_visible_stage}::activity::{last_visible_id}",
             last_visible_label,
@@ -415,9 +424,14 @@ def build_classroom_activity_sankey_figure(
     payload: dict[str, Any],
     *,
     visible_steps: int,
+    start_step: int = 1,
 ) -> go.Figure:
     """Build a static classroom activity Sankey figure."""
-    edges = build_classroom_activity_sankey_edges(payload, visible_steps=visible_steps)
+    edges = build_classroom_activity_sankey_edges(
+        payload,
+        visible_steps=visible_steps,
+        start_step=start_step,
+    )
     if edges.height == 0:
         return go.Figure()
 

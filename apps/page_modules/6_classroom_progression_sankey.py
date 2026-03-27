@@ -299,8 +299,10 @@ div, p, label {
         st.stop()
 
     max_visible_steps = max_classroom_activity_path_length(payload)
-    slider_key = "classroom_sankey_visible_steps"
-    slider_signature_key = "classroom_sankey_visible_steps_signature"
+    start_slider_key = "classroom_sankey_start_step"
+    start_slider_signature_key = "classroom_sankey_start_step_signature"
+    visible_slider_key = "classroom_sankey_visible_steps"
+    visible_slider_signature_key = "classroom_sankey_visible_steps_signature"
     slider_signature = (
         mode_scope,
         selected_classroom_id,
@@ -309,21 +311,45 @@ div, p, label {
         population_filters.min_student_attempts,
         max_visible_steps,
     )
-    if st.session_state.get(slider_signature_key) != slider_signature:
-        current_value = st.session_state.get(slider_key)
-        if isinstance(current_value, int):
-            st.session_state[slider_key] = max(1, min(current_value, max_visible_steps))
+    if st.session_state.get(start_slider_signature_key) != slider_signature:
+        current_start = st.session_state.get(start_slider_key)
+        if isinstance(current_start, int):
+            st.session_state[start_slider_key] = max(1, min(current_start, max_visible_steps))
         else:
-            st.session_state[slider_key] = min(6, max_visible_steps)
-        st.session_state[slider_signature_key] = slider_signature
+            st.session_state[start_slider_key] = 1
+        st.session_state[start_slider_signature_key] = slider_signature
+    start_step = int(
+        st.sidebar.slider(
+            "Starting activity step",
+            min_value=1,
+            max_value=max_visible_steps,
+            step=1,
+            key=start_slider_key,
+        )
+    )
+    max_window_steps = max(1, max_visible_steps - start_step + 1)
+    visible_slider_signature = (*slider_signature, start_step)
+    if st.session_state.get(visible_slider_signature_key) != visible_slider_signature:
+        current_value = st.session_state.get(visible_slider_key)
+        if isinstance(current_value, int):
+            st.session_state[visible_slider_key] = max(1, min(current_value, max_window_steps))
+        else:
+            st.session_state[visible_slider_key] = min(6, max_window_steps)
+        st.session_state[visible_slider_signature_key] = visible_slider_signature
     visible_steps = int(
         st.sidebar.slider(
             "Visible activity steps",
             min_value=1,
-            max_value=max_visible_steps,
+            max_value=max_window_steps,
             step=1,
-            key=slider_key,
+            key=visible_slider_key,
         )
+    )
+    window_end_step = start_step + visible_steps - 1
+    visible_student_count = sum(
+        1
+        for row in (payload.get("student_paths") or [])
+        if len(row.get("activity_ids") or []) >= start_step
     )
 
     dropped = int(payload.get("dropped_invalid_timestamps") or 0)
@@ -342,13 +368,20 @@ div, p, label {
         f"Scope: **{_mode_label(mode_scope)}**  |  Classroom: **{payload.get('classroom_label') or selected_classroom_id}**  "
         f"|  Date range: **{start_date.isoformat()} -> {end_date.isoformat()}**  "
         f"|  Min attempts: **{population_filters.min_student_attempts}**  "
-        f"|  Students: **{len(payload.get('student_ids') or [])}**  "
-        f"|  Activities: **{distinct_activities}**  |  Visible steps: **{visible_steps}**"
+        f"|  Students in classroom: **{len(payload.get('student_ids') or [])}**  "
+        f"|  Students reaching step {start_step}: **{visible_student_count}**  "
+        f"|  Activities: **{distinct_activities}**  |  Window: **steps {start_step}-{window_end_step}**"
     )
 
-    figure = build_classroom_activity_sankey_figure(payload, visible_steps=visible_steps)
+    figure = build_classroom_activity_sankey_figure(
+        payload,
+        visible_steps=visible_steps,
+        start_step=start_step,
+    )
     if not figure.data:
-        st.info("Not enough valid activity progression rows were found to render the Sankey.")
+        st.info(
+            f"No students reach step {start_step} in the selected classroom, date range, and work-mode scope."
+        )
     else:
         st.plotly_chart(
             figure,
@@ -357,7 +390,11 @@ div, p, label {
         )
 
     render_figure_analysis(
-        analyze_classroom_progression_sankey(payload, visible_steps=visible_steps)
+        analyze_classroom_progression_sankey(
+            payload,
+            visible_steps=visible_steps,
+            start_step=start_step,
+        )
     )
 
 

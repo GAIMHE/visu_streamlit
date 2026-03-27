@@ -1374,17 +1374,31 @@ def analyze_classroom_progression_sankey(
     payload: dict[str, Any] | None,
     *,
     visible_steps: int,
+    start_step: int = 1,
 ) -> FigureAnalysis:
     if not payload:
         return _insufficient()
     student_paths = payload.get("student_paths") or []
     student_count = int(payload.get("student_count") or len(student_paths) or 0)
-    activity_labels = [str(value) for value in payload.get("activity_full_labels") or [] if str(value).strip()]
     if student_count <= 0 or not student_paths:
         return _insufficient(["Classroom Sankey analysis requires at least one valid student path in the selected classroom."])
 
+    start_step_value = max(1, int(start_step))
+    start_index = start_step_value - 1
+    window_end_step = start_step_value + max(1, int(visible_steps)) - 1
+    visible_rows = [
+        row
+        for row in student_paths
+        if len(row.get("activity_full_labels") or []) >= start_step_value
+    ]
+    visible_student_count = len(visible_rows)
+    if visible_student_count <= 0:
+        return _insufficient(
+            [f"No student in the selected classroom reaches step {start_step_value} in the displayed Sankey window."]
+        )
+
     findings: list[str] = [
-        f"The selected classroom includes {_format_num(student_count, digits=0)} students and {_format_num(len(activity_labels), digits=0)} distinct activities in the chosen scope."
+        f"The selected classroom includes {_format_num(student_count, digits=0)} students overall; {_format_num(visible_student_count, digits=0)} reach step {_format_num(start_step_value, digits=0)} and contribute to the displayed Sankey window."
     ]
 
     entry_counter: dict[str, int] = {}
@@ -1397,32 +1411,41 @@ def analyze_classroom_progression_sankey(
     def stop_label(count: int) -> str:
         return f"Stopped after {count} {'activity' if count == 1 else 'activities'}"
 
-    for row in student_paths:
+    for row in visible_rows:
         full_labels = [str(value) for value in row.get("activity_full_labels") or [] if str(value).strip()]
         if not full_labels:
             continue
         path_length = len(full_labels)
+        window_labels = full_labels[start_index : start_index + visible_steps]
+        if not window_labels:
+            continue
         path_lengths.append(path_length)
-        entry_counter[full_labels[0]] = entry_counter.get(full_labels[0], 0) + 1
-        if path_length >= 2:
-            key = (full_labels[0], full_labels[1])
+        entry_counter[window_labels[0]] = entry_counter.get(window_labels[0], 0) + 1
+        if len(window_labels) >= 2:
+            key = (window_labels[0], window_labels[1])
             first_transition_counter[key] = first_transition_counter.get(key, 0) + 1
-        if path_length >= 3:
-            key = (full_labels[1], full_labels[2])
+        if len(window_labels) >= 3:
+            key = (window_labels[1], window_labels[2])
             second_transition_counter[key] = second_transition_counter.get(key, 0) + 1
-        if path_length >= 4:
-            key = (full_labels[2], full_labels[3])
+        if len(window_labels) >= 4:
+            key = (window_labels[2], window_labels[3])
             third_transition_counter[key] = third_transition_counter.get(key, 0) + 1
-        terminal = f"More than {visible_steps} activities" if path_length > visible_steps else stop_label(path_length)
-        visible_path = tuple(full_labels[:visible_steps] + [terminal])
+        terminal = (
+            f"More than {window_end_step} activities"
+            if path_length > window_end_step
+            else stop_label(path_length)
+        )
+        visible_path = tuple(window_labels + [terminal])
         visible_path_counter[visible_path] = visible_path_counter.get(visible_path, 0) + 1
 
     if not path_lengths or not entry_counter:
-        return _insufficient(["Classroom Sankey analysis needs at least one non-empty first-time activity path."])
+        return _insufficient(
+            [f"Classroom Sankey analysis needs at least one non-empty first-time activity path from step {start_step_value} onward."]
+        )
 
     entry_label, entry_count = sorted(entry_counter.items(), key=lambda item: (-item[1], item[0]))[0]
     findings.append(
-        f"The most common entry activity is {entry_label}, reached first by {_format_num(entry_count, digits=0)}/{_format_num(student_count, digits=0)} students ({_format_pct(entry_count / student_count)})."
+        f"The most common visible entry activity is {entry_label}, reached at step {_format_num(start_step_value, digits=0)} by {_format_num(entry_count, digits=0)}/{_format_num(visible_student_count, digits=0)} students ({_format_pct(entry_count / visible_student_count)} of the displayed cohort)."
     )
 
     def transition_summary(counter: dict[tuple[str, str], int], ordinal: str) -> str | None:
@@ -1434,7 +1457,7 @@ def analyze_classroom_progression_sankey(
         parts = []
         for rank, ((source, target), count) in enumerate(ranked[:TOP_LIST_LIMIT], start=1):
             parts.append(
-                f"{rank}. {source} -> {target} ({_format_num(count, digits=0)} students, {_format_pct(count / student_count)})"
+                f"{rank}. {source} -> {target} ({_format_num(count, digits=0)} students, {_format_pct(count / visible_student_count)})"
             )
         return f"Most common {ordinal} transitions: {'; '.join(parts)}."
 
@@ -1447,14 +1470,14 @@ def analyze_classroom_progression_sankey(
         if sentence:
             findings.append(sentence)
 
-    for stop_count in (1, 2, 3):
-        share = sum(1 for value in path_lengths if value == stop_count) / student_count
+    for stop_count in range(start_step_value, min(window_end_step, start_step_value + 2) + 1):
+        share = sum(1 for value in path_lengths if value == stop_count) / visible_student_count
         findings.append(
             f"{_format_pct(share)} of students stop after {stop_count} {'activity' if stop_count == 1 else 'activities'}."
         )
-    overflow_share = sum(1 for value in path_lengths if value > visible_steps) / student_count
+    overflow_share = sum(1 for value in path_lengths if value > window_end_step) / visible_student_count
     findings.append(
-        f"{_format_pct(overflow_share)} of students reach `More than {visible_steps} activities` in the displayed Sankey."
+        f"{_format_pct(overflow_share)} of students reach `More than {window_end_step} activities` in the displayed Sankey."
     )
 
     ranked_paths = sorted(visible_path_counter.items(), key=lambda item: (-item[1], item[0]))
@@ -1462,10 +1485,10 @@ def analyze_classroom_progression_sankey(
         parts = []
         for rank, (path, count) in enumerate(ranked_paths[:TOP_LIST_LIMIT], start=1):
             parts.append(
-                f"{rank}. {' -> '.join(path)} ({_format_num(count, digits=0)} students, {_format_pct(count / student_count)})"
+                f"{rank}. {' -> '.join(path)} ({_format_num(count, digits=0)} students, {_format_pct(count / visible_student_count)})"
             )
         findings.append(f"Most common visible paths: {'; '.join(parts)}.")
-        top_path_share = ranked_paths[0][1] / student_count
+        top_path_share = ranked_paths[0][1] / visible_student_count
     else:
         top_path_share = 0.0
 

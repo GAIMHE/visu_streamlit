@@ -469,8 +469,51 @@ def test_analyze_classroom_progression_sankey_summarizes_selected_classroom() ->
     }
     analysis = analyze_classroom_progression_sankey(payload, visible_steps=3)
     assert analysis.findings
-    assert analysis.findings[0].startswith("The selected classroom includes 6 students and 4 distinct activities")
-    assert any("The most common entry activity is Intro" in finding for finding in analysis.findings)
+    assert analysis.findings[0].startswith("The selected classroom includes 6 students overall; 6 reach step 1")
+    assert any("The most common visible entry activity is Intro" in finding for finding in analysis.findings)
     assert any("Most common first transitions" in finding for finding in analysis.findings)
     assert any("Most common visible paths" in finding for finding in analysis.findings)
     assert analysis.interpretation is not None
+
+
+def test_analyze_classroom_progression_sankey_can_focus_on_later_window() -> None:
+    payload = {
+        "student_count": 4,
+        "activity_ids": ["a1", "a2", "a3", "a4"],
+        "activity_full_labels": ["Intro", "Practice", "Bridge", "Wrap"],
+        "student_paths": [
+            {
+                "user_id": "u1",
+                "activity_ids": ["a1", "a2", "a3"],
+                "activity_full_labels": ["Intro", "Practice", "Bridge"],
+                "activity_display_labels": ["Intro", "Practice", "Bridge"],
+                "path_length": 3,
+            },
+            {
+                "user_id": "u2",
+                "activity_ids": ["a1", "a2", "a4"],
+                "activity_full_labels": ["Intro", "Practice", "Wrap"],
+                "activity_display_labels": ["Intro", "Practice", "Wrap"],
+                "path_length": 3,
+            },
+            {
+                "user_id": "u3",
+                "activity_ids": ["a1"],
+                "activity_full_labels": ["Intro"],
+                "activity_display_labels": ["Intro"],
+                "path_length": 1,
+            },
+            {
+                "user_id": "u4",
+                "activity_ids": ["a1", "a3", "a4", "a2"],
+                "activity_full_labels": ["Intro", "Bridge", "Wrap", "Practice"],
+                "activity_display_labels": ["Intro", "Bridge", "Wrap", "Practice"],
+                "path_length": 4,
+            },
+        ],
+    }
+    analysis = analyze_classroom_progression_sankey(payload, visible_steps=2, start_step=2)
+    assert analysis.findings
+    assert analysis.findings[0].startswith("The selected classroom includes 4 students overall; 3 reach step 2")
+    assert any("step 2" in finding for finding in analysis.findings)
+    assert any("More than 3 activities" in finding for finding in analysis.findings)

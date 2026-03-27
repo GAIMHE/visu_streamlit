@@ -150,9 +150,10 @@ FIGURE_INFO: dict[str, dict[str, tuple[str, ...]]] = {
         ),
         "Metrics": (
             "Link width counts unique students following that part of the classroom path.",
-            "`Visible activity steps` controls how many newly reached activity stages remain visible before students are sent to a terminal node. Its maximum automatically follows the selected classroom's longest first-time path.",
+            "`Starting activity step` lets you shift the visible window later in the progression, so the first displayed node can be step 2, step 6, or any later first-time activity rank reached by students.",
+            "`Visible activity steps` controls how many newly reached activity stages remain visible after the chosen starting step. Its maximum automatically follows the selected classroom's longest first-time path.",
             "When the activity exists in the canonical catalog, the visible node label uses its code, such as `M1O1A1`; the real activity name stays in hover.",
-            "Students who stop before the visible depth go to labels such as `Stopped after 2 activities`, while students who continue beyond the visible depth go to `More than N activities`.",
+            "Students who stop inside the visible window go to labels such as `Stopped after 7 activities`, while students who continue beyond the window go to `More than N activities` using the absolute activity count reached so far.",
             "Activity codes stay visible on the nodes, while hover keeps the real activity names; terminal nodes keep their visible labels.",
             "Hover reports the source and target activities, the student count, the share of the selected classroom, and the share of students arriving at the source node.",
             "The figure uses the full time span of the selected classroom in the chosen mode scope; page replay frames are not used here.",
