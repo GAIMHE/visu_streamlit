@@ -18,6 +18,7 @@ from source_state import (
 )
 
 from visu2.contracts import RUNTIME_CORE_COLUMNS
+from visu2.runtime_sources import source_supports_exact_min_student_attempt_filter
 
 
 @dataclass(frozen=True, slots=True)
@@ -193,7 +194,10 @@ def render_population_filters(
         min_date=min_date,
         max_date=max_date,
     )
-    current_min_attempts = max(1, get_filter_min_attempts(source_id))
+    min_attempts_enabled = source_supports_exact_min_student_attempt_filter(source_id)
+    current_min_attempts = (
+        max(1, get_filter_min_attempts(source_id)) if min_attempts_enabled else 1
+    )
 
     if st.sidebar.button(reset_label, key=f"{source_id}_reset_population_filters"):
         clear_filter_state(source_id)
@@ -217,21 +221,25 @@ def render_population_filters(
         # instantiation; Streamlit treats that as an illegal post-render widget update.
         set_filter_date_range(source_id, start_date=clamped_start, end_date=clamped_end)
 
-    min_student_attempts = int(
-        st.sidebar.number_input(
-            "Minimum attempts per student",
-            min_value=1,
-            max_value=1_000_000,
-            value=current_min_attempts,
-            step=1,
-            key=f"{source_id}_population_min_attempts",
-            help=(
-                "Keep only students with at least this many attempts inside the currently visible page scope."
-            ),
+    min_student_attempts = 1
+    if min_attempts_enabled:
+        min_student_attempts = int(
+            st.sidebar.number_input(
+                "Minimum attempts per student",
+                min_value=1,
+                max_value=1_000_000,
+                value=current_min_attempts,
+                step=1,
+                key=f"{source_id}_population_min_attempts",
+                help=(
+                    "Keep only students with at least this many attempts inside the currently visible page scope."
+                ),
+            )
         )
-    )
-    if min_student_attempts != current_min_attempts:
-        set_filter_min_attempts(source_id, min_student_attempts)
+        if min_student_attempts != current_min_attempts:
+            set_filter_min_attempts(source_id, min_student_attempts)
+    else:
+        set_filter_min_attempts(source_id, 1)
 
     return PopulationFilters(
         start_date=start_date,

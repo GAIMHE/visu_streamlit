@@ -75,6 +75,7 @@ CAPABILITY_HAS_PLAYLIST_DIMENSION = "has_playlist_dimension"
 CAPABILITY_HAS_DURATION_FIELDS = "has_duration_fields"
 CAPABILITY_HAS_ZPDES_TOPOLOGY = "has_zpdes_topology"
 CAPABILITY_HAS_EXERCISE_METADATA = "has_exercise_metadata"
+CAPABILITY_HAS_EXACT_MIN_STUDENT_ATTEMPT_FILTER = "has_exact_min_student_attempt_filter"
 
 
 def _derived_runtime_relative_paths(table_names: tuple[str, ...]) -> tuple[str, ...]:
@@ -162,6 +163,7 @@ RUNTIME_SOURCES: dict[str, RuntimeSourceSpec] = {
         capability_flags=frozenset(
             {
                 CAPABILITY_HAS_EXERCISE_METADATA,
+                CAPABILITY_HAS_EXACT_MIN_STUDENT_ATTEMPT_FILTER,
             }
         ),
         remote_config_key="maureen_m16fr",
@@ -195,3 +197,9 @@ def list_runtime_sources() -> tuple[RuntimeSourceSpec, ...]:
 def runtime_relative_paths_for_source(source_id: str | None = None) -> tuple[str, ...]:
     """Return the full runtime file set expected for one source."""
     return get_runtime_source(source_id).runtime_relative_paths
+
+
+def source_supports_exact_min_student_attempt_filter(source_id: str | None = None) -> bool:
+    """Return whether one source should expose the exact min-attempts population filter."""
+    source = get_runtime_source(source_id)
+    return CAPABILITY_HAS_EXACT_MIN_STUDENT_ATTEMPT_FILTER in source.capability_flags
