@@ -41,7 +41,7 @@ from visu2.config import get_settings
 from visu2.contracts import RUNTIME_CORE_COLUMNS
 from visu2.figure_analysis import analyze_classroom_progression_sankey
 from visu2.remote_query import query_fact_attempts_for_classroom
-from visu2.runtime_sources import source_supports_classroom_all_data_option
+from visu2.runtime_sources import get_runtime_source
 
 MODE_OPTIONS = {
     "ZPDES": "zpdes",
@@ -186,7 +186,9 @@ div, p, label {
 
     min_students = int(scoped_profiles["students"].min() or 0)
     max_students = int(scoped_profiles["students"].max() or 0)
-    allow_all_data = source_supports_classroom_all_data_option(settings.source_id)
+    allow_all_data = "has_classroom_all_data_option" in get_runtime_source(
+        settings.source_id
+    ).capability_flags
     synthetic_only_scope = (
         scoped_profiles.height == 1
         and str(scoped_profiles["classroom_id"][0]) == SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID
