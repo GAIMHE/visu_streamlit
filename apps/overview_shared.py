@@ -134,16 +134,16 @@ def render_date_range_input(
         st.session_state[widget_key] = (min_date, max_date)
         st.session_state[signature_key] = signature
 
-    selected_range = st.sidebar.date_input(
-        label,
-        value=st.session_state.get(widget_key, default_value or (min_date, max_date))
-        if widget_key
-        else (default_value or (min_date, max_date)),
-        min_value=min_date,
-        max_value=max_date,
-        key=widget_key,
-        format="YYYY-MM-DD",
-    )
+    date_input_kwargs: dict[str, object] = {
+        "min_value": min_date,
+        "max_value": max_date,
+        "key": widget_key,
+        "format": "YYYY-MM-DD",
+    }
+    if not (widget_key and widget_key in st.session_state):
+        date_input_kwargs["value"] = default_value or (min_date, max_date)
+
+    selected_range = st.sidebar.date_input(label, **date_input_kwargs)
     normalized_range = normalize_date_input_range(selected_range)
     if normalized_range is None:
         st.error("Please provide a valid start and end date.")
@@ -223,17 +223,22 @@ def render_population_filters(
 
     min_student_attempts = 1
     if min_attempts_enabled:
+        min_attempts_key = f"{source_id}_population_min_attempts"
+        min_attempts_kwargs: dict[str, object] = {
+            "min_value": 1,
+            "max_value": 1_000_000,
+            "step": 1,
+            "key": min_attempts_key,
+            "help": (
+                "Keep only students with at least this many attempts inside the currently visible page scope."
+            ),
+        }
+        if min_attempts_key not in st.session_state:
+            min_attempts_kwargs["value"] = current_min_attempts
         min_student_attempts = int(
             st.sidebar.number_input(
                 "Minimum attempts per student",
-                min_value=1,
-                max_value=1_000_000,
-                value=current_min_attempts,
-                step=1,
-                key=f"{source_id}_population_min_attempts",
-                help=(
-                    "Keep only students with at least this many attempts inside the currently visible page scope."
-                ),
+                **min_attempts_kwargs,
             )
         )
         if min_student_attempts != current_min_attempts:
