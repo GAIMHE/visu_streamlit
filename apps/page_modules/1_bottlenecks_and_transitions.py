@@ -340,7 +340,7 @@ def main() -> None:
     render_figure_info("bottlenecks_transitions_path_chart")
     if filters.min_student_attempts > 1:
         transition_edges = _top_transition_edges_from_frame(
-            exact_transition_edges or pl.DataFrame(),
+            exact_transition_edges if exact_transition_edges is not None else pl.DataFrame(),
             top_n=top_n_transitions,
             has_same_objective_rate=transition_has_same_objective_rate,
         ).to_pandas()

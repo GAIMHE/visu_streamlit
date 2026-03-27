@@ -151,10 +151,17 @@ def _load_work_mode_transition_paths_from_fact(
     )
     fact_query = apply_min_student_attempts_filter(fact_query, min_student_attempts)
     fact_slice = collect_lazy(
-        fact_query.select(["user_id", "student_attempt_index", "created_at", "work_mode"])
+        fact_query.select(["user_id", "created_at", "work_mode"])
     )
     if fact_slice.height == 0:
         return pl.DataFrame()
+    fact_slice = (
+        fact_slice.sort(["user_id", "created_at", "work_mode"])
+        .with_columns(
+            pl.col("user_id").cum_count().over("user_id").alias("student_attempt_index")
+        )
+        .select(["user_id", "student_attempt_index", "created_at", "work_mode"])
+    )
     return build_work_mode_transition_paths(fact_slice)
 
 
