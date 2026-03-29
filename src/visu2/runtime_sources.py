@@ -5,28 +5,37 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-COMMON_RUNTIME_DATA_RELATIVE_PATHS: tuple[str, ...] = (
-    "data/learning_catalog.json",
+COMMON_RUNTIME_DATA_RELATIVE_PATHS: tuple[str, ...] = ("data/learning_catalog.json",)
+
+MAIN_RUNTIME_DATA_RELATIVE_PATHS: tuple[str, ...] = (
+    *COMMON_RUNTIME_DATA_RELATIVE_PATHS,
     "data/zpdes_rules.json",
+)
+
+MAUREEN_RUNTIME_DATA_RELATIVE_PATHS: tuple[str, ...] = COMMON_RUNTIME_DATA_RELATIVE_PATHS
+
+COMMON_LOCAL_BUILD_DATA_RELATIVE_PATHS: tuple[str, ...] = (
+    "data/student_interaction.parquet",
     "data/exercises.json",
 )
 
-COMMON_RUNTIME_REPORT_RELATIVE_PATHS: tuple[str, ...] = (
+MAIN_LOCAL_BUILD_DATA_RELATIVE_PATHS: tuple[str, ...] = COMMON_LOCAL_BUILD_DATA_RELATIVE_PATHS
+
+MAUREEN_LOCAL_BUILD_DATA_RELATIVE_PATHS: tuple[str, ...] = (
+    *COMMON_LOCAL_BUILD_DATA_RELATIVE_PATHS,
+    "data/zpdes_rules.json",
+)
+
+COMMON_LOCAL_BUILD_REPORT_RELATIVE_PATHS: tuple[str, ...] = (
     "artifacts/reports/consistency_report.json",
     "artifacts/reports/derived_manifest.json",
 )
 
-MAIN_DERIVED_TABLES: tuple[str, ...] = (
+MAIN_RUNTIME_DERIVED_TABLES: tuple[str, ...] = (
     "fact_attempt_core",
     "classroom_mode_profiles",
-    "classroom_activity_summary_by_mode",
     "agg_activity_daily",
-    "agg_objective_daily",
-    "agg_student_module_progress",
     "agg_transition_edges",
-    "agg_module_usage_daily",
-    "agg_playlist_module_usage",
-    "agg_module_activity_usage",
     "agg_exercise_daily",
     "agg_exercise_elo",
     "agg_exercise_elo_iterative",
@@ -36,15 +45,12 @@ MAIN_DERIVED_TABLES: tuple[str, ...] = (
     "student_elo_events_iterative",
     "student_elo_profiles_iterative",
     "zpdes_exercise_progression_events",
-    "work_mode_transition_paths",
 )
 
-MAUREEN_DERIVED_TABLES: tuple[str, ...] = (
+MAUREEN_RUNTIME_DERIVED_TABLES: tuple[str, ...] = (
     "fact_attempt_core",
     "classroom_mode_profiles",
-    "classroom_activity_summary_by_mode",
     "agg_activity_daily",
-    "agg_objective_daily",
     "agg_transition_edges",
     "agg_exercise_daily",
     "agg_exercise_elo",
@@ -54,8 +60,40 @@ MAUREEN_DERIVED_TABLES: tuple[str, ...] = (
     "student_elo_profiles",
     "student_elo_events_iterative",
     "student_elo_profiles_iterative",
+)
+
+COMMON_LEGACY_DERIVED_TABLES: tuple[str, ...] = (
+    "hierarchy_context_lookup",
+    "classroom_activity_summary_by_mode",
+    "agg_objective_daily",
+    "agg_module_usage_daily",
+    "agg_playlist_module_usage",
+    "agg_module_activity_usage",
     "work_mode_transition_paths",
 )
+
+MAIN_LEGACY_DERIVED_TABLES: tuple[str, ...] = (
+    *COMMON_LEGACY_DERIVED_TABLES,
+    "agg_student_module_progress",
+)
+
+MAUREEN_LEGACY_DERIVED_TABLES: tuple[str, ...] = COMMON_LEGACY_DERIVED_TABLES
+
+COMMON_LEGACY_REPORT_RELATIVE_PATHS: tuple[str, ...] = ("artifacts/reports/hierarchy_resolution_report.json",)
+
+COMMON_LEGACY_CLEANUP_RELATIVE_PATHS: tuple[str, ...] = (
+    "data/adaptiv_math_history.parquet",
+    "artifacts/derived/zpdes_first_arrival_events.parquet",
+    "artifacts/derived/agg_student_module_exposure.parquet",
+    "artifacts/reports/schema_snapshot.json",
+    "artifacts/reports/classroom_id_descriptive_stats.json",
+    "artifacts/reports/classroom_workmode_stats.json",
+    "artifacts/reports/.duckdb_tmp",
+)
+
+MAIN_LEGACY_CLEANUP_RELATIVE_PATHS: tuple[str, ...] = COMMON_LEGACY_CLEANUP_RELATIVE_PATHS
+
+MAUREEN_LEGACY_CLEANUP_RELATIVE_PATHS: tuple[str, ...] = COMMON_LEGACY_CLEANUP_RELATIVE_PATHS
 
 ALL_PAGE_IDS: frozenset[str] = frozenset(
     {
@@ -91,17 +129,31 @@ class RuntimeSourceSpec:
     label: str
     description: str
     runtime_root_relative: Path
+    local_root_relative: Path
+    legacy_root_relative: Path
     build_profile: str
     raw_inputs: dict[str, Path]
     supported_pages: tuple[str, ...]
     capability_flags: frozenset[str]
     remote_config_key: str
     runtime_relative_paths: tuple[str, ...]
-    derived_tables: tuple[str, ...]
+    runtime_derived_tables: tuple[str, ...]
+    local_build_relative_paths: tuple[str, ...]
+    legacy_derived_tables: tuple[str, ...]
+    legacy_relative_paths: tuple[str, ...]
+    legacy_cleanup_relative_paths: tuple[str, ...]
 
     def runtime_root(self, root_dir: Path) -> Path:
-        """Return the absolute runtime root for this source."""
+        """Return the absolute runtime root for one source."""
         return root_dir / self.runtime_root_relative
+
+    def local_root(self, root_dir: Path) -> Path:
+        """Return the absolute local-build root for one source."""
+        return root_dir / self.local_root_relative
+
+    def legacy_root(self, root_dir: Path) -> Path:
+        """Return the absolute legacy/debug root for one source."""
+        return root_dir / self.legacy_root_relative
 
 
 RUNTIME_SOURCES: dict[str, RuntimeSourceSpec] = {
@@ -109,10 +161,12 @@ RUNTIME_SOURCES: dict[str, RuntimeSourceSpec] = {
         source_id="main",
         label="Adaptiv'Math Main",
         description=(
-            "Full classroom-scale Adaptiv'Math dataset with the complete derived-runtime "
-            "surface, including classroom and ZPDES topology views."
+            "Full classroom-scale Adaptiv'Math dataset with the lean runtime surface "
+            "required by the active Streamlit application."
         ),
         runtime_root_relative=Path("artifacts") / "sources" / "main",
+        local_root_relative=Path("artifacts") / "local" / "main",
+        legacy_root_relative=Path("artifacts") / "legacy" / "main",
         build_profile="main",
         raw_inputs={
             "parquet": Path("data") / "adaptiv_math_history.parquet",
@@ -132,11 +186,19 @@ RUNTIME_SOURCES: dict[str, RuntimeSourceSpec] = {
         ),
         remote_config_key="main",
         runtime_relative_paths=(
-            COMMON_RUNTIME_DATA_RELATIVE_PATHS
-            + COMMON_RUNTIME_REPORT_RELATIVE_PATHS
-            + _derived_runtime_relative_paths(MAIN_DERIVED_TABLES)
+            MAIN_RUNTIME_DATA_RELATIVE_PATHS
+            + _derived_runtime_relative_paths(MAIN_RUNTIME_DERIVED_TABLES)
         ),
-        derived_tables=MAIN_DERIVED_TABLES,
+        runtime_derived_tables=MAIN_RUNTIME_DERIVED_TABLES,
+        local_build_relative_paths=(
+            MAIN_LOCAL_BUILD_DATA_RELATIVE_PATHS + COMMON_LOCAL_BUILD_REPORT_RELATIVE_PATHS
+        ),
+        legacy_derived_tables=MAIN_LEGACY_DERIVED_TABLES,
+        legacy_relative_paths=(
+            COMMON_LEGACY_REPORT_RELATIVE_PATHS
+            + _derived_runtime_relative_paths(MAIN_LEGACY_DERIVED_TABLES)
+        ),
+        legacy_cleanup_relative_paths=MAIN_LEGACY_CLEANUP_RELATIVE_PATHS,
     ),
     "maureen_m16fr": RuntimeSourceSpec(
         source_id="maureen_m16fr",
@@ -146,6 +208,8 @@ RUNTIME_SOURCES: dict[str, RuntimeSourceSpec] = {
             "using the researcher export with real classroom identifiers."
         ),
         runtime_root_relative=Path("artifacts") / "sources" / "maureen_m16fr",
+        local_root_relative=Path("artifacts") / "local" / "maureen_m16fr",
+        legacy_root_relative=Path("artifacts") / "legacy" / "maureen_m16fr",
         build_profile="maureen",
         raw_inputs={
             "attempts_csv": Path("data_maureen")
@@ -171,11 +235,19 @@ RUNTIME_SOURCES: dict[str, RuntimeSourceSpec] = {
         ),
         remote_config_key="maureen_m16fr",
         runtime_relative_paths=(
-            COMMON_RUNTIME_DATA_RELATIVE_PATHS
-            + COMMON_RUNTIME_REPORT_RELATIVE_PATHS
-            + _derived_runtime_relative_paths(MAUREEN_DERIVED_TABLES)
+            MAUREEN_RUNTIME_DATA_RELATIVE_PATHS
+            + _derived_runtime_relative_paths(MAUREEN_RUNTIME_DERIVED_TABLES)
         ),
-        derived_tables=MAUREEN_DERIVED_TABLES,
+        runtime_derived_tables=MAUREEN_RUNTIME_DERIVED_TABLES,
+        local_build_relative_paths=(
+            MAUREEN_LOCAL_BUILD_DATA_RELATIVE_PATHS + COMMON_LOCAL_BUILD_REPORT_RELATIVE_PATHS
+        ),
+        legacy_derived_tables=MAUREEN_LEGACY_DERIVED_TABLES,
+        legacy_relative_paths=(
+            COMMON_LEGACY_REPORT_RELATIVE_PATHS
+            + _derived_runtime_relative_paths(MAUREEN_LEGACY_DERIVED_TABLES)
+        ),
+        legacy_cleanup_relative_paths=MAUREEN_LEGACY_CLEANUP_RELATIVE_PATHS,
     ),
 }
 
@@ -198,8 +270,23 @@ def list_runtime_sources() -> tuple[RuntimeSourceSpec, ...]:
 
 
 def runtime_relative_paths_for_source(source_id: str | None = None) -> tuple[str, ...]:
-    """Return the full runtime file set expected for one source."""
+    """Return the runtime file set expected by the deployed app for one source."""
     return get_runtime_source(source_id).runtime_relative_paths
+
+
+def local_build_relative_paths_for_source(source_id: str | None = None) -> tuple[str, ...]:
+    """Return the local-only build files maintained outside the runtime tree."""
+    return get_runtime_source(source_id).local_build_relative_paths
+
+
+def legacy_relative_paths_for_source(source_id: str | None = None) -> tuple[str, ...]:
+    """Return the legacy/debug outputs that should live outside the runtime tree."""
+    return get_runtime_source(source_id).legacy_relative_paths
+
+
+def legacy_cleanup_relative_paths_for_source(source_id: str | None = None) -> tuple[str, ...]:
+    """Return extra stale runtime files that should be relocated if present."""
+    return get_runtime_source(source_id).legacy_cleanup_relative_paths
 
 
 def source_supports_exact_min_student_attempt_filter(source_id: str | None = None) -> bool:

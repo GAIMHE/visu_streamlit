@@ -28,8 +28,14 @@ from .derive_elo import (
     build_student_elo_events_from_fact,
     build_student_elo_profiles_from_events,
 )
-from .derive_fact import build_fact_attempt_core
+from .derive_fact import (
+    build_fact_attempt_core,
+    build_hierarchy_context_lookup,
+    build_hierarchy_resolution_bundle,
+    build_hierarchy_resolution_report,
+)
 from .derive_zpdes import build_zpdes_exercise_progression_events_from_fact
+from .reporting import write_json_report
 from .runtime_sources import get_runtime_source
 from .transitions import build_transition_edges_from_fact
 from .work_mode_transitions import build_work_mode_transition_paths
@@ -43,11 +49,17 @@ def _validate_required_columns(df: pl.DataFrame, required: list[str], label: str
 
 
 def _output_path(settings: Settings, table_name: str) -> Path:
-    return settings.artifacts_derived_dir / f"{table_name}.parquet"
+    source_spec = get_runtime_source(settings.source_id)
+    if table_name in source_spec.runtime_derived_tables:
+        return settings.artifacts_derived_dir / f"{table_name}.parquet"
+    if table_name in source_spec.legacy_derived_tables:
+        return settings.legacy_artifacts_derived_dir / f"{table_name}.parquet"
+    raise ValueError(f"Output path classification is missing for derived table: {table_name}")
 
 
 ALL_TABLE_BUILDERS: tuple[str, ...] = (
     "fact_attempt_core",
+    "hierarchy_context_lookup",
     "classroom_mode_profiles",
     "classroom_activity_summary_by_mode",
     "agg_activity_daily",
@@ -78,7 +90,7 @@ def write_derived_tables(
     """Build and persist the requested runtime parquet artifacts for one source."""
     ensure_artifact_directories(settings)
     source_spec = get_runtime_source(settings.source_id)
-    requested_tables = tuple(table_names or source_spec.derived_tables)
+    requested_tables = tuple(table_names or source_spec.runtime_derived_tables)
     unknown = sorted(set(requested_tables) - set(ALL_TABLE_BUILDERS))
     if unknown:
         raise ValueError(f"Unknown derived tables requested: {unknown}")
@@ -86,10 +98,24 @@ def write_derived_tables(
     outputs = {table_name: _output_path(settings, table_name) for table_name in requested_tables}
     requested_set = set(requested_tables)
 
-    fact = build_fact_attempt_core(settings, sample_rows=sample_rows)
+    resolution_bundle = build_hierarchy_resolution_bundle(settings, sample_rows=sample_rows)
+    fact = resolution_bundle.fact_attempt_core
     _validate_required_columns(fact, REQUIRED_FACT_COLUMNS, "fact_attempt_core")
     if "fact_attempt_core" in requested_set:
         fact.write_parquet(outputs["fact_attempt_core"])
+    hierarchy_context_lookup = resolution_bundle.hierarchy_context_lookup
+    if "hierarchy_context_lookup" in requested_set:
+        _validate_required_columns(
+            hierarchy_context_lookup,
+            REQUIRED_AGG_COLUMNS["hierarchy_context_lookup"],
+            "hierarchy_context_lookup",
+        )
+        hierarchy_context_lookup.write_parquet(outputs["hierarchy_context_lookup"])
+    if "hierarchy_context_lookup" in requested_set:
+        write_json_report(
+            build_hierarchy_resolution_report(hierarchy_context_lookup),
+            settings.hierarchy_resolution_report_path,
+        )
 
     def write_frame(label: str, frame: pl.DataFrame) -> pl.DataFrame:
         _validate_required_columns(frame, REQUIRED_AGG_COLUMNS[label], label)
@@ -200,6 +226,7 @@ def write_derived_tables(
 
 __all__ = [
     "build_fact_attempt_core",
+    "build_hierarchy_context_lookup",
     "build_classroom_mode_profiles",
     "build_classroom_activity_summary_by_mode",
     "build_agg_activity_daily_from_fact",

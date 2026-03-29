@@ -141,27 +141,46 @@ Recommended flow:
 
 ## How the deployed Streamlit app consumes these files
 
-The deployed app uses local file paths internally (`data/...` and `artifacts/...`), but those files can be synchronized at startup from this Hugging Face dataset repository.
+The deployed app uses local file paths internally (`data/...` and `artifacts/...`), but only the
+**runtime-required** subset should be synchronized from the Hugging Face dataset repository.
 
 Expected deployment pattern:
 1. Keep code in GitHub.
-2. Keep runtime files in this HF dataset repo with the same relative paths.
-3. Configure app secrets/env:
-   - `VISU2_HF_REPO_ID`
-   - `VISU2_HF_REVISION` (pin to a tag/commit)
-   - `HF_TOKEN` (private access)
-4. On startup, the app downloads the required runtime subset for the page being opened and then runs normally with local paths.
+2. Keep runtime files in the HF dataset repo under the same relative paths found in `artifacts/sources/<source_id>/`.
+3. Keep local build inputs and debug outputs out of the HF runtime upload:
+   - `artifacts/local/<source_id>/...`
+   - `artifacts/legacy/<source_id>/...`
+4. Configure app secrets/env:
+   - `VISU2_HF_SOURCES_JSON` (preferred multi-source config)
+   - or legacy `VISU2_HF_REPO_ID` / `VISU2_HF_REVISION`
+   - `HF_TOKEN`
+5. On startup, the app downloads only the required runtime subset for the selected page and then runs normally with local runtime paths.
 
-Runtime subset usually needed by the app:
+Runtime subset used by the current app:
 - `data/learning_catalog.json`
-- `data/zpdes_rules.json`
+- `data/zpdes_rules.json` for the `main` source only
+- runtime derived tables under `artifacts/derived/` such as:
+  - `fact_attempt_core.parquet`
+  - `agg_activity_daily.parquet`
+  - `agg_transition_edges.parquet`
+  - `agg_exercise_daily.parquet`
+  - `agg_activity_elo.parquet`
+  - `agg_exercise_elo.parquet`
+  - `agg_exercise_elo_iterative.parquet`
+  - `classroom_mode_profiles.parquet`
+  - `student_elo_profiles.parquet`
+  - `student_elo_profiles_iterative.parquet`
+  - `student_elo_events.parquet`
+  - `student_elo_events_iterative.parquet`
+  - `zpdes_exercise_progression_events.parquet` for the `main` source only
+
+Not required at deployed runtime:
+- `data/adaptiv_math_history.parquet`
 - `data/exercises.json`
+- `data/student_interaction.parquet`
 - `artifacts/reports/consistency_report.json`
 - `artifacts/reports/derived_manifest.json`
-- `artifacts/derived/*.parquet`
-
-Current lean runtime artifact set excludes:
-- `artifacts/derived/agg_student_module_exposure.parquet` (deprecated/removed from build contract).
+- debug/legacy outputs such as `hierarchy_context_lookup.parquet` and `hierarchy_resolution_report.json`
 
 Note:
 - `adaptiv_math_history.parquet` is not required at deployed runtime unless you rebuild derived artifacts inside the deployment environment.

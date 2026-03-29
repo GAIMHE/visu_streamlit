@@ -115,7 +115,7 @@ def _build_one_source(
         can_reuse, reuse_reason = can_reuse_derived_build(
             settings=settings,
             source_id=source_id,
-            expected_tables=source.derived_tables,
+            expected_tables=source.runtime_derived_tables,
             sample_rows=sample_rows,
             source_input_snapshot=source_input_snapshot,
         )
@@ -128,10 +128,9 @@ def _build_one_source(
                 skip_checks=skip_checks,
             )
         print(f"Source '{source_id}' requires rebuild. {reuse_reason}")
-        rebuild_all_tables = reuse_reason in {
-            "Raw source inputs changed since the last successful build.",
-            "Derived manifest is missing.",
-        } or reuse_reason.startswith("Runtime input is missing:")
+        rebuild_all_tables = reuse_reason == "Raw source inputs changed since the last successful build." or reuse_reason.startswith(
+            "Materialized build input is missing:"
+        )
 
     materialization = materialize_source_runtime_inputs(settings)
     print(f"Materialized source '{source_id}' into {settings.runtime_root}")
@@ -156,14 +155,17 @@ def _build_one_source(
         built_outputs = write_derived_tables(
             settings,
             sample_rows=sample_rows,
-            table_names=tuple(source.derived_tables),
+            table_names=tuple(source.runtime_derived_tables),
         )
         outputs.update(built_outputs)
-        print(f"Rebuilt derived tables for source '{source_id}': {', '.join(source.derived_tables)}")
+        print(
+            f"Rebuilt derived tables for source '{source_id}': "
+            f"{', '.join(source.runtime_derived_tables)}"
+        )
     else:
         legacy_derived_dir = settings.root_dir / "artifacts" / "derived"
         missing_tables: list[str] = []
-        for table_name in source.derived_tables:
+        for table_name in source.runtime_derived_tables:
             dst_path = settings.artifacts_derived_dir / f"{table_name}.parquet"
             if dst_path.exists():
                 outputs[table_name] = dst_path
@@ -188,6 +190,7 @@ def _build_one_source(
             print(f"Built missing derived tables for source '{source_id}': {', '.join(missing_tables)}")
         else:
             print(f"All derived tables for source '{source_id}' were already present; refreshed the manifest only.")
+
     manifest = _build_manifest(
         source_id=source_id,
         outputs=outputs,

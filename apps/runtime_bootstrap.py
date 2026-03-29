@@ -15,6 +15,7 @@ from visu2.hf_sync import (
     load_hf_repo_config,
     local_only_sync_result,
 )
+from visu2.runtime_sources import runtime_relative_paths_for_source
 
 
 def _secrets_mapping() -> Mapping[str, object] | None:
@@ -58,17 +59,14 @@ def _cached_runtime_sync(
     return ensure_runtime_assets_from_hf(settings, config, required_paths=required_paths)
 
 
-def _format_expected_paths_markdown(required_paths: tuple[str, ...] | None) -> str:
+def _format_expected_paths_markdown(
+    required_paths: tuple[str, ...] | None,
+    *,
+    source_id: str,
+) -> str:
     """Format page-specific runtime expectations for UI error reporting."""
     if not required_paths:
-        return (
-            "- `data/learning_catalog.json`\n"
-            "- `data/zpdes_rules.json`\n"
-            "- `data/exercises.json`\n"
-            "- `artifacts/reports/consistency_report.json`\n"
-            "- `artifacts/reports/derived_manifest.json`\n"
-            "- `artifacts/derived/*.parquet`"
-        )
+        required_paths = runtime_relative_paths_for_source(source_id)
     return "\n".join(f"- `{path}`" for path in required_paths)
 
 
@@ -94,6 +92,6 @@ def bootstrap_runtime_assets(
         st.markdown("Required configuration keys:")
         st.markdown("- `VISU2_HF_SOURCES_JSON` (preferred) or legacy `VISU2_HF_REPO_ID`/`VISU2_HF_REVISION`\n- `HF_TOKEN`")
         st.markdown("Expected runtime files:")
-        st.markdown(_format_expected_paths_markdown(required_tuple))
+        st.markdown(_format_expected_paths_markdown(required_tuple, source_id=source_id))
         st.code(str(err))
         st.stop()

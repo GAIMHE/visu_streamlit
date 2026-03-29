@@ -18,7 +18,7 @@ Functions
 from __future__ import annotations
 
 DERIVED_MANIFEST_VERSION = "1.0"
-DERIVED_SCHEMA_VERSION = "phase0_thin_slice_v8_iterative_elo_comparison"
+DERIVED_SCHEMA_VERSION = "phase0_thin_slice_v9_context_aware_hierarchy"
 ACTIVE_CANONICAL_MODULE_CODES = ("M1", "M31", "M32", "M33", "M41", "M42", "M43")
 
 EXPECTED_BASELINE = {
@@ -78,6 +78,22 @@ REQUIRED_FACT_COLUMNS = [
 ]
 
 REQUIRED_AGG_COLUMNS = {
+    "hierarchy_context_lookup": [
+        "playlist_or_module_id",
+        "objective_id",
+        "activity_id",
+        "exercise_id",
+        "module_id",
+        "module_code",
+        "module_label",
+        "objective_label",
+        "activity_label",
+        "resolution_source_module",
+        "resolution_source_objective",
+        "resolution_source_activity",
+        "attempts",
+        "unique_students",
+    ],
     "classroom_mode_profiles": [
         "mode_scope",
         "classroom_id",

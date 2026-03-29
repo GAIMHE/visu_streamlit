@@ -6,6 +6,12 @@ Each dataset source has its own built runtime folder:
 - `artifacts/sources/main/`
 - `artifacts/sources/maureen_m16fr/`
 
+Local-only files now live outside the runtime upload tree:
+- `artifacts/local/main/`
+- `artifacts/local/maureen_m16fr/`
+- `artifacts/legacy/main/`
+- `artifacts/legacy/maureen_m16fr/`
+
 Each Hugging Face dataset repo should receive the **contents** of one of those folders at the repo root.
 
 ## Full recommended sequence
@@ -51,7 +57,10 @@ hf upload-large-folder GAIMHE/M16 --repo-type dataset ./artifacts/sources/mauree
 - The target HF repo root should contain:
   - `data/`
   - `artifacts/derived/`
-  - `artifacts/reports/`
+- It should **not** include:
+  - `artifacts/local/...`
+  - `artifacts/legacy/...`
+  - local build reports under `artifacts/reports/`
 
 ## Streamlit secrets
 
@@ -86,4 +95,16 @@ HF_TOKEN=...
 ```bash
 uv run python scripts/build_derived.py --source main --strict-checks --force
 uv run python scripts/build_derived.py --source maureen_m16fr --strict-checks --force
+```
+
+## If you want to relocate older non-runtime files out of the runtime trees
+
+```bash
+uv run python scripts/migrate_runtime_legacy_artifacts.py
+```
+
+Dry run:
+
+```bash
+uv run python scripts/migrate_runtime_legacy_artifacts.py --dry-run
 ```

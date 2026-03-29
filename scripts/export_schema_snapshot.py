@@ -1,4 +1,4 @@
-"""Export a schema snapshot for runtime source, artifact, and report files.
+"""Export a schema snapshot for one source-aware runtime file surface.
 
 This CLI generates a deterministic JSON report that documents the current
 runtime dataset shapes. It is intended to support long-term database
@@ -6,7 +6,7 @@ documentation maintenance and drift detection.
 
 Examples
 --------
-Generate the default snapshot under ``artifacts/reports``:
+Generate the default snapshot under ``artifacts/legacy/main/artifacts/reports``:
 
 >>> uv run python scripts/export_schema_snapshot.py
 
@@ -33,7 +33,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from visu2 import contracts
-from visu2.hf_sync import DEFAULT_RUNTIME_RELATIVE_PATHS
+from visu2.runtime_sources import DEFAULT_SOURCE_ID, runtime_relative_paths_for_source
 
 
 @dataclass(frozen=True)
@@ -53,6 +53,7 @@ class SnapshotConfig:
     """
 
     root: Path
+    source_id: str
     output: Path
     include_null_counts: bool
     strict: bool
@@ -70,7 +71,7 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def _runtime_relative_paths() -> list[str]:
+def _runtime_relative_paths(source_id: str) -> list[str]:
     """Build the list of runtime files to include in the snapshot.
 
     Returns
@@ -79,8 +80,7 @@ def _runtime_relative_paths() -> list[str]:
         Relative file paths that define the runtime data surface.
     """
 
-    paths = {"data/student_interaction.parquet", *DEFAULT_RUNTIME_RELATIVE_PATHS}
-    return sorted(paths)
+    return sorted(runtime_relative_paths_for_source(source_id))
 
 
 def _snapshot_parquet(path: Path, include_null_counts: bool) -> dict[str, Any]:
@@ -201,7 +201,7 @@ def build_snapshot(config: SnapshotConfig) -> dict[str, Any]:
         If strict mode is enabled and expected runtime files are missing.
     """
 
-    expected = _runtime_relative_paths()
+    expected = _runtime_relative_paths(config.source_id)
     files: dict[str, Any] = {}
     missing: list[str] = []
 
@@ -246,9 +246,15 @@ def parse_args() -> argparse.Namespace:
         help="Repository root containing data/ and artifacts/ folders.",
     )
     parser.add_argument(
+        "--source",
+        type=str,
+        default=DEFAULT_SOURCE_ID,
+        help=f"Runtime source id to snapshot. Default: {DEFAULT_SOURCE_ID}",
+    )
+    parser.add_argument(
         "--output",
         type=Path,
-        default=Path("artifacts/reports/schema_snapshot.json"),
+        default=None,
         help="Relative (to --root) or absolute output path.",
     )
     parser.add_argument(
@@ -275,9 +281,12 @@ def main() -> int:
 
     args = parse_args()
     root = args.root.resolve()
-    output = args.output if args.output.is_absolute() else (root / args.output)
+    default_output = Path("artifacts") / "legacy" / args.source / "artifacts" / "reports" / "schema_snapshot.json"
+    output_arg = default_output if args.output is None else args.output
+    output = output_arg if output_arg.is_absolute() else (root / output_arg)
     config = SnapshotConfig(
         root=root,
+        source_id=args.source,
         output=output,
         include_null_counts=not args.skip_nulls,
         strict=args.strict,

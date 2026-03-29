@@ -39,12 +39,12 @@ def build_source_input_snapshot(
     }
 
 
-def runtime_input_paths(settings: Settings) -> tuple[Path, ...]:
-    """Return the source-local runtime inputs expected after materialization."""
+def materialized_input_paths(settings: Settings) -> tuple[Path, ...]:
+    """Return the source-local inputs expected after materialization."""
     return (
         settings.parquet_path,
         settings.learning_catalog_path,
-        settings.zpdes_rules_path,
+        settings.build_zpdes_rules_path,
         settings.exercises_json_path,
     )
 
@@ -79,9 +79,9 @@ def can_reuse_derived_build(
     if manifest.get("source_input_snapshot") != dict(source_input_snapshot):
         return False, "Raw source inputs changed since the last successful build."
 
-    for runtime_input in runtime_input_paths(settings):
-        if not runtime_input.exists():
-            return False, f"Runtime input is missing: {runtime_input}"
+    for materialized_input in materialized_input_paths(settings):
+        if not materialized_input.exists():
+            return False, f"Materialized build input is missing: {materialized_input}"
 
     table_profiles = manifest.get("tables") or {}
     for table_name in expected_tables:

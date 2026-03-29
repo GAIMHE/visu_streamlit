@@ -13,14 +13,21 @@ from visu2.config import Settings
 
 def _build_settings(tmp_path: Path, *, source_id: str = "maureen_m16fr") -> Settings:
     runtime_root = tmp_path / "artifacts" / "sources" / source_id
+    local_root = tmp_path / "artifacts" / "local" / source_id
+    legacy_root = tmp_path / "artifacts" / "legacy" / source_id
     data_dir = runtime_root / "data"
     artifacts_dir = runtime_root / "artifacts"
     derived_dir = artifacts_dir / "derived"
     reports_dir = artifacts_dir / "reports"
+    local_data_dir = local_root / "data"
+    local_reports_dir = local_root / "artifacts" / "reports"
     resources_dir = tmp_path / "ressources"
     data_dir.mkdir(parents=True, exist_ok=True)
     derived_dir.mkdir(parents=True, exist_ok=True)
     reports_dir.mkdir(parents=True, exist_ok=True)
+    local_data_dir.mkdir(parents=True, exist_ok=True)
+    local_reports_dir.mkdir(parents=True, exist_ok=True)
+    (legacy_root / "artifacts" / "reports").mkdir(parents=True, exist_ok=True)
     resources_dir.mkdir(parents=True, exist_ok=True)
     return Settings(
         root_dir=tmp_path,
@@ -29,13 +36,15 @@ def _build_settings(tmp_path: Path, *, source_id: str = "maureen_m16fr") -> Sett
         artifacts_dir=artifacts_dir,
         artifacts_derived_dir=derived_dir,
         artifacts_reports_dir=reports_dir,
-        parquet_path=data_dir / "student_interaction.parquet",
+        parquet_path=local_data_dir / "student_interaction.parquet",
         learning_catalog_path=data_dir / "learning_catalog.json",
         zpdes_rules_path=data_dir / "zpdes_rules.json",
-        exercises_json_path=data_dir / "exercises.json",
-        consistency_report_path=reports_dir / "consistency_report.json",
-        derived_manifest_path=reports_dir / "derived_manifest.json",
+        exercises_json_path=local_data_dir / "exercises.json",
+        consistency_report_path=local_reports_dir / "consistency_report.json",
+        derived_manifest_path=local_reports_dir / "derived_manifest.json",
         runtime_root_dir=runtime_root,
+        local_root_dir=local_root,
+        legacy_root_dir=legacy_root,
         source_id=source_id,
         source_label=source_id,
     )
@@ -69,7 +78,7 @@ def test_can_reuse_derived_build_when_manifest_matches(tmp_path: Path) -> None:
     for runtime_path in [
         settings.parquet_path,
         settings.learning_catalog_path,
-        settings.zpdes_rules_path,
+        settings.build_zpdes_rules_path,
         settings.exercises_json_path,
     ]:
         runtime_path.write_text("placeholder", encoding="utf-8")

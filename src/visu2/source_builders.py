@@ -661,7 +661,7 @@ def _build_maureen_catalog_and_raw(
 
 
 def materialize_source_runtime_inputs(settings: Settings) -> SourceMaterializationReport:
-    """Materialize one source into the source-local runtime data directory."""
+    """Materialize one source into runtime and local-build directories."""
     ensure_artifact_directories(settings)
     source = get_runtime_source(settings.source_id)
 
@@ -696,7 +696,7 @@ def materialize_source_runtime_inputs(settings: Settings) -> SourceMaterializati
             json.dumps(learning_catalog, indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
-        settings.zpdes_rules_path.write_text(
+        settings.local_zpdes_rules_path.write_text(
             json.dumps(zpdes_rules, indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
@@ -709,7 +709,7 @@ def materialize_source_runtime_inputs(settings: Settings) -> SourceMaterializati
             input_paths=(
                 str(settings.parquet_path),
                 str(settings.learning_catalog_path),
-                str(settings.zpdes_rules_path),
+                str(settings.local_zpdes_rules_path),
                 str(settings.exercises_json_path),
             ),
             warnings=warnings,

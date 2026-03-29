@@ -193,7 +193,7 @@ def _build_catalog_frames(
 ) -> tuple[pl.DataFrame, pl.DataFrame, dict[str, Any], dict[str, Any], dict[str, Any]]:
     """Load canonical metadata and return reusable hierarchy frames."""
     catalog = load_learning_catalog(settings.learning_catalog_path)
-    rules = load_zpdes_rules(settings.zpdes_rules_path)
+    rules = load_zpdes_rules(settings.build_zpdes_rules_path)
     exercises = load_exercises(settings.exercises_json_path)
     frames = catalog_to_summary_frames(catalog)
     exercise_hierarchy = frames.exercise_hierarchy.select(
@@ -1429,7 +1429,7 @@ def build_irt_feasibility_report(
         "inputs": {
             "parquet_path": str(settings.parquet_path),
             "learning_catalog_path": str(settings.learning_catalog_path),
-            "zpdes_rules_path": str(settings.zpdes_rules_path),
+            "zpdes_rules_path": str(settings.build_zpdes_rules_path),
             "exercises_json_path": str(settings.exercises_json_path),
         },
         "scope": {

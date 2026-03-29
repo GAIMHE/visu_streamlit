@@ -42,7 +42,7 @@ def main() -> int:
         "--output",
         type=str,
         default=None,
-        help="Optional report output path. Default: source-local artifacts/reports/consistency_report.json",
+        help="Optional report output path. Default: source-local artifacts/local/<source>/artifacts/reports/consistency_report.json",
     )
     parser.add_argument("--strict", action="store_true", help="Exit non-zero if any check fails.")
     parser.add_argument(
