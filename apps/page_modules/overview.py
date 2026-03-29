@@ -582,7 +582,7 @@ def main() -> None:
     sankey_figure = build_work_mode_transition_sankey(transition_paths)
     st.plotly_chart(
         sankey_figure,
-        width=True,
+        width="stretch",
         config=build_plotly_chart_config(),
     )
     render_figure_analysis(analyze_work_mode_transitions(transition_paths))

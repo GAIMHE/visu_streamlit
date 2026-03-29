@@ -59,8 +59,8 @@ def main() -> int:
         print(f"Run: uv run python scripts/build_derived.py --source {args.source}")
         return 1
 
-    _smoke_import(app_path)
     if args.smoke:
+        _smoke_import(app_path)
         print(f"Smoke check successful for source '{args.source}'.")
         return 0
 
