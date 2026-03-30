@@ -266,8 +266,6 @@ def test_available_elo_system_configs_only_exposes_systems_with_local_artifacts(
     )
     settings.artifacts_derived_dir.mkdir(parents=True)
     (settings.artifacts_derived_dir / "student_elo_profiles.parquet").write_text("ok", encoding="utf-8")
-    (tmp_path / "artifacts" / "derived").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "artifacts" / "derived" / "student_elo_events.parquet").write_text("ok", encoding="utf-8")
 
     available = module._available_elo_system_configs(settings)
 

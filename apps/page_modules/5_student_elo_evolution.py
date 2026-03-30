@@ -143,12 +143,11 @@ def _parquet_columns(path: Path) -> list[str]:
 
 
 def _available_elo_system_configs(settings) -> dict[str, dict[str, str]]:
-    """Return only the Elo systems whose local profile and event artifacts are present."""
+    """Return only the Elo systems whose local profile artifacts are present."""
     available: dict[str, dict[str, str]] = {}
     for system_name, config in ELO_SYSTEM_CONFIGS.items():
         profiles_path = settings.artifacts_derived_dir / config["profiles_filename"]
-        events_path = settings.runtime_root / config["events_relative_path"]
-        if profiles_path.exists() and events_path.exists():
+        if profiles_path.exists():
             available[system_name] = config
     return available
 
@@ -182,7 +181,6 @@ div, p, label {
     required = [
         current_exercise_elo_path,
         all_system_paths["Current Elo"],
-        settings.runtime_root / CURRENT_EVENTS_RELATIVE_PATH,
     ]
     missing = [path for path in required if not path.exists()]
     if missing:
@@ -197,7 +195,6 @@ div, p, label {
             "\n".join(
                 (
                     str(all_system_paths["Current Elo"]),
-                    str(settings.runtime_root / CURRENT_EVENTS_RELATIVE_PATH),
                 )
             )
         )
