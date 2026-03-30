@@ -26,10 +26,17 @@ Functions
 from __future__ import annotations
 
 import json
+import sys
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import polars as pl
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+APPS_DIR = ROOT_DIR / "apps"
+if str(APPS_DIR) not in sys.path:
+    sys.path.insert(0, str(APPS_DIR))
 
 from visu2.student_elo import (
     build_student_elo_comparison_figure,
@@ -249,6 +256,24 @@ def test_modules_for_student_returns_rows_sorted_by_attempts() -> None:
     assert modules["module_code"].to_list() == ["M1", "M2"]
 
 
+def test_available_elo_system_configs_only_exposes_systems_with_local_artifacts(
+    tmp_path: Path,
+) -> None:
+    module = __import__("page_modules.5_student_elo_evolution", fromlist=["dummy"])
+    settings = SimpleNamespace(
+        artifacts_derived_dir=tmp_path / "artifacts" / "derived",
+        runtime_root=tmp_path,
+    )
+    settings.artifacts_derived_dir.mkdir(parents=True)
+    (settings.artifacts_derived_dir / "student_elo_profiles.parquet").write_text("ok", encoding="utf-8")
+    (tmp_path / "artifacts" / "derived").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "artifacts" / "derived" / "student_elo_events.parquet").write_text("ok", encoding="utf-8")
+
+    available = module._available_elo_system_configs(settings)
+
+    assert tuple(available) == ("Current Elo",)
+
+
 def test_build_student_elo_payload_respects_step_size_and_final_point() -> None:
     """Test build student elo payload respects step size and final point.
 
@@ -423,6 +448,13 @@ def test_build_student_elo_figure_hovertemplate_mentions_objective_and_module() 
     hovertemplate = figure.data[0].hovertemplate
     assert "<b>Objective</b>" in hovertemplate
     assert "<b>Module</b>" in hovertemplate
+
+
+def test_build_student_elo_figure_can_show_selected_system_title() -> None:
+    payload = build_student_elo_payload(_events(), ["u1"], step_size=2)
+    figure = build_student_elo_figure(payload, frame_idx=1, system_label="Batch Replay Elo")
+
+    assert "Batch Replay Elo" in str(figure.layout.title.text)
 
 
 def test_build_student_elo_comparison_payload_aligns_systems() -> None:

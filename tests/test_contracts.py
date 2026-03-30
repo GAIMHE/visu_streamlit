@@ -147,6 +147,8 @@ Examples
         "agg_activity_elo",
         "student_elo_events",
         "student_elo_profiles",
+        "student_elo_events_batch_replay",
+        "student_elo_profiles_batch_replay",
         "student_elo_events_iterative",
         "student_elo_profiles_iterative",
         "zpdes_exercise_progression_events",

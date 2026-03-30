@@ -21,12 +21,13 @@ from visu2.build_cache import (
     BUILD_CACHE_VERSION,
     build_source_input_snapshot,
     can_reuse_derived_build,
+    materialized_input_paths,
 )
 from visu2.checks import run_all_checks
 from visu2.config import ensure_artifact_directories, get_settings
 from visu2.contracts import DERIVED_MANIFEST_VERSION, DERIVED_SCHEMA_VERSION
 from visu2.derive import write_derived_tables
-from visu2.reporting import write_derived_manifest, write_json_report
+from visu2.reporting import load_derived_manifest, write_derived_manifest, write_json_report
 from visu2.runtime_sources import DEFAULT_SOURCE_ID, get_runtime_source, list_runtime_sources
 from visu2.source_builders import materialize_source_runtime_inputs
 
@@ -51,13 +52,13 @@ def _parquet_table_profile(path: Path) -> dict[str, object]:
 def _build_manifest(
     *,
     source_id: str,
-    outputs: dict[str, Path],
+    table_outputs: dict[str, Path],
     sample_rows: int | None,
     strict_checks: bool,
     checks_status: str,
     source_input_snapshot: dict[str, dict[str, int | str]],
 ) -> dict[str, object]:
-    tables = {table_name: _parquet_table_profile(path) for table_name, path in outputs.items()}
+    tables = {table_name: _parquet_table_profile(path) for table_name, path in table_outputs.items()}
     return {
         "manifest_version": DERIVED_MANIFEST_VERSION,
         "generated_at_utc": _ts(),
@@ -72,6 +73,50 @@ def _build_manifest(
         },
         "tables": tables,
     }
+
+
+def _materialized_inputs_ready(settings) -> bool:
+    return all(path.exists() for path in materialized_input_paths(settings))
+
+
+def _parse_requested_tables(raw_tables: str | None) -> tuple[str, ...] | None:
+    if raw_tables is None:
+        return None
+    requested = [
+        token.strip()
+        for chunk in str(raw_tables).split(",")
+        for token in chunk.split()
+        if token.strip()
+    ]
+    normalized: list[str] = []
+    for table_name in requested:
+        if table_name not in normalized:
+            normalized.append(table_name)
+    return tuple(normalized) or None
+
+
+def _merge_manifest_table_outputs(
+    *,
+    settings,
+    source,
+    updated_outputs: dict[str, Path],
+) -> dict[str, Path]:
+    merged: dict[str, Path] = {}
+    if settings.derived_manifest_path.exists():
+        try:
+            existing_manifest = load_derived_manifest(settings.derived_manifest_path)
+        except (FileNotFoundError, ValueError):
+            existing_manifest = {}
+        for table_name in source.runtime_derived_tables:
+            table_entry = (existing_manifest.get("tables") or {}).get(table_name)
+            table_path = settings.artifacts_derived_dir / f"{table_name}.parquet"
+            if table_name in updated_outputs:
+                merged[table_name] = updated_outputs[table_name]
+            elif table_entry and table_path.exists():
+                merged[table_name] = table_path
+    for table_name, path in updated_outputs.items():
+        merged[table_name] = path
+    return merged
 
 
 def _refresh_checks_if_needed(*, settings, source_id: str, strict_checks: bool, skip_checks: bool) -> int:
@@ -103,19 +148,28 @@ def _build_one_source(
     skip_checks: bool,
     strict_checks: bool,
     force: bool,
+    requested_tables: tuple[str, ...] | None,
 ) -> int:
     settings = get_settings(source_id)
     ensure_artifact_directories(settings)
     source = get_runtime_source(source_id)
+    target_tables = tuple(requested_tables or source.runtime_derived_tables)
+    unknown_tables = sorted(set(target_tables) - set(source.runtime_derived_tables))
+    if unknown_tables:
+        print(
+            f"Source '{source_id}' does not expose these runtime tables: {', '.join(unknown_tables)}"
+        )
+        return 1
     source_input_snapshot = build_source_input_snapshot(settings, source.raw_inputs)
     rebuild_all_tables = bool(force)
     reuse_reason = ""
+    partial_build = requested_tables is not None
 
     if not force:
         can_reuse, reuse_reason = can_reuse_derived_build(
             settings=settings,
             source_id=source_id,
-            expected_tables=source.runtime_derived_tables,
+            expected_tables=target_tables,
             sample_rows=sample_rows,
             source_input_snapshot=source_input_snapshot,
         )
@@ -128,19 +182,30 @@ def _build_one_source(
                 skip_checks=skip_checks,
             )
         print(f"Source '{source_id}' requires rebuild. {reuse_reason}")
-        rebuild_all_tables = reuse_reason == "Raw source inputs changed since the last successful build." or reuse_reason.startswith(
-            "Materialized build input is missing:"
-        )
+        raw_inputs_changed = reuse_reason == "Raw source inputs changed since the last successful build."
+        materialized_missing = reuse_reason.startswith("Materialized build input is missing:")
+        rebuild_all_tables = raw_inputs_changed or materialized_missing
+        if partial_build and (raw_inputs_changed or materialized_missing):
+            print(
+                "Targeted table builds require unchanged raw inputs and already-materialized local inputs. "
+                "Run the full build once, or rerun without `--tables`."
+            )
+            return 1
 
-    materialization = materialize_source_runtime_inputs(settings)
-    print(f"Materialized source '{source_id}' into {settings.runtime_root}")
-    for path in materialization.input_paths:
-        print(f"- input: {path}")
-    for warning in materialization.warnings:
-        print(f"- warning: {warning}")
+    performed_materialization = rebuild_all_tables or not _materialized_inputs_ready(settings)
+    if performed_materialization:
+        materialization = materialize_source_runtime_inputs(settings)
+        print(f"Materialized source '{source_id}' into {settings.runtime_root}")
+        for path in materialization.input_paths:
+            print(f"- input: {path}")
+        for warning in materialization.warnings:
+            print(f"- warning: {warning}")
+    else:
+        print(f"Reusing materialized inputs already present for source '{source_id}'.")
 
     checks_status = "skipped"
-    if not skip_checks:
+    should_run_checks = not skip_checks and (performed_materialization or not settings.consistency_report_path.exists())
+    if should_run_checks:
         report = run_all_checks(settings)
         write_json_report(report, settings.consistency_report_path)
         print(f"Consistency report written to: {settings.consistency_report_path}")
@@ -149,23 +214,26 @@ def _build_one_source(
             print(f"Checks failed for source '{source_id}' and --strict-checks is enabled; aborting derived build.")
             print(json.dumps(report, indent=2))
             return 1
+    elif settings.consistency_report_path.exists():
+        checks_status = "reused"
+        print(f"Reusing existing consistency report at: {settings.consistency_report_path}")
 
     outputs: dict[str, Path] = {}
     if rebuild_all_tables:
         built_outputs = write_derived_tables(
             settings,
             sample_rows=sample_rows,
-            table_names=tuple(source.runtime_derived_tables),
+            table_names=tuple(source.runtime_derived_tables if not partial_build else target_tables),
         )
         outputs.update(built_outputs)
         print(
             f"Rebuilt derived tables for source '{source_id}': "
-            f"{', '.join(source.runtime_derived_tables)}"
+            f"{', '.join(source.runtime_derived_tables if not partial_build else target_tables)}"
         )
     else:
         legacy_derived_dir = settings.root_dir / "artifacts" / "derived"
         missing_tables: list[str] = []
-        for table_name in source.runtime_derived_tables:
+        for table_name in target_tables:
             dst_path = settings.artifacts_derived_dir / f"{table_name}.parquet"
             if dst_path.exists():
                 outputs[table_name] = dst_path
@@ -189,11 +257,16 @@ def _build_one_source(
             outputs.update(built_outputs)
             print(f"Built missing derived tables for source '{source_id}': {', '.join(missing_tables)}")
         else:
-            print(f"All derived tables for source '{source_id}' were already present; refreshed the manifest only.")
+            print(f"All requested derived tables for source '{source_id}' were already present; refreshed the manifest only.")
 
+    manifest_outputs = (
+        outputs
+        if not partial_build
+        else _merge_manifest_table_outputs(settings=settings, source=source, updated_outputs=outputs)
+    )
     manifest = _build_manifest(
         source_id=source_id,
-        outputs=outputs,
+        table_outputs=manifest_outputs,
         sample_rows=sample_rows,
         strict_checks=strict_checks,
         checks_status=checks_status,
@@ -220,7 +293,18 @@ def main() -> int:
     )
     parser.add_argument("--all-sources", action="store_true", help="Build every registered runtime source.")
     parser.add_argument("--force", action="store_true", help="Rebuild even when source inputs and outputs appear unchanged.")
+    parser.add_argument(
+        "--tables",
+        type=str,
+        default=None,
+        help="Optional comma-separated runtime derived tables to build for one source only.",
+    )
     args = parser.parse_args()
+
+    if args.tables and args.all_sources:
+        parser.error("--tables cannot be combined with --all-sources")
+
+    requested_tables = _parse_requested_tables(args.tables)
 
     source_ids = [spec.source_id for spec in list_runtime_sources()] if args.all_sources else [args.source]
     failures = 0
@@ -231,6 +315,7 @@ def main() -> int:
             skip_checks=args.skip_checks,
             strict_checks=args.strict_checks,
             force=args.force,
+            requested_tables=requested_tables,
         )
     return 1 if failures else 0
 

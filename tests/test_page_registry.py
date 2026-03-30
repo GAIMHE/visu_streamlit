@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import sys
 from pathlib import Path
 
@@ -16,11 +17,28 @@ from visu2.runtime_sources import get_runtime_source
 def test_student_elo_bootstrap_paths_exclude_heavy_event_tables() -> None:
     page = PAGE_SPEC_BY_ID["student_elo"]
     assert "artifacts/derived/student_elo_events.parquet" not in page.bootstrap_runtime_paths
+    assert "artifacts/derived/student_elo_events_batch_replay.parquet" not in page.bootstrap_runtime_paths
     assert "artifacts/derived/student_elo_events_iterative.parquet" not in page.bootstrap_runtime_paths
     assert "artifacts/derived/fact_attempt_core.parquet" not in page.bootstrap_runtime_paths
+    assert "artifacts/derived/student_elo_profiles_batch_replay.parquet" not in page.bootstrap_runtime_paths
     assert page.remote_query_paths == (
         "artifacts/derived/fact_attempt_core.parquet",
         "artifacts/derived/student_elo_events.parquet",
+        "artifacts/derived/student_elo_events_batch_replay.parquet",
+    )
+
+
+def test_student_elo_page_exposes_current_and_batch_replay_systems() -> None:
+    module = importlib.import_module("page_modules.5_student_elo_evolution")
+
+    assert tuple(module.ELO_SYSTEM_CONFIGS.keys()) == ("Current Elo", "Batch Replay Elo")
+    assert (
+        module.ELO_SYSTEM_CONFIGS["Current Elo"]["events_relative_path"]
+        == "artifacts/derived/student_elo_events.parquet"
+    )
+    assert (
+        module.ELO_SYSTEM_CONFIGS["Batch Replay Elo"]["events_relative_path"]
+        == "artifacts/derived/student_elo_events_batch_replay.parquet"
     )
 
 

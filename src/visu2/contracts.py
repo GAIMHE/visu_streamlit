@@ -18,7 +18,7 @@ Functions
 from __future__ import annotations
 
 DERIVED_MANIFEST_VERSION = "1.0"
-DERIVED_SCHEMA_VERSION = "phase0_thin_slice_v10_module_local_current_elo"
+DERIVED_SCHEMA_VERSION = "phase0_thin_slice_v11_batch_replay_elo"
 ACTIVE_CANONICAL_MODULE_CODES = ("M1", "M31", "M32", "M33", "M41", "M42", "M43")
 
 EXPECTED_BASELINE = {
@@ -295,6 +295,36 @@ REQUIRED_AGG_COLUMNS = {
         "final_student_elo",
         "eligible_for_replay",
     ],
+    "student_elo_events_batch_replay": [
+        "user_id",
+        "attempt_ordinal",
+        "created_at",
+        "date_utc",
+        "work_mode",
+        "module_code",
+        "objective_id",
+        "activity_id",
+        "exercise_id",
+        "outcome",
+        "expected_success",
+        "exercise_elo",
+        "student_elo_pre",
+        "student_elo_post",
+    ],
+    "student_elo_profiles_batch_replay": [
+        "user_id",
+        "module_id",
+        "module_code",
+        "module_label",
+        "total_attempts",
+        "first_attempt_at",
+        "last_attempt_at",
+        "unique_modules",
+        "unique_objectives",
+        "unique_activities",
+        "final_student_elo",
+        "eligible_for_replay",
+    ],
     "student_elo_events_iterative": [
         "user_id",
         "attempt_ordinal",
@@ -500,6 +530,35 @@ RUNTIME_CORE_COLUMNS = {
         "student_elo_post",
     ],
     "student_elo_profiles": [
+        "user_id",
+        "module_code",
+        "module_label",
+        "total_attempts",
+        "first_attempt_at",
+        "last_attempt_at",
+        "unique_modules",
+        "unique_objectives",
+        "unique_activities",
+        "final_student_elo",
+        "eligible_for_replay",
+    ],
+    "student_elo_events_batch_replay": [
+        "user_id",
+        "attempt_ordinal",
+        "created_at",
+        "date_utc",
+        "work_mode",
+        "module_code",
+        "objective_id",
+        "activity_id",
+        "exercise_id",
+        "outcome",
+        "expected_success",
+        "exercise_elo",
+        "student_elo_pre",
+        "student_elo_post",
+    ],
+    "student_elo_profiles_batch_replay": [
         "user_id",
         "module_code",
         "module_label",

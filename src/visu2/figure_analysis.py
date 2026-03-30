@@ -228,7 +228,15 @@ def _level_plural(level_label: str) -> str:
     return f"{text}s"
 
 
-def analyze_overview_kpis(*, attempts: int, unique_students: int, unique_exercises: int) -> FigureAnalysis:
+def analyze_overview_kpis(
+    *,
+    attempts: int,
+    unique_students: int,
+    unique_exercises: int,
+    retry_attempt_rate: float | None = None,
+    retry_after_success_share: float | None = None,
+    retry_after_failure_share: float | None = None,
+) -> FigureAnalysis:
     if attempts <= 0 or unique_students <= 0 or unique_exercises <= 0:
         return _insufficient()
     attempts_per_student = attempts / unique_students
@@ -242,6 +250,17 @@ def analyze_overview_kpis(*, attempts: int, unique_students: int, unique_exercis
     findings.append(
         f"The slice spans {_format_num(unique_exercises / unique_students)} exercises per student on average."
     )
+    if retry_attempt_rate is not None:
+        findings.append(
+            "Across the full source dataset, "
+            f"{_format_pct(retry_attempt_rate)} of attempt rows are retries of a previously seen exercise in the same context."
+        )
+    if retry_after_success_share is not None and retry_after_failure_share is not None:
+        findings.append(
+            "Among those retries, "
+            f"{_format_pct(retry_after_success_share)} follow a first-try success and "
+            f"{_format_pct(retry_after_failure_share)} follow a first-try failure."
+        )
     return FigureAnalysis(findings=tuple(findings), interpretation=None, discussion="")
 
 

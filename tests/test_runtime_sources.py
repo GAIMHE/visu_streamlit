@@ -51,6 +51,8 @@ def test_runtime_relative_paths_are_source_scoped() -> None:
     assert "artifacts/derived/zpdes_exercise_progression_events.parquet" in main_paths
     assert "artifacts/derived/zpdes_exercise_progression_events.parquet" not in maureen_paths
     assert "artifacts/derived/student_elo_events.parquet" in maureen_paths
+    assert "artifacts/derived/student_elo_events_batch_replay.parquet" not in main_paths
+    assert "artifacts/derived/student_elo_profiles_batch_replay.parquet" not in maureen_paths
     assert "artifacts/derived/classroom_mode_profiles.parquet" in main_paths
     assert "data/exercises.json" not in main_paths
     assert "artifacts/reports/derived_manifest.json" not in main_paths

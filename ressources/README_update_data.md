@@ -97,6 +97,20 @@ uv run python scripts/build_derived.py --source main --strict-checks --force
 uv run python scripts/build_derived.py --source maureen_m16fr --strict-checks --force
 ```
 
+## If you only changed a few derived tables
+
+For additive code changes that do **not** require rebuilding the full runtime surface, prefer a targeted build:
+
+```bash
+uv run python scripts/build_derived.py --source main --tables student_elo_events_batch_replay,student_elo_profiles_batch_replay --skip-checks
+```
+
+Notes:
+- `--tables` expects runtime derived table names, comma-separated.
+- This lightweight path reuses the already-materialized local inputs and existing dependency parquet files.
+- Use it only when the raw source data has **not** changed.
+- If the raw inputs changed, run the full build instead.
+
 ## If you want to relocate older non-runtime files out of the runtime trees
 
 ```bash

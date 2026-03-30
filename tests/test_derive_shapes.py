@@ -46,7 +46,9 @@ from visu2.derive import (
     build_agg_objective_daily_from_fact,
     build_agg_playlist_module_usage_from_fact,
     build_agg_student_module_progress_from_fact,
+    build_student_elo_events_batch_replay_from_fact,
     build_student_elo_events_from_fact,
+    build_student_elo_profiles_batch_replay_from_events,
     build_student_elo_profiles_from_events,
 )
 
@@ -443,6 +445,31 @@ Examples
     exercise_elo = build_agg_exercise_elo_from_fact(_sample_fact(), settings=get_settings())
     events = build_student_elo_events_from_fact(_sample_fact(), exercise_elo)
     profiles = build_student_elo_profiles_from_events(events)
+
+    assert {
+        "user_id",
+        "attempt_ordinal",
+        "exercise_elo",
+        "student_elo_pre",
+        "student_elo_post",
+    }.issubset(set(events.columns))
+    assert {
+        "user_id",
+        "module_code",
+        "module_label",
+        "total_attempts",
+        "final_student_elo",
+        "eligible_for_replay",
+    }.issubset(set(profiles.columns))
+
+
+def test_batch_replay_student_elo_events_and_profiles_shape() -> None:
+    """Test Batch Replay Elo events and profiles expose the same runtime shape."""
+    from visu2.config import get_settings
+
+    exercise_elo = build_agg_exercise_elo_from_fact(_sample_fact(), settings=get_settings())
+    events = build_student_elo_events_batch_replay_from_fact(_sample_fact(), exercise_elo)
+    profiles = build_student_elo_profiles_batch_replay_from_events(events)
 
     assert {
         "user_id",

@@ -42,9 +42,17 @@ MAIN_RUNTIME_DERIVED_TABLES: tuple[str, ...] = (
     "agg_activity_elo",
     "student_elo_events",
     "student_elo_profiles",
+    "student_elo_events_batch_replay",
+    "student_elo_profiles_batch_replay",
     "student_elo_events_iterative",
     "student_elo_profiles_iterative",
     "zpdes_exercise_progression_events",
+)
+
+MAIN_REQUIRED_RUNTIME_DERIVED_TABLES: tuple[str, ...] = tuple(
+    table_name
+    for table_name in MAIN_RUNTIME_DERIVED_TABLES
+    if table_name not in {"student_elo_events_batch_replay", "student_elo_profiles_batch_replay"}
 )
 
 MAUREEN_RUNTIME_DERIVED_TABLES: tuple[str, ...] = (
@@ -58,8 +66,16 @@ MAUREEN_RUNTIME_DERIVED_TABLES: tuple[str, ...] = (
     "agg_activity_elo",
     "student_elo_events",
     "student_elo_profiles",
+    "student_elo_events_batch_replay",
+    "student_elo_profiles_batch_replay",
     "student_elo_events_iterative",
     "student_elo_profiles_iterative",
+)
+
+MAUREEN_REQUIRED_RUNTIME_DERIVED_TABLES: tuple[str, ...] = tuple(
+    table_name
+    for table_name in MAUREEN_RUNTIME_DERIVED_TABLES
+    if table_name not in {"student_elo_events_batch_replay", "student_elo_profiles_batch_replay"}
 )
 
 COMMON_LEGACY_DERIVED_TABLES: tuple[str, ...] = (
@@ -187,7 +203,7 @@ RUNTIME_SOURCES: dict[str, RuntimeSourceSpec] = {
         remote_config_key="main",
         runtime_relative_paths=(
             MAIN_RUNTIME_DATA_RELATIVE_PATHS
-            + _derived_runtime_relative_paths(MAIN_RUNTIME_DERIVED_TABLES)
+            + _derived_runtime_relative_paths(MAIN_REQUIRED_RUNTIME_DERIVED_TABLES)
         ),
         runtime_derived_tables=MAIN_RUNTIME_DERIVED_TABLES,
         local_build_relative_paths=(
@@ -236,7 +252,7 @@ RUNTIME_SOURCES: dict[str, RuntimeSourceSpec] = {
         remote_config_key="maureen_m16fr",
         runtime_relative_paths=(
             MAUREEN_RUNTIME_DATA_RELATIVE_PATHS
-            + _derived_runtime_relative_paths(MAUREEN_RUNTIME_DERIVED_TABLES)
+            + _derived_runtime_relative_paths(MAUREEN_REQUIRED_RUNTIME_DERIVED_TABLES)
         ),
         runtime_derived_tables=MAUREEN_RUNTIME_DERIVED_TABLES,
         local_build_relative_paths=(

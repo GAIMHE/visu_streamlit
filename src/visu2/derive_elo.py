@@ -835,6 +835,40 @@ def _fit_batch_student_rating(
     return float(rating)
 
 
+def _fit_batch_student_rating_weighted(
+    observations: list[tuple[float, int, float]],
+    *,
+    initial_rating: float = ELO_BASE_RATING,
+    prior_mean: float = ELO_BASE_RATING,
+    prior_sd: float = CURRENT_BATCH_PRIOR_SD,
+    steps: int = CURRENT_BATCH_NEWTON_STEPS,
+) -> float:
+    """Fit one student rating against fixed item difficulties with aggregated counts."""
+    if not observations:
+        return float(prior_mean)
+    rating = float(initial_rating)
+    prior_var_inv = 0.0 if prior_sd <= 0 else 1.0 / float(prior_sd) ** 2
+    for _ in range(max(1, int(steps))):
+        grad = (rating - float(prior_mean)) * prior_var_inv
+        hess = prior_var_inv
+        for exercise_rating, attempts, successes in observations:
+            if attempts <= 0:
+                continue
+            probability = min(
+                1.0 - 1e-9,
+                max(1e-9, elo_expected_success(float(rating), float(exercise_rating))),
+            )
+            grad += _ELO_LOGISTIC_K * ((float(attempts) * probability) - float(successes))
+            hess += (_ELO_LOGISTIC_K**2) * float(attempts) * probability * (1.0 - probability)
+        if hess <= 0.0:
+            break
+        step_size = grad / hess
+        rating = min(ITERATIVE_OPTIMIZER_MAX, max(ITERATIVE_OPTIMIZER_MIN, rating - step_size))
+        if abs(step_size) < 0.01:
+            break
+    return float(rating)
+
+
 def _fit_batch_item_rating(
     observations: list[tuple[float, float]],
     *,
@@ -1187,6 +1221,93 @@ def _replay_module_local_student_elo(
     return pl.DataFrame(rows).sort(["user_id", "module_code", "attempt_ordinal"])
 
 
+def _replay_module_local_student_elo_batch(
+    replay: pl.DataFrame,
+    exercise_elo_map: dict[str, float],
+) -> pl.DataFrame:
+    """Replay module-local Batch Replay Elo by re-fitting ability on each prefix."""
+    rows: list[dict[str, object]] = []
+    current_student_module: tuple[str, str] | None = None
+    current_rating = ELO_BASE_RATING
+    current_ordinal = 0
+    prefix_context_stats: dict[str, tuple[int, float]] = {}
+
+    for (
+        user_id,
+        created_at,
+        date_utc,
+        work_mode,
+        module_id,
+        module_code,
+        module_label,
+        objective_id,
+        activity_id,
+        exercise_id,
+        context_key,
+        _attempt_number,
+        raw_outcome,
+    ) in replay.iter_rows():
+        user_key = str(user_id or "").strip()
+        module_key = str(module_code or "").strip()
+        context_ref = str(context_key or "").strip()
+        exercise_key = str(exercise_id or "").strip()
+        if not user_key or not module_key or not context_ref or not exercise_key:
+            continue
+        outcome = outcome_value(raw_outcome)
+        if outcome is None:
+            continue
+        student_module_key = (user_key, module_key)
+        if current_student_module != student_module_key:
+            current_student_module = student_module_key
+            current_rating = ELO_BASE_RATING
+            current_ordinal = 0
+            prefix_context_stats = {}
+        exercise_rating = exercise_elo_map.get(context_ref)
+        if exercise_rating is None:
+            continue
+
+        current_ordinal += 1
+        student_elo_pre = current_rating
+        expected_success = elo_expected_success(student_elo_pre, exercise_rating)
+
+        prior_attempts, prior_successes = prefix_context_stats.get(context_ref, (0, 0.0))
+        prefix_context_stats[context_ref] = (prior_attempts + 1, prior_successes + float(outcome))
+        student_elo_post = _fit_batch_student_rating_weighted(
+            [
+                (float(exercise_elo_map[key]), int(attempts), float(successes))
+                for key, (attempts, successes) in prefix_context_stats.items()
+                if key in exercise_elo_map and int(attempts) > 0
+            ],
+            initial_rating=float(student_elo_pre),
+        )
+        current_rating = student_elo_post
+
+        rows.append(
+            {
+                "user_id": user_key,
+                "attempt_ordinal": current_ordinal,
+                "created_at": created_at,
+                "date_utc": date_utc,
+                "work_mode": None if work_mode is None else str(work_mode),
+                "module_id": None if module_id is None else str(module_id),
+                "module_code": module_key,
+                "module_label": None if module_label is None else str(module_label),
+                "objective_id": None if objective_id is None else str(objective_id),
+                "activity_id": None if activity_id is None else str(activity_id),
+                "exercise_id": exercise_key,
+                "outcome": outcome,
+                "expected_success": expected_success,
+                "exercise_elo": exercise_rating,
+                "student_elo_pre": student_elo_pre,
+                "student_elo_post": student_elo_post,
+            }
+        )
+
+    if not rows:
+        return _empty_student_elo_events_df()
+    return pl.DataFrame(rows).sort(["user_id", "module_code", "attempt_ordinal"])
+
+
 def build_agg_exercise_elo_from_fact(
     fact: pl.DataFrame | pl.LazyFrame,
     settings: Settings,
@@ -1417,6 +1538,43 @@ def build_student_elo_profiles_from_events(
         )
         .collect()
     )
+
+
+def build_student_elo_events_batch_replay_from_fact(
+    fact: pl.DataFrame | pl.LazyFrame,
+    exercise_elo: pl.DataFrame | pl.LazyFrame,
+) -> pl.DataFrame:
+    """Replay module-local Batch Replay Elo trajectories against fixed Current-Elo difficulty."""
+    exercise_map_df = (
+        as_lazy(exercise_elo)
+        .filter(pl.col("calibrated") & pl.col("exercise_elo").is_not_null())
+        .with_columns(
+            _clean_text_expr("module_code").alias("module_code"),
+            _clean_text_expr("objective_id").alias("objective_id"),
+            _clean_text_expr("activity_id").alias("activity_id"),
+            _clean_text_expr("exercise_id").alias("exercise_id"),
+            _current_context_key_expr(),
+        )
+        .select(["context_key", "exercise_elo"])
+        .collect()
+        .unique(subset=["context_key"], keep="first")
+    )
+    if exercise_map_df.height == 0:
+        return _empty_student_elo_events_df()
+
+    exercise_elo_map = {
+        str(row["context_key"]): float(row["exercise_elo"])
+        for row in exercise_map_df.to_dicts()
+    }
+    replay = _collect_current_replay_rows(fact, list(exercise_elo_map))
+    return _replay_module_local_student_elo_batch(replay, exercise_elo_map)
+
+
+def build_student_elo_profiles_batch_replay_from_events(
+    events: pl.DataFrame | pl.LazyFrame,
+) -> pl.DataFrame:
+    """Aggregate compact per-student-module summaries from Batch Replay Elo events."""
+    return build_student_elo_profiles_from_events(events)
 
 
 def build_student_elo_events_iterative_from_fact(

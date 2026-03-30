@@ -10,6 +10,7 @@ from visu2.figure_analysis import (
     analyze_classroom_progression_sankey,
     analyze_matrix_drilldown_table,
     analyze_overview_concentration,
+    analyze_overview_kpis,
     analyze_student_elo_comparison,
     analyze_student_elo_population,
     analyze_transition_chart,
@@ -258,6 +259,19 @@ def test_analyze_student_elo_comparison_reports_selected_and_population_differen
     assert "final gap" in analysis.findings[1]
     assert any("correlation" in finding for finding in analysis.findings)
     assert any("Largest exercise-level shifts" in finding for finding in analysis.findings)
+
+
+def test_analyze_overview_kpis_can_include_source_retry_summary() -> None:
+    analysis = analyze_overview_kpis(
+        attempts=1000,
+        unique_students=100,
+        unique_exercises=50,
+        retry_attempt_rate=0.131,
+        retry_after_success_share=0.67,
+        retry_after_failure_share=0.33,
+    )
+    assert any("13.1%" in finding for finding in analysis.findings)
+    assert any("67.0%" in finding and "33.0%" in finding for finding in analysis.findings)
 
 
 def test_build_discussion_paragraph_uses_interpretation_and_findings() -> None:

@@ -167,8 +167,8 @@ FIGURE_INFO: dict[str, dict[str, tuple[str, ...]]] = {
     },
     "student_elo_page": {
         "What it shows": (
-            "A replayable module-local Elo chart for one student inside one selected module.",
-            "The page first selects a student, then lets you choose one of that student's available modules.",
+            "A replayable module-local Elo chart for one student inside one selected module, with a selector for the Elo system.",
+            "The page first selects an Elo system, then a student, then one of that student's available modules.",
             "The summary row above the chart shows the selected student, module, module-local attempts, final module-local Elo, and first/last timestamps for that module slice.",
         ),
         "Metrics": (
@@ -176,12 +176,13 @@ FIGURE_INFO: dict[str, dict[str, tuple[str, ...]]] = {
             "The hover reports timestamp, module, objective, activity, exercise, work mode, outcome, expected success, fixed exercise difficulty, and the student's Elo before and after that attempt.",
             "Optional dotted vertical markers show large timestamp gaps between consecutive attempts while keeping the x-axis on local attempt ordinal rather than calendar time.",
             "Expected success is computed from the gap between the student's current Elo and the fixed difficulty of the exercise.",
-            "Exercise difficulty is fixed offline per module from first attempts only, then the student's Elo replay resets to 1500 at the first visible attempt of the selected module.",
+            "Exercise difficulty is fixed offline per module from first attempts only, then both systems reset the student's Elo to 1500 at the first visible attempt of the selected module.",
+            "`Current Elo` applies one sequential update per attempt, while `Batch Replay Elo` refits the student's level from the full module-local prefix seen so far at each attempt.",
             "Exercises are calibrated by raw module/objective/activity/exercise context rather than bare exercise ID, so reused exercises can carry different difficulty in different module contexts.",
             "If an attempted exercise is outside the mapped catalog, it can still be calibrated and replayed; the page then uses fallback labels such as `Unmapped initial-test activity (M1)` to make that missing context explicit.",
         ),
         "How to use": (
-            "Choose a target attempt count to sample one replay-eligible student using that student's total attempts across modules, or type a student ID directly.",
+            "Choose the Elo system first, then choose a target attempt count to sample one replay-eligible student using that student's total attempts across modules, or type a student ID directly.",
             "Once the student is fixed, choose one of the modules available for that student; the default is the module with the most attempts.",
             "Use the replay controls to step through the local attempt timeline with a chosen step size and autoplay speed.",
             "Use `Highlight timestamp gaps >= days` to mark long inactivity periods without switching the chart away from attempt-based progression.",

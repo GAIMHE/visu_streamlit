@@ -640,6 +640,7 @@ def build_student_elo_figure(
     payload: dict[str, Any],
     frame_idx: int,
     gap_days_threshold: float | None = None,
+    system_label: str | None = None,
 ) -> go.Figure:
     """Build student elo figure.
 
@@ -744,7 +745,7 @@ go.Figure
             )
 
     fig.update_layout(
-        title=f"Module-local student Elo replay up to local attempt {cutoff}",
+        title=f"{system_label or 'Student Elo'} module-local replay up to local attempt {cutoff}",
         xaxis_title="Student-local attempt ordinal",
         yaxis_title="Student Elo",
         height=540,

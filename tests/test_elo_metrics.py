@@ -27,6 +27,7 @@ Functions
 from __future__ import annotations
 
 import json
+import math
 from datetime import datetime
 from pathlib import Path
 
@@ -37,6 +38,7 @@ from visu2.derive import (
     build_agg_activity_elo_from_exercise_elo,
     build_agg_exercise_elo_from_fact,
     build_agg_exercise_elo_iterative_from_fact,
+    build_student_elo_events_batch_replay_from_fact,
     build_student_elo_events_from_fact,
     build_student_elo_events_iterative_from_fact,
     build_student_elo_profiles_from_events,
@@ -139,6 +141,34 @@ pl.DataFrame
 
 """
     return pl.DataFrame(rows)
+
+
+def _fit_weighted_student_prefix(
+    observations: list[tuple[float, int, float]],
+    *,
+    initial_rating: float,
+    prior_mean: float = 1500.0,
+    prior_sd: float = 250.0,
+    steps: int = 16,
+) -> float:
+    rating = float(initial_rating)
+    prior_var_inv = 0.0 if prior_sd <= 0 else 1.0 / float(prior_sd) ** 2
+    logistic_k = math.log(10.0) / 400.0
+    for _ in range(max(1, int(steps))):
+        grad = (rating - float(prior_mean)) * prior_var_inv
+        hess = prior_var_inv
+        for exercise_rating, attempts, successes in observations:
+            probability = 1.0 / (1.0 + 10.0 ** ((float(exercise_rating) - rating) / 400.0))
+            probability = min(1.0 - 1e-9, max(1e-9, probability))
+            grad += logistic_k * ((float(attempts) * probability) - float(successes))
+            hess += (logistic_k**2) * float(attempts) * probability * (1.0 - probability)
+        if hess <= 0.0:
+            break
+        step_size = grad / hess
+        rating = min(2400.0, max(600.0, rating - step_size))
+        if abs(step_size) < 0.01:
+            break
+    return float(rating)
 
 
 def test_stage_a_single_correct_answer_updates_exercise_elo_symmetrically(tmp_path: Path) -> None:
@@ -680,6 +710,277 @@ def test_current_student_elo_resets_when_module_changes(tmp_path: Path) -> None:
     assert rows["M1"]["ordinals"] == [1, 2]
     assert rows["M2"]["ordinals"] == [1]
     assert abs(float(rows["M2"]["pre_elo"][0]) - 1500.0) < 1e-9
+
+
+def test_batch_replay_student_elo_uses_prefix_refit(tmp_path: Path) -> None:
+    """Test Batch Replay Elo refits the student from the full module-local prefix."""
+    settings = _build_settings(tmp_path)
+    fact = _fact(
+        [
+            {
+                "created_at": datetime(2025, 1, 1, 9, 0, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "u1",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p1",
+                "objective_id": "o1",
+                "objective_label": "Objective 1",
+                "activity_id": "a1",
+                "activity_label": "Activity 1",
+                "exercise_id": "e1",
+                "data_correct": True,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "zpdes",
+                "attempt_number": 1,
+                "module_id": "m1",
+                "module_code": "M1",
+                "module_label": "Module 1",
+            },
+            {
+                "created_at": datetime(2025, 1, 1, 9, 5, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "u1",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p1",
+                "objective_id": "o1",
+                "objective_label": "Objective 1",
+                "activity_id": "a1",
+                "activity_label": "Activity 1",
+                "exercise_id": "e2",
+                "data_correct": False,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "zpdes",
+                "attempt_number": 1,
+                "module_id": "m1",
+                "module_code": "M1",
+                "module_label": "Module 1",
+            },
+            {
+                "created_at": datetime(2025, 1, 1, 9, 10, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "u1",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p1",
+                "objective_id": "o1",
+                "objective_label": "Objective 1",
+                "activity_id": "a1",
+                "activity_label": "Activity 1",
+                "exercise_id": "e2",
+                "data_correct": True,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "zpdes",
+                "attempt_number": 2,
+                "module_id": "m1",
+                "module_code": "M1",
+                "module_label": "Module 1",
+            },
+        ]
+    )
+
+    exercise_elo = build_agg_exercise_elo_from_fact(fact, settings=settings)
+    batch_events = build_student_elo_events_batch_replay_from_fact(fact, exercise_elo).sort("attempt_ordinal")
+
+    assert batch_events["attempt_ordinal"].to_list() == [1, 2, 3]
+    assert abs(float(batch_events["student_elo_pre"][0]) - 1500.0) < 1e-9
+    assert abs(float(batch_events["student_elo_pre"][1]) - float(batch_events["student_elo_post"][0])) < 1e-9
+    assert abs(float(batch_events["student_elo_pre"][2]) - float(batch_events["student_elo_post"][1])) < 1e-9
+
+    rows = batch_events.to_dicts()
+    first_expected = _fit_weighted_student_prefix(
+        [(float(rows[0]["exercise_elo"]), 1, float(rows[0]["outcome"]))],
+        initial_rating=1500.0,
+    )
+    second_expected = _fit_weighted_student_prefix(
+        [
+            (float(rows[0]["exercise_elo"]), 1, float(rows[0]["outcome"])),
+            (float(rows[1]["exercise_elo"]), 1, float(rows[1]["outcome"])),
+        ],
+        initial_rating=float(rows[1]["student_elo_pre"]),
+    )
+
+    assert abs(float(rows[0]["student_elo_post"]) - first_expected) < 1e-9
+    assert abs(float(rows[1]["student_elo_post"]) - second_expected) < 1e-9
+
+
+def test_batch_replay_student_elo_resets_when_module_changes(tmp_path: Path) -> None:
+    """Test Batch Replay Elo also restarts attempt ordinal and Elo at each module boundary."""
+    settings = _build_settings(tmp_path)
+    fact = _fact(
+        [
+            {
+                "created_at": datetime(2025, 1, 1, 9, 0, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "u1",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p1",
+                "objective_id": "o1",
+                "objective_label": "Objective 1",
+                "activity_id": "a1",
+                "activity_label": "Activity 1",
+                "exercise_id": "e1",
+                "data_correct": True,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "zpdes",
+                "attempt_number": 1,
+                "module_id": "m1",
+                "module_code": "M1",
+                "module_label": "Module 1",
+            },
+            {
+                "created_at": datetime(2025, 1, 1, 9, 5, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "u1",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p1",
+                "objective_id": "o1",
+                "objective_label": "Objective 1",
+                "activity_id": "a1",
+                "activity_label": "Activity 1",
+                "exercise_id": "e1",
+                "data_correct": False,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "zpdes",
+                "attempt_number": 2,
+                "module_id": "m1",
+                "module_code": "M1",
+                "module_label": "Module 1",
+            },
+            {
+                "created_at": datetime(2025, 1, 1, 10, 0, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "u1",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p2",
+                "objective_id": "o2",
+                "objective_label": "Objective 2",
+                "activity_id": "a2",
+                "activity_label": "Activity 2",
+                "exercise_id": "e3",
+                "data_correct": True,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "adaptive-test",
+                "attempt_number": 1,
+                "module_id": "m2",
+                "module_code": "M2",
+                "module_label": "Module 2",
+            },
+        ]
+    )
+
+    exercise_elo = build_agg_exercise_elo_from_fact(fact, settings=settings)
+    events = build_student_elo_events_batch_replay_from_fact(fact, exercise_elo)
+    grouped = events.group_by("module_code").agg(
+        pl.col("attempt_ordinal").alias("ordinals"),
+        pl.col("student_elo_pre").alias("pre_elo"),
+    )
+    rows = {str(row["module_code"]): row for row in grouped.to_dicts()}
+
+    assert rows["M1"]["ordinals"] == [1, 2]
+    assert rows["M2"]["ordinals"] == [1]
+    assert abs(float(rows["M2"]["pre_elo"][0]) - 1500.0) < 1e-9
+
+
+def test_batch_replay_keeps_reused_exercise_contexts_separate_within_module(tmp_path: Path) -> None:
+    """Test Batch Replay Elo uses the raw activity/objective context, not bare exercise ID."""
+    settings = _build_settings(tmp_path)
+    fact = _fact(
+        [
+            {
+                "created_at": datetime(2025, 1, 1, 8, 0, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "seed_a1",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p1",
+                "objective_id": "o1",
+                "objective_label": "Objective 1",
+                "activity_id": "a1",
+                "activity_label": "Activity 1",
+                "exercise_id": "shared",
+                "data_correct": False,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "zpdes",
+                "attempt_number": 1,
+                "module_id": "m1",
+                "module_code": "M1",
+                "module_label": "Module 1",
+            },
+            {
+                "created_at": datetime(2025, 1, 1, 8, 5, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "seed_a2",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p1",
+                "objective_id": "o1",
+                "objective_label": "Objective 1",
+                "activity_id": "a2",
+                "activity_label": "Activity 2",
+                "exercise_id": "shared",
+                "data_correct": True,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "zpdes",
+                "attempt_number": 1,
+                "module_id": "m1",
+                "module_code": "M1",
+                "module_label": "Module 1",
+            },
+            {
+                "created_at": datetime(2025, 1, 1, 9, 0, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "u3",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p1",
+                "objective_id": "o1",
+                "objective_label": "Objective 1",
+                "activity_id": "a1",
+                "activity_label": "Activity 1",
+                "exercise_id": "shared",
+                "data_correct": True,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "zpdes",
+                "attempt_number": 1,
+                "module_id": "m1",
+                "module_code": "M1",
+                "module_label": "Module 1",
+            },
+            {
+                "created_at": datetime(2025, 1, 1, 9, 5, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "u3",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p1",
+                "objective_id": "o1",
+                "objective_label": "Objective 1",
+                "activity_id": "a2",
+                "activity_label": "Activity 2",
+                "exercise_id": "shared",
+                "data_correct": False,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "zpdes",
+                "attempt_number": 1,
+                "module_id": "m1",
+                "module_code": "M1",
+                "module_label": "Module 1",
+            },
+        ]
+    )
+
+    exercise_elo = build_agg_exercise_elo_from_fact(fact, settings=settings)
+    events = build_student_elo_events_batch_replay_from_fact(fact, exercise_elo)
+    u3_rows = events.filter(pl.col("user_id") == "u3").sort("attempt_ordinal")
+
+    assert u3_rows["exercise_id"].to_list() == ["shared", "shared"]
+    assert u3_rows["activity_id"].to_list() == ["a1", "a2"]
+    assert float(u3_rows["exercise_elo"][0]) != float(u3_rows["exercise_elo"][1])
 
 
 def test_orphan_exercises_are_calibrated_and_replayed_with_fallback_context(
