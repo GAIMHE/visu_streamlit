@@ -509,7 +509,7 @@ div, p, label {
     }.issubset(fact_columns)
     has_playlist_unique_metric = has_fact_matrix_source
 
-    dimension_domain = load_fact_dimensions(fact_path)
+    dimension_domain = load_fact_dimensions(fact_path, catalog_path)
     min_date = dimension_domain.min_date
     max_date = dimension_domain.max_date
 

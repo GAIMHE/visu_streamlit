@@ -18,6 +18,7 @@ from source_state import (
 )
 
 from visu2.contracts import RUNTIME_CORE_COLUMNS
+from visu2.loaders import catalog_to_summary_frames, load_learning_catalog
 from visu2.runtime_sources import source_supports_exact_min_student_attempt_filter
 
 
@@ -349,23 +350,11 @@ def ensure_label_columns(
 
 
 @st.cache_data(show_spinner=False)
-def load_fact_dimensions(fact_path: Path) -> CurriculumFilterDomain:
-    """Load a compact curriculum domain for the overview sidebar filters."""
-    date_bounds = collect_lazy(
-        pl.scan_parquet(fact_path).select(
-            pl.col("date_utc").min().alias("min_date"),
-            pl.col("date_utc").max().alias("max_date"),
-        )
-    )
-    min_date = date_bounds.item(0, "min_date")
-    max_date = date_bounds.item(0, "max_date")
-    if min_date is None or max_date is None:
-        st.error("No dated rows available to populate filters.")
-        st.stop()
-
-    curriculum_frame = collect_lazy(
-        pl.scan_parquet(fact_path)
-        .select(
+def _load_curriculum_frame_from_catalog(learning_catalog_path: Path) -> pl.DataFrame:
+    """Load the curriculum selector hierarchy from the small catalog file, not the fact table."""
+    frames = catalog_to_summary_frames(load_learning_catalog(learning_catalog_path))
+    curriculum_frame = (
+        frames.activity_hierarchy.select(
             [
                 "module_code",
                 "module_label",
@@ -386,10 +375,30 @@ def load_fact_dimensions(fact_path: Path) -> CurriculumFilterDomain:
             "activity_label": "activity_id",
         },
     )
+    return curriculum_frame
+
+
+@st.cache_data(show_spinner=False)
+def load_fact_dimensions(
+    fact_path: Path,
+    learning_catalog_path: Path,
+) -> CurriculumFilterDomain:
+    """Load date bounds from fact and curriculum selectors from the lightweight catalog."""
+    date_bounds = collect_lazy(
+        pl.scan_parquet(fact_path).select(
+            pl.col("date_utc").min().alias("min_date"),
+            pl.col("date_utc").max().alias("max_date"),
+        )
+    )
+    min_date = date_bounds.item(0, "min_date")
+    max_date = date_bounds.item(0, "max_date")
+    if min_date is None or max_date is None:
+        st.error("No dated rows available to populate filters.")
+        st.stop()
     return CurriculumFilterDomain(
         min_date=min_date,
         max_date=max_date,
-        curriculum_frame=curriculum_frame,
+        curriculum_frame=_load_curriculum_frame_from_catalog(learning_catalog_path),
     )
 
 

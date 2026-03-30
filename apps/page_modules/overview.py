@@ -57,6 +57,18 @@ from visu2.work_mode_transitions import (
 )
 
 OVERVIEW_RUNTIME_TABLES: tuple[str, ...] = ("fact_attempt_core",)
+SOURCE_RETRY_SUMMARY_BY_ID: dict[str, dict[str, float]] = {
+    "main": {
+        "retry_attempt_rate": 0.131,
+        "retry_after_success_share": 0.674,
+        "retry_after_failure_share": 0.326,
+    },
+    "maureen_m16fr": {
+        "retry_attempt_rate": 0.132,
+        "retry_after_success_share": 0.664,
+        "retry_after_failure_share": 0.336,
+    },
+}
 
 
 @st.cache_data(show_spinner=False)
@@ -166,97 +178,12 @@ def _load_work_mode_transition_paths_from_fact(
     return build_work_mode_transition_paths(fact_slice)
 
 
-@st.cache_data(show_spinner=False)
-def _load_source_retry_summary(fact_path: Path) -> dict[str, float] | None:
-    """Compute full-source retry rates for the overview analysis block."""
-    pair_frame = collect_lazy(
-        pl.scan_parquet(str(fact_path))
-        .filter(
-            pl.col("user_id").is_not_null()
-            & (pl.col("user_id").cast(pl.Utf8).str.strip_chars() != "")
-            & pl.col("exercise_id").is_not_null()
-            & (pl.col("exercise_id").cast(pl.Utf8).str.strip_chars() != "")
-            & pl.col("created_at").is_not_null()
-            & pl.col("data_correct").is_not_null()
-        )
-        .with_columns(
-            pl.col("user_id").cast(pl.Utf8).str.strip_chars().alias("user_id"),
-            pl.col("exercise_id").cast(pl.Utf8).str.strip_chars().alias("exercise_id"),
-            pl.col("playlist_or_module_id").cast(pl.Utf8).str.strip_chars().alias("playlist_or_module_id"),
-            pl.col("objective_id").cast(pl.Utf8).str.strip_chars().alias("objective_id"),
-            pl.col("activity_id").cast(pl.Utf8).str.strip_chars().alias("activity_id"),
-            pl.when(pl.col("data_correct").cast(pl.Float64, strict=False) > 0)
-            .then(1.0)
-            .otherwise(0.0)
-            .alias("outcome"),
-        )
-        .sort(
-            [
-                "user_id",
-                "playlist_or_module_id",
-                "objective_id",
-                "activity_id",
-                "exercise_id",
-                "created_at",
-            ]
-        )
-        .group_by(
-            [
-                "user_id",
-                "playlist_or_module_id",
-                "objective_id",
-                "activity_id",
-                "exercise_id",
-            ]
-        )
-        .agg(
-            pl.len().alias("attempts"),
-            pl.col("outcome").first().alias("first_outcome"),
-        )
-    )
-    if pair_frame.height == 0:
-        return None
-
-    total_attempt_rows = int(pair_frame.select(pl.col("attempts").sum().alias("n")).item() or 0)
-    if total_attempt_rows <= 0:
-        return None
-
-    retry_attempts = int(
-        pair_frame.filter(pl.col("attempts") > 1)
-        .select((pl.col("attempts") - 1).sum().alias("n"))
-        .item()
-        or 0
-    )
-    retry_after_success = int(
-        pair_frame.filter((pl.col("attempts") > 1) & (pl.col("first_outcome") == 1.0))
-        .select((pl.col("attempts") - 1).sum().alias("n"))
-        .item()
-        or 0
-    )
-    retry_after_failure = int(
-        pair_frame.filter((pl.col("attempts") > 1) & (pl.col("first_outcome") == 0.0))
-        .select((pl.col("attempts") - 1).sum().alias("n"))
-        .item()
-        or 0
-    )
-    retry_total = retry_after_success + retry_after_failure
-    return {
-        "retry_attempt_rate": retry_attempts / float(total_attempt_rows),
-        "retry_after_success_share": (
-            retry_after_success / float(retry_total) if retry_total > 0 else 0.0
-        ),
-        "retry_after_failure_share": (
-            retry_after_failure / float(retry_total) if retry_total > 0 else 0.0
-        ),
-    }
-
-
 def _build_overview_kpi_analysis(
     *,
+    source_id: str,
     attempts: int,
     unique_students: int,
     unique_exercises: int,
-    fact_path: Path,
 ):
     """Call KPI analysis with retry metrics only when the loaded function supports them."""
     base_kwargs = {
@@ -264,7 +191,7 @@ def _build_overview_kpi_analysis(
         "unique_students": unique_students,
         "unique_exercises": unique_exercises,
     }
-    retry_kwargs = _load_source_retry_summary(fact_path) or {}
+    retry_kwargs = SOURCE_RETRY_SUMMARY_BY_ID.get(source_id, {})
     try:
         signature = inspect.signature(analyze_overview_kpis)
     except (TypeError, ValueError):
@@ -306,7 +233,7 @@ def main() -> None:
         st.markdown(format_missing_table_columns(compatibility["missing_core_by_table"]))
         st.stop()
 
-    dimension_domain = load_fact_dimensions(fact_path)
+    dimension_domain = load_fact_dimensions(fact_path, settings.learning_catalog_path)
     filters = render_curriculum_filters(dimension_domain, source_id=settings.source_id)
 
     fact_query = build_fact_query(
@@ -343,10 +270,10 @@ def main() -> None:
         )
     render_figure_analysis(
         _build_overview_kpi_analysis(
+            source_id=settings.source_id,
             attempts=int(kpi["attempts"]),
             unique_students=int(kpi["unique_students"]),
             unique_exercises=int(kpi["unique_exercises"]),
-            fact_path=fact_path,
         )
     )
 
