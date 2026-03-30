@@ -70,6 +70,15 @@ def _format_expected_paths_markdown(
     return "\n".join(f"- `{path}`" for path in required_paths)
 
 
+def _normalize_required_paths(
+    required_paths: Sequence[str] | None,
+) -> tuple[str, ...] | None:
+    """Normalize an optional runtime path subset into a stable tuple."""
+    return tuple(
+        str(path).strip() for path in (required_paths or ()) if str(path).strip()
+    ) or None
+
+
 def bootstrap_runtime_assets(
     source_id: str,
     required_paths: Sequence[str] | None = None,
@@ -77,9 +86,7 @@ def bootstrap_runtime_assets(
     """Synchronize only the selected source and runtime subset before rendering."""
     secrets = _secrets_mapping()
     _publish_runtime_secrets_to_env(secrets)
-    required_tuple = tuple(
-        str(path).strip() for path in (required_paths or ()) if str(path).strip()
-    ) or None
+    required_tuple = _normalize_required_paths(required_paths)
     try:
         config = load_hf_repo_config(source_id=source_id, secrets=secrets)
         return _cached_runtime_sync(source_id, config, required_tuple)
@@ -95,3 +102,27 @@ def bootstrap_runtime_assets(
         st.markdown(_format_expected_paths_markdown(required_tuple, source_id=source_id))
         st.code(str(err))
         st.stop()
+
+
+def bootstrap_optional_runtime_assets(
+    source_id: str,
+    required_paths: Sequence[str] | None = None,
+) -> SyncResult:
+    """Best-effort sync for optional runtime assets that should not block page rendering."""
+    secrets = _secrets_mapping()
+    _publish_runtime_secrets_to_env(secrets)
+    required_tuple = _normalize_required_paths(required_paths)
+    config: HFRepoConfig | None = None
+    try:
+        config = load_hf_repo_config(source_id=source_id, secrets=secrets)
+        return _cached_runtime_sync(source_id, config, required_tuple)
+    except Exception as err:
+        return SyncResult(
+            mode="optional_sync_failed",
+            repo_id=None if config is None else config.repo_id,
+            revision=None if config is None else config.revision,
+            downloaded=False,
+            files_checked=0 if required_tuple is None else len(required_tuple),
+            missing_files=() if required_tuple is None else required_tuple,
+            message=str(err),
+        )

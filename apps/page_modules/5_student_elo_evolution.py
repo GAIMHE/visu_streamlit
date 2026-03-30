@@ -36,6 +36,7 @@ if str(APPS_DIR) not in sys.path:
 from figure_analysis import render_figure_analysis
 from figure_info import render_figure_info
 from plotly_config import build_plotly_chart_config
+from runtime_bootstrap import bootstrap_optional_runtime_assets
 from source_state import get_active_source_id
 
 from visu2.config import get_settings
@@ -58,6 +59,9 @@ CURRENT_EVENTS_RELATIVE_PATH = "artifacts/derived/student_elo_events.parquet"
 BATCH_REPLAY_EVENTS_RELATIVE_PATH = "artifacts/derived/student_elo_events_batch_replay.parquet"
 CURRENT_PROFILES_FILENAME = "student_elo_profiles.parquet"
 BATCH_REPLAY_PROFILES_FILENAME = "student_elo_profiles_batch_replay.parquet"
+BATCH_REPLAY_PROFILES_RELATIVE_PATH = (
+    f"artifacts/derived/{BATCH_REPLAY_PROFILES_FILENAME}"
+)
 ELO_SYSTEM_CONFIGS: dict[str, dict[str, str]] = {
     "Current Elo": {
         "profiles_filename": CURRENT_PROFILES_FILENAME,
@@ -172,6 +176,10 @@ div, p, label {
         unsafe_allow_html=True,
     )
     settings = get_settings(get_active_source_id())
+    bootstrap_optional_runtime_assets(
+        settings.source_id,
+        required_paths=(BATCH_REPLAY_PROFILES_RELATIVE_PATH,),
+    )
     current_exercise_elo_path = settings.artifacts_derived_dir / "agg_exercise_elo.parquet"
     all_system_paths = {
         system_name: settings.artifacts_derived_dir / config["profiles_filename"]
