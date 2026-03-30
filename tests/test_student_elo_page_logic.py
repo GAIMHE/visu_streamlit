@@ -38,9 +38,11 @@ from visu2.student_elo import (
     build_student_elo_payload,
     load_student_elo_label_lookup,
     merge_student_elo_label_lookups,
+    modules_for_student,
     select_default_students,
     select_student_by_id,
     select_students_near_attempt_target,
+    summarize_student_module_profiles,
 )
 
 
@@ -109,6 +111,33 @@ pl.DataFrame
             "exercise_elo": [1500.0, 1520.0, 1490.0, 1510.0, 1510.0],
             "student_elo_pre": [1500.0, 1512.0, 1502.4, 1500.0, 1512.0],
             "student_elo_post": [1512.0, 1502.4, 1512.0, 1512.0, 1500.0],
+        }
+    )
+
+
+def _module_profiles() -> pl.DataFrame:
+    return pl.DataFrame(
+        {
+            "user_id": ["u1", "u1", "u2"],
+            "module_id": ["m1", "m2", "m1"],
+            "module_code": ["M1", "M2", "M1"],
+            "module_label": ["Module 1", "Module 2", "Module 1"],
+            "total_attempts": [100, 40, 60],
+            "first_attempt_at": [
+                datetime(2025, 1, 1, 9, 0, 0),
+                datetime(2025, 1, 2, 9, 0, 0),
+                datetime(2025, 1, 1, 10, 0, 0),
+            ],
+            "last_attempt_at": [
+                datetime(2025, 1, 3, 9, 0, 0),
+                datetime(2025, 1, 4, 9, 0, 0),
+                datetime(2025, 1, 2, 10, 0, 0),
+            ],
+            "unique_modules": [1, 1, 1],
+            "unique_objectives": [3, 2, 2],
+            "unique_activities": [8, 4, 5],
+            "final_student_elo": [1560.0, 1495.0, 1510.0],
+            "eligible_for_replay": [True, True, True],
         }
     )
 
@@ -203,6 +232,21 @@ def test_select_student_by_id_returns_none_for_unknown_or_ineligible_student() -
     )
     assert select_student_by_id(profiles, "u3") is None
     assert select_student_by_id(profiles, "missing") is None
+
+
+def test_summarize_student_module_profiles_rolls_up_student_totals() -> None:
+    summary = summarize_student_module_profiles(_module_profiles())
+    row = summary.filter(pl.col("user_id") == "u1").to_dicts()[0]
+
+    assert row["total_attempts"] == 140
+    assert row["unique_modules"] == 2
+    assert row["eligible_for_replay"] is True
+
+
+def test_modules_for_student_returns_rows_sorted_by_attempts() -> None:
+    modules = modules_for_student(_module_profiles(), "u1")
+
+    assert modules["module_code"].to_list() == ["M1", "M2"]
 
 
 def test_build_student_elo_payload_respects_step_size_and_final_point() -> None:

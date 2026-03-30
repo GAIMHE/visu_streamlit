@@ -193,6 +193,62 @@ pl.LazyFrame
     return frame if isinstance(frame, pl.LazyFrame) else frame.lazy()
 
 
+def summarize_student_module_profiles(profiles: pl.DataFrame) -> pl.DataFrame:
+    """Aggregate module-local Current-Elo profiles into one student-level selector summary."""
+    if profiles.height == 0:
+        return pl.DataFrame(
+            {
+                "user_id": [],
+                "total_attempts": [],
+                "first_attempt_at": [],
+                "last_attempt_at": [],
+                "unique_modules": [],
+                "final_student_elo": [],
+                "eligible_for_replay": [],
+            },
+            schema={
+                "user_id": pl.Utf8,
+                "total_attempts": pl.Int64,
+                "first_attempt_at": pl.Datetime,
+                "last_attempt_at": pl.Datetime,
+                "unique_modules": pl.Int64,
+                "final_student_elo": pl.Float64,
+                "eligible_for_replay": pl.Boolean,
+            },
+        )
+    return (
+        profiles.lazy()
+        .group_by("user_id")
+        .agg(
+            pl.col("total_attempts").sum().cast(pl.Int64).alias("total_attempts"),
+            pl.col("first_attempt_at").min().alias("first_attempt_at"),
+            pl.col("last_attempt_at").max().alias("last_attempt_at"),
+            pl.col("module_code").drop_nulls().n_unique().cast(pl.Int64).alias("unique_modules"),
+            pl.col("final_student_elo")
+            .sort_by(["total_attempts", "module_code"], descending=[True, False])
+            .first()
+            .alias("final_student_elo"),
+            pl.col("eligible_for_replay").fill_null(False).any().alias("eligible_for_replay"),
+        )
+        .sort(["total_attempts", "user_id"], descending=[True, False])
+        .collect()
+    )
+
+
+def modules_for_student(
+    profiles: pl.DataFrame,
+    user_id: str,
+) -> pl.DataFrame:
+    """Return the available module-local profile rows for one student."""
+    normalized = str(user_id or "").strip()
+    if not normalized or profiles.height == 0:
+        return profiles.head(0)
+    return (
+        profiles.filter(pl.col("user_id").cast(pl.Utf8) == normalized)
+        .sort(["total_attempts", "module_code"], descending=[True, False])
+    )
+
+
 def select_default_students(
     profiles: pl.DataFrame,
     min_attempts: int,
@@ -580,7 +636,11 @@ def build_student_elo_comparison_payload(
     }
 
 
-def build_student_elo_figure(payload: dict[str, Any], frame_idx: int) -> go.Figure:
+def build_student_elo_figure(
+    payload: dict[str, Any],
+    frame_idx: int,
+    gap_days_threshold: float | None = None,
+) -> go.Figure:
     """Build student elo figure.
 
 Parameters
@@ -657,8 +717,34 @@ go.Figure
             )
         )
 
+    if gap_days_threshold is not None and gap_days_threshold > 0 and student_ids:
+        first_series = series.get(student_ids[0]) or {}
+        timestamps = list(first_series.get("created_at") or [])
+        ordinals = [int(value) for value in first_series.get("attempt_ordinal") or []]
+        visible_count = bisect_right(ordinals, cutoff)
+        threshold_seconds = float(gap_days_threshold) * 86400.0
+        for idx in range(1, visible_count):
+            previous_raw = timestamps[idx - 1]
+            current_raw = timestamps[idx]
+            if not previous_raw or not current_raw:
+                continue
+            previous_dt = datetime.fromisoformat(str(previous_raw))
+            current_dt = datetime.fromisoformat(str(current_raw))
+            delta_seconds = (current_dt - previous_dt).total_seconds()
+            if delta_seconds < threshold_seconds:
+                continue
+            fig.add_vline(
+                x=ordinals[idx],
+                line_width=1.5,
+                line_dash="dot",
+                line_color="rgba(95, 104, 118, 0.65)",
+                annotation_text=_format_gap_label(delta_seconds),
+                annotation_position="top",
+                annotation_font={"size": 11, "color": "rgba(23,34,27,0.80)"},
+            )
+
     fig.update_layout(
-        title=f"Student Elo replay up to local attempt {cutoff}",
+        title=f"Module-local student Elo replay up to local attempt {cutoff}",
         xaxis_title="Student-local attempt ordinal",
         yaxis_title="Student Elo",
         height=540,

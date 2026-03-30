@@ -21,7 +21,6 @@ def test_student_elo_bootstrap_paths_exclude_heavy_event_tables() -> None:
     assert page.remote_query_paths == (
         "artifacts/derived/fact_attempt_core.parquet",
         "artifacts/derived/student_elo_events.parquet",
-        "artifacts/derived/student_elo_events_iterative.parquet",
     )
 
 

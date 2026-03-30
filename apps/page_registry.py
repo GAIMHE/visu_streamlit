@@ -93,14 +93,11 @@ PAGE_SPECS: tuple[PageSpec, ...] = (
         bootstrap_runtime_paths=(
             "data/learning_catalog.json",
             "artifacts/derived/agg_exercise_elo.parquet",
-            "artifacts/derived/agg_exercise_elo_iterative.parquet",
             "artifacts/derived/student_elo_profiles.parquet",
-            "artifacts/derived/student_elo_profiles_iterative.parquet",
         ),
         remote_query_paths=(
             "artifacts/derived/fact_attempt_core.parquet",
             "artifacts/derived/student_elo_events.parquet",
-            "artifacts/derived/student_elo_events_iterative.parquet",
         ),
     ),
     PageSpec(

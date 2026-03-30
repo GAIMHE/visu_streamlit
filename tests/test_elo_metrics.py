@@ -38,6 +38,7 @@ from visu2.derive import (
     build_agg_exercise_elo_from_fact,
     build_agg_exercise_elo_iterative_from_fact,
     build_student_elo_events_from_fact,
+    build_student_elo_events_iterative_from_fact,
     build_student_elo_profiles_from_events,
 )
 
@@ -189,7 +190,7 @@ Examples
 
     assert row["calibrated"] is True
     assert row["calibration_attempts"] == 1
-    assert abs(float(row["exercise_elo"]) - 1488.0) < 1e-9
+    assert abs(float(row["exercise_elo"]) - 1500.0) < 1e-9
 
 
 def test_activity_elo_excludes_uncalibrated_exercises(tmp_path: Path) -> None:
@@ -242,7 +243,7 @@ Examples
 
     assert row["catalog_exercise_count"] == 2
     assert row["calibrated_exercise_count"] == 1
-    assert abs(float(row["activity_mean_exercise_elo"]) - 1488.0) < 1e-9
+    assert abs(float(row["activity_mean_exercise_elo"]) - 1500.0) < 1e-9
     assert abs(float(row["calibration_coverage_ratio"]) - 0.5) < 1e-9
 
 
@@ -415,11 +416,270 @@ Examples
     row = profiles.to_dicts()[0]
 
     assert row["user_id"] == "u1"
+    assert row["module_code"] == "M1"
+    assert row["module_label"] == "Module 1"
     assert row["total_attempts"] == 2
     assert row["unique_modules"] == 1
     assert row["unique_objectives"] == 1
     assert row["unique_activities"] == 1
     assert row["eligible_for_replay"] is True
+
+
+def test_current_exercise_elo_keeps_reused_exercise_separate_across_modules(tmp_path: Path) -> None:
+    """Test Current Elo calibrates the same exercise ID independently per module context."""
+    settings = _build_settings(tmp_path)
+    fact = _fact(
+        [
+            {
+                "created_at": datetime(2025, 1, 1, 9, 0, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "u1",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p1",
+                "objective_id": "o1",
+                "objective_label": "Objective 1",
+                "activity_id": "a1",
+                "activity_label": "Activity 1",
+                "exercise_id": "shared",
+                "data_correct": False,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "zpdes",
+                "attempt_number": 1,
+                "module_id": "m1",
+                "module_code": "M1",
+                "module_label": "Module 1",
+            },
+            {
+                "created_at": datetime(2025, 1, 1, 9, 5, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "u2",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p1",
+                "objective_id": "o1",
+                "objective_label": "Objective 1",
+                "activity_id": "a1",
+                "activity_label": "Activity 1",
+                "exercise_id": "shared",
+                "data_correct": False,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "zpdes",
+                "attempt_number": 1,
+                "module_id": "m1",
+                "module_code": "M1",
+                "module_label": "Module 1",
+            },
+            {
+                "created_at": datetime(2025, 1, 1, 9, 10, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "u1",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p1",
+                "objective_id": "o1",
+                "objective_label": "Objective 1",
+                "activity_id": "a1",
+                "activity_label": "Activity 1",
+                "exercise_id": "anchor_m1",
+                "data_correct": True,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "zpdes",
+                "attempt_number": 1,
+                "module_id": "m1",
+                "module_code": "M1",
+                "module_label": "Module 1",
+            },
+            {
+                "created_at": datetime(2025, 1, 1, 9, 15, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "u2",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p1",
+                "objective_id": "o1",
+                "objective_label": "Objective 1",
+                "activity_id": "a1",
+                "activity_label": "Activity 1",
+                "exercise_id": "anchor_m1",
+                "data_correct": True,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "zpdes",
+                "attempt_number": 1,
+                "module_id": "m1",
+                "module_code": "M1",
+                "module_label": "Module 1",
+            },
+            {
+                "created_at": datetime(2025, 1, 1, 10, 0, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "u3",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p2",
+                "objective_id": "o2",
+                "objective_label": "Objective 2",
+                "activity_id": "a2",
+                "activity_label": "Activity 2",
+                "exercise_id": "shared",
+                "data_correct": True,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "zpdes",
+                "attempt_number": 1,
+                "module_id": "m2",
+                "module_code": "M2",
+                "module_label": "Module 2",
+            },
+            {
+                "created_at": datetime(2025, 1, 1, 10, 5, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "u4",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p2",
+                "objective_id": "o2",
+                "objective_label": "Objective 2",
+                "activity_id": "a2",
+                "activity_label": "Activity 2",
+                "exercise_id": "shared",
+                "data_correct": True,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "zpdes",
+                "attempt_number": 1,
+                "module_id": "m2",
+                "module_code": "M2",
+                "module_label": "Module 2",
+            },
+            {
+                "created_at": datetime(2025, 1, 1, 10, 10, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "u3",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p2",
+                "objective_id": "o2",
+                "objective_label": "Objective 2",
+                "activity_id": "a2",
+                "activity_label": "Activity 2",
+                "exercise_id": "anchor_m2",
+                "data_correct": False,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "zpdes",
+                "attempt_number": 1,
+                "module_id": "m2",
+                "module_code": "M2",
+                "module_label": "Module 2",
+            },
+            {
+                "created_at": datetime(2025, 1, 1, 10, 15, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "u4",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p2",
+                "objective_id": "o2",
+                "objective_label": "Objective 2",
+                "activity_id": "a2",
+                "activity_label": "Activity 2",
+                "exercise_id": "anchor_m2",
+                "data_correct": False,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "zpdes",
+                "attempt_number": 1,
+                "module_id": "m2",
+                "module_code": "M2",
+                "module_label": "Module 2",
+            },
+        ]
+    )
+
+    exercise_elo = build_agg_exercise_elo_from_fact(fact, settings=settings)
+    shared_rows = exercise_elo.filter(pl.col("exercise_id") == "shared").sort("module_code")
+
+    assert shared_rows.height == 2
+    assert shared_rows["module_code"].to_list() == ["M1", "M2"]
+    assert shared_rows["exercise_elo"].to_list()[0] != shared_rows["exercise_elo"].to_list()[1]
+
+
+def test_current_student_elo_resets_when_module_changes(tmp_path: Path) -> None:
+    """Test Current Elo replay restarts attempt ordinal and Elo at each module boundary."""
+    settings = _build_settings(tmp_path)
+    fact = _fact(
+        [
+            {
+                "created_at": datetime(2025, 1, 1, 9, 0, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "u1",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p1",
+                "objective_id": "o1",
+                "objective_label": "Objective 1",
+                "activity_id": "a1",
+                "activity_label": "Activity 1",
+                "exercise_id": "e1",
+                "data_correct": True,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "zpdes",
+                "attempt_number": 1,
+                "module_id": "m1",
+                "module_code": "M1",
+                "module_label": "Module 1",
+            },
+            {
+                "created_at": datetime(2025, 1, 1, 9, 5, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "u1",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p1",
+                "objective_id": "o1",
+                "objective_label": "Objective 1",
+                "activity_id": "a1",
+                "activity_label": "Activity 1",
+                "exercise_id": "e1",
+                "data_correct": False,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "zpdes",
+                "attempt_number": 2,
+                "module_id": "m1",
+                "module_code": "M1",
+                "module_label": "Module 1",
+            },
+            {
+                "created_at": datetime(2025, 1, 1, 10, 0, 0),
+                "date_utc": datetime(2025, 1, 1).date(),
+                "user_id": "u1",
+                "classroom_id": "c1",
+                "playlist_or_module_id": "p2",
+                "objective_id": "o2",
+                "objective_label": "Objective 2",
+                "activity_id": "a2",
+                "activity_label": "Activity 2",
+                "exercise_id": "e3",
+                "data_correct": True,
+                "data_duration": 10.0,
+                "session_duration": 10.0,
+                "work_mode": "adaptive-test",
+                "attempt_number": 1,
+                "module_id": "m2",
+                "module_code": "M2",
+                "module_label": "Module 2",
+            },
+        ]
+    )
+
+    exercise_elo = build_agg_exercise_elo_from_fact(fact, settings=settings)
+    events = build_student_elo_events_from_fact(fact, exercise_elo)
+    grouped = events.group_by("module_code").agg(
+        pl.col("attempt_ordinal").alias("ordinals"),
+        pl.col("student_elo_pre").alias("pre_elo"),
+    )
+    rows = {str(row["module_code"]): row for row in grouped.to_dicts()}
+
+    assert rows["M1"]["ordinals"] == [1, 2]
+    assert rows["M2"]["ordinals"] == [1]
+    assert abs(float(rows["M2"]["pre_elo"][0]) - 1500.0) < 1e-9
 
 
 def test_orphan_exercises_are_calibrated_and_replayed_with_fallback_context(
@@ -718,7 +978,7 @@ def test_iterative_student_replay_keeps_attempt_ordinals_aligned(tmp_path: Path)
     current_exercise_elo = build_agg_exercise_elo_from_fact(fact, settings=settings)
     iterative_exercise_elo = build_agg_exercise_elo_iterative_from_fact(fact, settings=settings)
     current_events = build_student_elo_events_from_fact(fact, current_exercise_elo)
-    iterative_events = build_student_elo_events_from_fact(fact, iterative_exercise_elo)
+    iterative_events = build_student_elo_events_iterative_from_fact(fact, iterative_exercise_elo)
 
     assert current_events["attempt_ordinal"].to_list() == iterative_events["attempt_ordinal"].to_list()
     assert current_events["exercise_id"].to_list() == iterative_events["exercise_id"].to_list()

@@ -18,7 +18,7 @@ Functions
 from __future__ import annotations
 
 DERIVED_MANIFEST_VERSION = "1.0"
-DERIVED_SCHEMA_VERSION = "phase0_thin_slice_v9_context_aware_hierarchy"
+DERIVED_SCHEMA_VERSION = "phase0_thin_slice_v10_module_local_current_elo"
 ACTIVE_CANONICAL_MODULE_CODES = ("M1", "M31", "M32", "M33", "M41", "M42", "M43")
 
 EXPECTED_BASELINE = {
@@ -283,6 +283,9 @@ REQUIRED_AGG_COLUMNS = {
     ],
     "student_elo_profiles": [
         "user_id",
+        "module_id",
+        "module_code",
+        "module_label",
         "total_attempts",
         "first_attempt_at",
         "last_attempt_at",
@@ -498,6 +501,8 @@ RUNTIME_CORE_COLUMNS = {
     ],
     "student_elo_profiles": [
         "user_id",
+        "module_code",
+        "module_label",
         "total_attempts",
         "first_attempt_at",
         "last_attempt_at",

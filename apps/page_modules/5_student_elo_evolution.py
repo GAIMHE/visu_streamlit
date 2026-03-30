@@ -40,21 +40,21 @@ from source_state import get_active_source_id
 
 from visu2.config import get_settings
 from visu2.contracts import RUNTIME_CORE_COLUMNS
-from visu2.figure_analysis import analyze_student_elo_comparison
+from visu2.figure_analysis import analyze_student_elo_page
 from visu2.remote_query import query_student_elo_events, query_student_fact_label_lookup
 from visu2.student_elo import (
-    build_student_elo_comparison_figure,
-    build_student_elo_comparison_payload,
+    build_student_elo_figure,
     build_student_elo_payload,
     load_student_elo_label_lookup,
     load_student_elo_profiles,
     merge_student_elo_label_lookups,
+    modules_for_student,
     select_student_by_id,
     select_students_near_attempt_target,
+    summarize_student_module_profiles,
 )
 
 CURRENT_EVENTS_RELATIVE_PATH = "artifacts/derived/student_elo_events.parquet"
-ITERATIVE_EVENTS_RELATIVE_PATH = "artifacts/derived/student_elo_events_iterative.parquet"
 ELO_EVENT_QUERY_COLUMNS: tuple[str, ...] = (
     "user_id",
     "attempt_ordinal",
@@ -84,161 +84,31 @@ def _load_label_lookup(path: Path, exercise_elo_path: Path) -> pl.DataFrame:
 
 
 @st.cache_data(show_spinner=False)
-def _load_comparison_profiles(
-    current_profiles_path: Path,
-    iterative_profiles_path: Path,
-) -> pl.DataFrame:
-    current = _load_profiles(current_profiles_path).rename(
-        {
-            "total_attempts": "current_total_attempts",
-            "first_attempt_at": "current_first_attempt_at",
-            "last_attempt_at": "current_last_attempt_at",
-            "unique_modules": "current_unique_modules",
-            "unique_objectives": "current_unique_objectives",
-            "unique_activities": "current_unique_activities",
-            "final_student_elo": "current_final_student_elo",
-            "eligible_for_replay": "current_eligible_for_replay",
-        }
-    )
-    iterative = _load_profiles(iterative_profiles_path).rename(
-        {
-            "total_attempts": "iterative_total_attempts",
-            "first_attempt_at": "iterative_first_attempt_at",
-            "last_attempt_at": "iterative_last_attempt_at",
-            "unique_modules": "iterative_unique_modules",
-            "unique_objectives": "iterative_unique_objectives",
-            "unique_activities": "iterative_unique_activities",
-            "final_student_elo": "iterative_final_student_elo",
-            "eligible_for_replay": "iterative_eligible_for_replay",
-        }
-    )
-    return (
-        current.join(iterative, on="user_id", how="inner")
-        .with_columns(
-            (
-                pl.col("current_eligible_for_replay").fill_null(False)
-                & pl.col("iterative_eligible_for_replay").fill_null(False)
-            ).alias("eligible_for_replay"),
-            pl.col("current_total_attempts").alias("total_attempts"),
-            pl.col("current_first_attempt_at").alias("first_attempt_at"),
-            pl.col("current_last_attempt_at").alias("last_attempt_at"),
-            pl.col("current_unique_modules").alias("unique_modules"),
-            pl.col("current_unique_objectives").alias("unique_objectives"),
-            pl.col("current_unique_activities").alias("unique_activities"),
-            pl.col("current_final_student_elo").alias("final_student_elo"),
-        )
-        .sort(["total_attempts", "user_id"], descending=[True, False])
-    )
-
-
-@st.cache_data(show_spinner=False)
 def _load_payload(
     source_id: str,
     label_path: Path,
     exercise_elo_path: Path,
     user_ids: tuple[str, ...],
+    module_code: str,
     step_size: int,
-    display_choice: str,
 ) -> dict[str, object]:
     settings = get_settings(source_id)
     users = list(user_ids)
     label_lookup = merge_student_elo_label_lookups(
-        query_student_fact_label_lookup(settings, user_ids=users),
+        query_student_fact_label_lookup(settings, user_ids=users, module_code=module_code),
         _load_label_lookup(label_path, exercise_elo_path),
     )
-
-    if display_choice == "Both":
-        return build_student_elo_comparison_payload(
-            query_student_elo_events(
-                settings,
-                relative_path=CURRENT_EVENTS_RELATIVE_PATH,
-                user_ids=users,
-                columns=ELO_EVENT_QUERY_COLUMNS,
-            ),
-            query_student_elo_events(
-                settings,
-                relative_path=ITERATIVE_EVENTS_RELATIVE_PATH,
-                user_ids=users,
-                columns=ELO_EVENT_QUERY_COLUMNS,
-            ),
-            users,
-            step_size,
-            label_lookup=label_lookup,
-        )
-
-    relative_path = (
-        CURRENT_EVENTS_RELATIVE_PATH
-        if display_choice == "Current Elo"
-        else ITERATIVE_EVENTS_RELATIVE_PATH
-    )
-    system_payload = build_student_elo_payload(
+    return build_student_elo_payload(
         query_student_elo_events(
             settings,
-            relative_path=relative_path,
+            relative_path=CURRENT_EVENTS_RELATIVE_PATH,
             user_ids=users,
             columns=ELO_EVENT_QUERY_COLUMNS,
+            module_code=module_code,
         ),
         users,
         step_size,
         label_lookup=label_lookup,
-    )
-    return {
-        "student_ids": list(system_payload.get("student_ids") or []),
-        "frame_cutoffs": list(system_payload.get("frame_cutoffs") or [0]),
-        "step_size": int(system_payload.get("step_size") or step_size),
-        "max_attempts": int(system_payload.get("max_attempts") or 0),
-        "systems": (display_choice,),
-        "series": {display_choice: system_payload.get("series") or {}},
-    }
-
-
-@st.cache_data(show_spinner=False)
-def _load_exercise_comparison(
-    current_exercise_elo_path: Path,
-    iterative_exercise_elo_path: Path,
-) -> pl.DataFrame:
-    current = (
-        pl.read_parquet(current_exercise_elo_path)
-        .select(
-            [
-                "exercise_id",
-                "exercise_label",
-                "module_code",
-                "calibration_attempts",
-                "exercise_elo",
-                "calibrated",
-            ]
-        )
-        .rename(
-            {
-                "exercise_elo": "current_exercise_elo",
-                "calibrated": "current_calibrated",
-            }
-        )
-    )
-    iterative = (
-        pl.read_parquet(iterative_exercise_elo_path)
-        .select(["exercise_id", "exercise_elo", "calibrated"])
-        .rename(
-            {
-                "exercise_elo": "iterative_exercise_elo",
-                "calibrated": "iterative_calibrated",
-            }
-        )
-    )
-    return (
-        current.join(iterative, on="exercise_id", how="inner")
-        .with_columns(
-            (
-                pl.col("current_calibrated").fill_null(False)
-                & pl.col("iterative_calibrated").fill_null(False)
-            ).alias("calibrated"),
-            (pl.col("iterative_exercise_elo") - pl.col("current_exercise_elo")).alias("elo_diff"),
-            (pl.col("iterative_exercise_elo") - pl.col("current_exercise_elo"))
-            .abs()
-            .alias("abs_elo_diff"),
-        )
-        .sort(["abs_elo_diff", "calibration_attempts", "exercise_id"], descending=[True, True, False])
     )
 
 
@@ -268,32 +138,20 @@ div, p, label {
     settings = get_settings(get_active_source_id())
     current_profiles_path = settings.artifacts_derived_dir / "student_elo_profiles.parquet"
     current_exercise_elo_path = settings.artifacts_derived_dir / "agg_exercise_elo.parquet"
-    iterative_profiles_path = settings.artifacts_derived_dir / "student_elo_profiles_iterative.parquet"
-    iterative_exercise_elo_path = settings.artifacts_derived_dir / "agg_exercise_elo_iterative.parquet"
 
     required = [
         current_profiles_path,
         current_exercise_elo_path,
-        iterative_profiles_path,
-        iterative_exercise_elo_path,
     ]
     missing = [path for path in required if not path.exists()]
     if missing:
-        st.error("Missing Elo comparison artifacts. Rebuild derived data.")
+        st.error("Missing Student Elo artifacts. Rebuild derived data.")
         st.code("\n".join(str(path) for path in missing))
         st.stop()
 
     compatibility_checks = {
         "student_elo_profiles": (current_profiles_path, RUNTIME_CORE_COLUMNS["student_elo_profiles"]),
         "agg_exercise_elo": (current_exercise_elo_path, RUNTIME_CORE_COLUMNS["agg_exercise_elo"]),
-        "student_elo_profiles_iterative": (
-            iterative_profiles_path,
-            RUNTIME_CORE_COLUMNS["student_elo_profiles_iterative"],
-        ),
-        "agg_exercise_elo_iterative": (
-            iterative_exercise_elo_path,
-            RUNTIME_CORE_COLUMNS["agg_exercise_elo_iterative"],
-        ),
     }
     missing_contracts: list[str] = []
     for label, (path, required_columns) in compatibility_checks.items():
@@ -301,33 +159,34 @@ div, p, label {
         if missing_columns:
             missing_contracts.append(f"- `{label}`: {', '.join(missing_columns)}")
     if missing_contracts:
-        st.error("Student Elo comparison artifacts are incompatible with the current runtime contract.")
+        st.error("Student Elo artifacts are incompatible with the current runtime contract.")
         st.markdown("\n".join(missing_contracts))
         st.code("uv run python scripts/build_derived.py --strict-checks")
         st.stop()
 
-    comparison_profiles = _load_comparison_profiles(current_profiles_path, iterative_profiles_path)
-    if comparison_profiles.height == 0:
-        st.info("No students are available in both Elo systems.")
+    module_profiles = _load_profiles(current_profiles_path)
+    if module_profiles.height == 0:
+        st.info("No student Elo profiles are available.")
         st.stop()
 
-    eligible_profiles = comparison_profiles.filter(pl.col("eligible_for_replay"))
-    if eligible_profiles.height == 0:
-        st.info("No student Elo trajectories are jointly eligible for comparison.")
+    student_summary = summarize_student_module_profiles(module_profiles)
+    eligible_students = student_summary.filter(pl.col("eligible_for_replay"))
+    if eligible_students.height == 0:
+        st.info("No student Elo trajectories are replay-eligible.")
         st.stop()
 
     st.title("Student Elo Evolution")
     render_figure_info("student_elo_page")
     st.caption(
-        "This page compares the current retrospective item-Elo system against an iterative offline calibration that refits fixed exercise difficulty without using the human graph structure."
+        "Current Elo is calibrated module by module from first attempts only, then replayed inside the selected module with the student reset to 1500 at the start of that module."
     )
 
-    min_attempt_count = int(eligible_profiles["total_attempts"].min() or 0)
-    max_attempt_count = int(eligible_profiles["total_attempts"].max() or 0)
-    median_attempt_count = int(eligible_profiles["total_attempts"].median() or min_attempt_count or 1)
+    min_attempt_count = int(eligible_students["total_attempts"].min() or 0)
+    max_attempt_count = int(eligible_students["total_attempts"].max() or 0)
+    median_attempt_count = int(eligible_students["total_attempts"].median() or min_attempt_count or 1)
 
     st.caption(
-        f"Jointly eligible students range from **{min_attempt_count}** to **{max_attempt_count}** attempts."
+        f"Replay-eligible students range from **{min_attempt_count}** to **{max_attempt_count}** total attempts across modules."
     )
     target_attempts = int(
         st.number_input(
@@ -345,21 +204,21 @@ div, p, label {
     ).strip()
 
     if manual_student_id:
-        selected_student = select_student_by_id(eligible_profiles, manual_student_id)
+        selected_student = select_student_by_id(eligible_students, manual_student_id)
         if selected_student is None:
             st.info(
-                "No jointly replay-eligible student matches that ID. Please check the ID or clear the field."
+                "No replay-eligible student matches that ID. Please check the ID or clear the field."
             )
             st.stop()
         normalized_students = [selected_student]
         st.caption("Using the typed student ID override.")
     else:
-        selection_signature = ("student_elo_comparison_attempt_target", target_attempts)
-        selection_state_key = "student_elo_comparison_selected_students"
-        selection_signature_key = "student_elo_comparison_attempt_target_signature"
+        selection_signature = ("student_elo_attempt_target", target_attempts)
+        selection_state_key = "student_elo_selected_students"
+        selection_signature_key = "student_elo_attempt_target_signature"
         if st.session_state.get(selection_signature_key) != selection_signature:
             sampled = select_students_near_attempt_target(
-                eligible_profiles,
+                eligible_students,
                 target_attempts=target_attempts,
                 tolerance_ratio=0.10,
                 max_students=1,
@@ -381,6 +240,48 @@ div, p, label {
             )
             st.stop()
 
+    selected_student_id = normalized_students[0]
+    selected_student_summary_rows = (
+        eligible_students.filter(pl.col("user_id") == selected_student_id).to_dicts() or []
+    )
+    if not selected_student_summary_rows:
+        st.info("The selected student is no longer replay-eligible under the current profiles.")
+        st.stop()
+    selected_student_summary = selected_student_summary_rows[0]
+    student_modules = modules_for_student(
+        module_profiles.filter(pl.col("eligible_for_replay")),
+        selected_student_id,
+    )
+    if student_modules.height == 0:
+        st.info("The selected student has no replay-eligible module trajectory.")
+        st.stop()
+
+    module_options = student_modules.to_dicts()
+    module_codes = [str(row.get("module_code") or "") for row in module_options]
+    selected_module_code = st.selectbox(
+        "Module",
+        options=module_codes,
+        index=0,
+        format_func=lambda code: next(
+            (
+                f"{row.get('module_label') or code} ({code}) | "
+                f"{int(row.get('total_attempts') or 0)} attempts | "
+                f"final Elo {float(row.get('final_student_elo') or 0.0):.1f}"
+                for row in module_options
+                if str(row.get("module_code") or "") == code
+            ),
+            code,
+        ),
+        help="Choose one of the modules available for the selected student. The replay and Elo values are module-local.",
+    )
+    selected_module_profile = (
+        student_modules.filter(pl.col("module_code") == selected_module_code).to_dicts() or []
+    )
+    if not selected_module_profile:
+        st.info("No replay profile is available for the selected module.")
+        st.stop()
+    selected_module_entry = selected_module_profile[0]
+
     st.sidebar.header("Replay")
     step_size = int(
         st.sidebar.number_input(
@@ -400,12 +301,6 @@ div, p, label {
             step=50,
         )
     )
-    display_choice = st.sidebar.radio(
-        "Displayed Elo system",
-        options=("Current Elo", "Iterative Elo", "Both"),
-        index=0,
-        help="Choose whether to display only the current Elo system, only the iterative Elo system, or both together.",
-    )
     gap_days_threshold = float(
         st.sidebar.number_input(
             "Highlight timestamp gaps >= days",
@@ -423,8 +318,8 @@ div, p, label {
             settings.learning_catalog_path,
             current_exercise_elo_path,
             tuple(normalized_students),
+            selected_module_code,
             step_size,
-            display_choice,
         )
     except (FileNotFoundError, ValueError) as exc:
         st.error(str(exc))
@@ -439,13 +334,13 @@ div, p, label {
     max_frame_idx = max(0, len(frame_cutoffs) - 1)
     state_signature = (
         tuple(student_ids),
+        selected_module_code,
         int(step_size),
-        display_choice,
         manual_student_id or int(target_attempts),
     )
-    signature_key = "student_elo_comparison_signature"
-    frame_key = "student_elo_comparison_frame_idx"
-    playing_key = "student_elo_comparison_playing"
+    signature_key = "student_elo_signature"
+    frame_key = "student_elo_frame_idx"
+    playing_key = "student_elo_playing"
     if st.session_state.get(signature_key) != state_signature:
         st.session_state[signature_key] = state_signature
         st.session_state[frame_key] = 0
@@ -455,23 +350,22 @@ div, p, label {
     if playing_key not in st.session_state:
         st.session_state[playing_key] = False
 
-    selected_profiles = eligible_profiles.filter(pl.col("user_id").is_in(student_ids))
-    summary_cols = st.columns(max(1, len(student_ids)))
-    for idx, user_id in enumerate(student_ids):
-        row = selected_profiles.filter(pl.col("user_id") == user_id).to_dicts()
-        if not row:
-            continue
-        entry = row[0]
-        with summary_cols[idx]:
-            st.metric("Student", user_id)
-            st.caption(
-                f"Attempts: {entry.get('current_total_attempts')} | "
-                f"Current Elo: {float(entry.get('current_final_student_elo') or 0.0):.1f} | "
-                f"Iterative Elo: {float(entry.get('iterative_final_student_elo') or 0.0):.1f}"
-            )
-            st.caption(
-                f"{entry.get('current_first_attempt_at')} -> {entry.get('current_last_attempt_at')}"
-            )
+    summary_cols = st.columns(4)
+    with summary_cols[0]:
+        st.metric("Student", selected_student_id)
+    with summary_cols[1]:
+        st.metric("Module", selected_module_entry.get("module_label") or selected_module_code)
+        st.caption(selected_module_code)
+    with summary_cols[2]:
+        st.metric("Module attempts", int(selected_module_entry.get("total_attempts") or 0))
+        st.caption(
+            f"Student total: {int(selected_student_summary.get('total_attempts') or 0)}"
+        )
+    with summary_cols[3]:
+        st.metric("Final Elo", f"{float(selected_module_entry.get('final_student_elo') or 0.0):.1f}")
+        st.caption(
+            f"{selected_module_entry.get('first_attempt_at')} -> {selected_module_entry.get('last_attempt_at')}"
+        )
 
     c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
     with c1:
@@ -488,6 +382,7 @@ div, p, label {
     with c4:
         st.caption(
             f"Student: **{student_ids[0]}** | "
+            f"Module: **{selected_module_code}** | "
             f"Step size: **{step_size}** | "
             f"Max local attempt: **{payload.get('max_attempts') or 0}**"
         )
@@ -502,17 +397,10 @@ div, p, label {
     frame_idx = int(st.session_state[frame_key])
     cutoff = int(frame_cutoffs[frame_idx]) if frame_idx < len(frame_cutoffs) else 0
     st.caption(f"Frame {frame_idx}/{max_frame_idx} | Local attempt cutoff: {cutoff}")
-    visible_systems = (
-        ("Current Elo", "Iterative Elo")
-        if display_choice == "Both"
-        else (display_choice,)
-    )
-
-    figure = build_student_elo_comparison_figure(
+    figure = build_student_elo_figure(
         payload,
         frame_idx,
         gap_days_threshold=gap_days_threshold,
-        visible_systems=visible_systems,
     )
     st.plotly_chart(
         figure,
@@ -524,17 +412,7 @@ div, p, label {
             "Dotted vertical markers show gaps between consecutive attempts that exceed the selected day threshold."
         )
 
-    exercise_comparison = _load_exercise_comparison(
-        current_exercise_elo_path,
-        iterative_exercise_elo_path,
-    )
-    render_figure_analysis(
-        analyze_student_elo_comparison(
-            payload,
-            exercise_comparison,
-            eligible_profiles,
-        )
-    )
+    render_figure_analysis(analyze_student_elo_page(payload))
 
     if st.session_state[playing_key]:
         if frame_idx >= max_frame_idx:

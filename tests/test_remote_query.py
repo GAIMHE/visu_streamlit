@@ -12,6 +12,7 @@ from visu2.remote_query import (
     query_fact_attempts,
     query_fact_attempts_for_classroom,
     query_runtime_parquet,
+    query_student_elo_events,
     query_student_fact_label_lookup,
     resolve_runtime_parquet_reference,
 )
@@ -71,6 +72,50 @@ def test_query_runtime_parquet_uses_local_fallback_and_projection(tmp_path) -> N
 
     assert frame.columns == ["user_id", "attempt_ordinal"]
     assert frame.to_dicts() == [{"user_id": "u1", "attempt_ordinal": 2}]
+
+
+def test_query_student_elo_events_can_filter_one_module(tmp_path) -> None:
+    settings = _build_settings(tmp_path)
+    table_path = settings.artifacts_derived_dir / "student_elo_events.parquet"
+    pl.DataFrame(
+        {
+            "user_id": ["u1", "u1", "u1"],
+            "attempt_ordinal": [1, 2, 1],
+            "created_at": [
+                datetime(2025, 1, 1, 9, 0, tzinfo=UTC),
+                datetime(2025, 1, 1, 9, 5, tzinfo=UTC),
+                datetime(2025, 1, 2, 9, 0, tzinfo=UTC),
+            ],
+            "date_utc": [date(2025, 1, 1), date(2025, 1, 1), date(2025, 1, 2)],
+            "work_mode": ["zpdes", "zpdes", "adaptive-test"],
+            "module_code": ["M1", "M1", "M2"],
+            "objective_id": ["o1", "o1", "o2"],
+            "activity_id": ["a1", "a1", "a2"],
+            "exercise_id": ["e1", "e2", "e3"],
+            "outcome": [1.0, 0.0, 1.0],
+            "expected_success": [0.5, 0.4, 0.6],
+            "exercise_elo": [1500.0, 1510.0, 1490.0],
+            "student_elo_pre": [1500.0, 1512.0, 1500.0],
+            "student_elo_post": [1512.0, 1502.4, 1512.0],
+        }
+    ).write_parquet(table_path)
+
+    frame = query_student_elo_events(
+        settings,
+        relative_path="artifacts/derived/student_elo_events.parquet",
+        user_ids=("u1",),
+        module_code="M1",
+        columns=(
+            "user_id",
+            "module_code",
+            "attempt_ordinal",
+        ),
+    )
+
+    assert frame.to_dicts() == [
+        {"user_id": "u1", "module_code": "M1", "attempt_ordinal": 1},
+        {"user_id": "u1", "module_code": "M1", "attempt_ordinal": 2},
+    ]
 
 
 def test_resolve_runtime_parquet_reference_uses_hf_source_when_local_missing(tmp_path, monkeypatch) -> None:

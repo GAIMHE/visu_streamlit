@@ -26,7 +26,9 @@ from .derive_elo import (
     build_agg_exercise_elo_from_fact,
     build_agg_exercise_elo_iterative_from_fact,
     build_student_elo_events_from_fact,
+    build_student_elo_events_iterative_from_fact,
     build_student_elo_profiles_from_events,
+    build_student_elo_profiles_iterative_from_events,
 )
 from .derive_fact import (
     build_fact_attempt_core,
@@ -207,12 +209,12 @@ def write_derived_tables(
             )
         student_elo_events_iterative = write_frame(
             "student_elo_events_iterative",
-            build_student_elo_events_from_fact(fact, agg_exercise_elo_iterative),
+            build_student_elo_events_iterative_from_fact(fact, agg_exercise_elo_iterative),
         )
         if "student_elo_profiles_iterative" in requested_set:
             write_frame(
                 "student_elo_profiles_iterative",
-                build_student_elo_profiles_from_events(student_elo_events_iterative),
+                build_student_elo_profiles_iterative_from_events(student_elo_events_iterative),
             )
 
     if "zpdes_exercise_progression_events" in requested_set:
@@ -241,6 +243,8 @@ __all__ = [
     "build_agg_activity_elo_from_exercise_elo",
     "build_student_elo_events_from_fact",
     "build_student_elo_profiles_from_events",
+    "build_student_elo_events_iterative_from_fact",
+    "build_student_elo_profiles_iterative_from_events",
     "build_zpdes_exercise_progression_events_from_fact",
     "build_work_mode_transition_paths",
     "write_derived_tables",

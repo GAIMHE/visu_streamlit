@@ -453,6 +453,8 @@ Examples
     }.issubset(set(events.columns))
     assert {
         "user_id",
+        "module_code",
+        "module_label",
         "total_attempts",
         "final_student_elo",
         "eligible_for_replay",

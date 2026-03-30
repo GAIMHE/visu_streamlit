@@ -173,6 +173,7 @@ def query_student_elo_events(
     relative_path: str,
     user_ids: Sequence[str],
     columns: Sequence[str],
+    module_code: str | None = None,
 ) -> pl.DataFrame:
     """Query only the requested student Elo event rows."""
     normalized_ids = tuple(
@@ -180,13 +181,18 @@ def query_student_elo_events(
     )
     if not normalized_ids:
         return _empty_frame(columns)
+    filters: list[FilterClause] = [("user_id", "in", normalized_ids)]
+    module_key = str(module_code or "").strip()
+    if module_key:
+        filters.append(("module_code", "=", module_key))
     return query_runtime_parquet(
         settings,
         relative_path,
         columns=columns,
-        filters=(("user_id", "in", normalized_ids),),
+        filters=tuple(filters),
         order_by=(
             ("user_id", False),
+            ("module_code", False),
             ("attempt_ordinal", False),
         ),
     )
@@ -196,6 +202,7 @@ def query_student_fact_label_lookup(
     settings: Settings,
     *,
     user_ids: Sequence[str],
+    module_code: str | None = None,
     relative_path: str = "artifacts/derived/fact_attempt_core.parquet",
 ) -> pl.DataFrame:
     """Query readable activity/objective/module labels for selected students."""
@@ -212,12 +219,16 @@ def query_student_fact_label_lookup(
     )
     if not normalized_ids:
         return _empty_frame(columns)
+    filters: list[FilterClause] = [("user_id", "in", normalized_ids)]
+    module_key = str(module_code or "").strip()
+    if module_key:
+        filters.append(("module_code", "=", module_key))
     return (
         query_runtime_parquet(
             settings,
             relative_path,
             columns=columns,
-            filters=(("user_id", "in", normalized_ids),),
+            filters=tuple(filters),
         )
         .filter(
             pl.col("activity_id").is_not_null()
