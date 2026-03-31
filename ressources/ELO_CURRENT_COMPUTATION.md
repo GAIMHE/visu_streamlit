@@ -1,6 +1,6 @@
-# How Current Elo Is Computed
+# How Sequential Replay Elo Is Computed
 
-This note explains the **Current Elo** used by the app.
+This note explains the **Sequential Replay Elo** used by the app.
 It describes the logic implemented in:
 
 - `src/visu2/derive_common.py`
@@ -26,7 +26,7 @@ It describes the logic implemented in:
 
 ## Short Summary
 
-Current Elo is computed in **two stages**:
+Sequential Replay Elo is computed in **two stages**:
 
 1. **Calibrate exercise difficulty offline**
    - done **module by module**
@@ -64,7 +64,7 @@ These are defined in `src/visu2/derive_common.py`.
 
 ## What Counts as an "Exercise"
 
-For Current Elo, an item is **not** identified by `exercise_id` alone.
+For Sequential Replay Elo, an item is **not** identified by `exercise_id` alone.
 
 It is identified by the raw context:
 
@@ -245,7 +245,7 @@ This replay is simpler than calibration:
 
 So if the same student works in 3 modules:
 
-- they have 3 separate Current Elo trajectories
+- they have 3 separate Sequential Replay Elo trajectories
 
 ## Step 9: Update Elo Attempt by Attempt During Replay
 
@@ -306,7 +306,7 @@ The active Student Elo page now works like this:
 
 So the page is showing:
 
-- **Current Elo only**
+- **Sequential Replay Elo only**
 - **one module-local trajectory at a time**
 
 ## What This Means in Practice
@@ -327,7 +327,7 @@ They are two module-specific scales, both centered around `1500`.
 
 ## One-Sentence Summary
 
-Current Elo is computed by:
+Sequential Replay Elo is computed by:
 
 - calibrating **fixed exercise difficulty per module from first attempts only**, then
 - replaying **student Elo inside each module from 1500 using all attempts**.

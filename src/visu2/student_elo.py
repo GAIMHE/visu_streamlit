@@ -194,7 +194,7 @@ pl.LazyFrame
 
 
 def summarize_student_module_profiles(profiles: pl.DataFrame) -> pl.DataFrame:
-    """Aggregate module-local Current-Elo profiles into one student-level selector summary."""
+    """Aggregate module-local Sequential Replay Elo profiles into one student-level selector summary."""
     if profiles.height == 0:
         return pl.DataFrame(
             {
@@ -587,51 +587,53 @@ dict[str, Any]
 
 
 def build_student_elo_comparison_payload(
-    current_events: pl.DataFrame | pl.LazyFrame,
-    iterative_events: pl.DataFrame | pl.LazyFrame,
+    left_events: pl.DataFrame | pl.LazyFrame,
+    right_events: pl.DataFrame | pl.LazyFrame,
     user_ids: list[str],
     step_size: int,
     label_lookup: pl.DataFrame | None = None,
+    system_labels: tuple[str, str] = ("Sequential Replay Elo", "Iterative Elo"),
 ) -> dict[str, Any]:
-    """Build a synchronized comparison payload for current and iterative Elo."""
-    current_payload = build_student_elo_payload(
-        current_events,
+    """Build a synchronized comparison payload for two Elo systems."""
+    left_label, right_label = system_labels
+    left_payload = build_student_elo_payload(
+        left_events,
         user_ids,
         step_size,
         label_lookup=label_lookup,
     )
-    iterative_payload = build_student_elo_payload(
-        iterative_events,
+    right_payload = build_student_elo_payload(
+        right_events,
         user_ids,
         step_size,
         label_lookup=label_lookup,
     )
-    current_ids = current_payload.get("student_ids") or []
-    iterative_ids = iterative_payload.get("student_ids") or []
-    if current_ids != iterative_ids:
-        raise ValueError("Current and iterative Elo payloads do not expose the same selected students.")
-    if (current_payload.get("frame_cutoffs") or [0]) != (iterative_payload.get("frame_cutoffs") or [0]):
-        raise ValueError("Current and iterative Elo payloads do not share the same replay frames.")
+    left_ids = left_payload.get("student_ids") or []
+    right_ids = right_payload.get("student_ids") or []
+    if left_ids != right_ids:
+        raise ValueError("Compared Elo payloads do not expose the same selected students.")
+    if (left_payload.get("frame_cutoffs") or [0]) != (right_payload.get("frame_cutoffs") or [0]):
+        raise ValueError("Compared Elo payloads do not share the same replay frames.")
 
-    for user_id in current_ids:
-        current_series = (current_payload.get("series") or {}).get(user_id) or {}
-        iterative_series = (iterative_payload.get("series") or {}).get(user_id) or {}
-        current_ordinals = [int(value) for value in current_series.get("attempt_ordinal") or []]
-        iterative_ordinals = [int(value) for value in iterative_series.get("attempt_ordinal") or []]
-        if current_ordinals != iterative_ordinals:
+    for user_id in left_ids:
+        left_series = (left_payload.get("series") or {}).get(user_id) or {}
+        right_series = (right_payload.get("series") or {}).get(user_id) or {}
+        left_ordinals = [int(value) for value in left_series.get("attempt_ordinal") or []]
+        right_ordinals = [int(value) for value in right_series.get("attempt_ordinal") or []]
+        if left_ordinals != right_ordinals:
             raise ValueError(
-                f"Current and iterative Elo attempt ordinals do not align for student {user_id}."
+                f"Compared Elo attempt ordinals do not align for student {user_id}."
             )
 
     return {
-        "student_ids": list(current_ids),
-        "frame_cutoffs": list(current_payload.get("frame_cutoffs") or [0]),
-        "step_size": int(current_payload.get("step_size") or step_size),
-        "max_attempts": int(current_payload.get("max_attempts") or 0),
-        "systems": ("Current Elo", "Iterative Elo"),
+        "student_ids": list(left_ids),
+        "frame_cutoffs": list(left_payload.get("frame_cutoffs") or [0]),
+        "step_size": int(left_payload.get("step_size") or step_size),
+        "max_attempts": int(left_payload.get("max_attempts") or 0),
+        "systems": (left_label, right_label),
         "series": {
-            "Current Elo": current_payload.get("series") or {},
-            "Iterative Elo": iterative_payload.get("series") or {},
+            left_label: left_payload.get("series") or {},
+            right_label: right_payload.get("series") or {},
         },
     }
 
@@ -767,38 +769,6 @@ def _format_gap_label(delta_seconds: float) -> str:
     return f"{delta_seconds / 60:.0f}m"
 
 
-def _build_module_color_map(
-    series: dict[str, Any],
-    systems: list[str],
-    student_ids: list[str],
-) -> dict[str, str]:
-    palette = [
-        "#7DB7D9",
-        "#F2B680",
-        "#8DC8A8",
-        "#C9A0DC",
-        "#E5C16F",
-        "#92C5DE",
-        "#D8A7B1",
-        "#A7C7E7",
-    ]
-    module_codes: list[str] = []
-    for system in systems:
-        system_series = series.get(system) or {}
-        for user_id in student_ids:
-            user_series = system_series.get(user_id) or {}
-            for module_code in user_series.get("module_code") or []:
-                code = str(module_code or "").strip()
-                if code and code not in module_codes:
-                    module_codes.append(code)
-    color_map = {
-        module_code: palette[idx % len(palette)]
-        for idx, module_code in enumerate(sorted(module_codes))
-    }
-    color_map["__missing__"] = "#AEB7C2"
-    return color_map
-
-
 def _work_mode_to_symbol(work_mode: str | None) -> str:
     normalized = str(work_mode or "").strip().lower()
     if normalized == "zpdes":
@@ -818,35 +788,33 @@ def build_student_elo_comparison_figure(
     gap_days_threshold: float | None = None,
     visible_systems: tuple[str, ...] | None = None,
 ) -> go.Figure:
-    """Build a comparison figure overlaying the current and iterative Elo systems."""
+    """Build a comparison figure overlaying multiple Elo systems."""
     student_ids = [str(user_id) for user_id in payload.get("student_ids") or []]
     frame_cutoffs = payload.get("frame_cutoffs") or [0]
     current_frame_idx = min(max(0, int(frame_idx)), len(frame_cutoffs) - 1)
     cutoff = int(frame_cutoffs[current_frame_idx])
-    systems = list(payload.get("systems") or ["Current Elo", "Iterative Elo"])
+    systems = list(payload.get("systems") or ["Sequential Replay Elo", "Iterative Elo"])
     if visible_systems:
         allowed = {str(system) for system in visible_systems if str(system).strip()}
         systems = [system for system in systems if system in allowed]
     series = payload.get("series") or {}
 
-    colors = ["#1e7a52", "#2148a4"]
-    line_dash = {"Current Elo": "solid", "Iterative Elo": "dash"}
+    system_colors = {
+        "Sequential Replay Elo": "#1e7a52",
+        "Batch Replay Elo": "#2148a4",
+        "Iterative Elo": "#2148a4",
+    }
     single_student = len(student_ids) == 1
-    module_color_map = _build_module_color_map(series, systems, student_ids)
     fig = go.Figure()
 
-    for idx, user_id in enumerate(student_ids):
-        color = colors[idx % len(colors)]
+    for user_id in student_ids:
         for system in systems:
             user_series = ((series.get(system) or {}).get(user_id)) or {}
             ordinals = [int(value) for value in user_series.get("attempt_ordinal") or []]
             visible_count = bisect_right(ordinals, cutoff)
             if visible_count <= 0:
                 continue
-            marker_colors = [
-                module_color_map.get(str(module_code or "").strip(), module_color_map["__missing__"])
-                for module_code in (user_series.get("module_code") or [])[:visible_count]
-            ]
+            color = system_colors.get(system, "#6B7280")
             marker_symbols = [
                 _work_mode_to_symbol(work_mode)
                 for work_mode in (user_series.get("work_mode") or [])[:visible_count]
@@ -874,10 +842,10 @@ def build_student_elo_comparison_figure(
                     mode="lines+markers",
                     name=system if single_student else f"{user_id} | {system}",
                     legendgroup=user_id,
-                    line={"width": 3, "color": color, "dash": line_dash.get(system, "solid")},
+                    line={"width": 3, "color": color, "dash": "solid"},
                     marker={
                         "size": 7,
-                        "color": marker_colors,
+                        "color": color,
                         "symbol": marker_symbols,
                         "line": {"width": 0.6, "color": "rgba(23,34,27,0.45)"},
                     },
@@ -904,7 +872,7 @@ def build_student_elo_comparison_figure(
             )
 
     if gap_days_threshold is not None and gap_days_threshold > 0 and student_ids:
-        current_series = ((series.get("Current Elo") or {}).get(student_ids[0])) or {}
+        current_series = ((series.get("Sequential Replay Elo") or {}).get(student_ids[0])) or {}
         timestamps = list(current_series.get("created_at") or [])
         ordinals = [int(value) for value in current_series.get("attempt_ordinal") or []]
         visible_count = bisect_right(ordinals, cutoff)

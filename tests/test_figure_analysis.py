@@ -214,9 +214,9 @@ def test_analyze_student_elo_population_reports_raw_vs_normalized_severity() -> 
 def test_analyze_student_elo_comparison_reports_selected_and_population_differences() -> None:
     comparison_payload = {
         "student_ids": ["u1"],
-        "systems": ("Current Elo", "Iterative Elo"),
+        "systems": ("Sequential Replay Elo", "Iterative Elo"),
         "series": {
-            "Current Elo": {
+            "Sequential Replay Elo": {
                 "u1": {
                     "attempt_ordinal": [1, 2, 3],
                     "student_elo_post": [1505.0, 1510.0, 1512.0],

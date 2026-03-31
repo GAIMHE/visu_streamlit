@@ -31,9 +31,9 @@ def test_student_elo_bootstrap_paths_exclude_heavy_event_tables() -> None:
 def test_student_elo_page_exposes_current_and_batch_replay_systems() -> None:
     module = importlib.import_module("page_modules.5_student_elo_evolution")
 
-    assert tuple(module.ELO_SYSTEM_CONFIGS.keys()) == ("Current Elo", "Batch Replay Elo")
+    assert tuple(module.ELO_SYSTEM_CONFIGS.keys()) == ("Sequential Replay Elo", "Batch Replay Elo")
     assert (
-        module.ELO_SYSTEM_CONFIGS["Current Elo"]["events_relative_path"]
+        module.ELO_SYSTEM_CONFIGS["Sequential Replay Elo"]["events_relative_path"]
         == "artifacts/derived/student_elo_events.parquet"
     )
     assert (

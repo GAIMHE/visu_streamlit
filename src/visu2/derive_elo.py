@@ -1312,7 +1312,7 @@ def build_agg_exercise_elo_from_fact(
     fact: pl.DataFrame | pl.LazyFrame,
     settings: Settings,
 ) -> pl.DataFrame:
-    """Calibrate fixed Current-Elo exercise difficulty per module-local raw context."""
+    """Calibrate fixed Sequential-Replay-Elo exercise difficulty per module-local raw context."""
     base = _build_current_exercise_elo_base(fact, settings)
     if base.height == 0:
         return _empty_exercise_elo_df()
@@ -1486,7 +1486,7 @@ def build_student_elo_events_from_fact(
     fact: pl.DataFrame | pl.LazyFrame,
     exercise_elo: pl.DataFrame | pl.LazyFrame,
 ) -> pl.DataFrame:
-    """Replay Current-Elo trajectories inside each student-module slice."""
+    """Replay Sequential-Replay-Elo trajectories inside each student-module slice."""
     exercise_map_df = (
         as_lazy(exercise_elo)
         .filter(pl.col("calibrated") & pl.col("exercise_elo").is_not_null())
@@ -1515,7 +1515,7 @@ def build_student_elo_events_from_fact(
 def build_student_elo_profiles_from_events(
     events: pl.DataFrame | pl.LazyFrame,
 ) -> pl.DataFrame:
-    """Aggregate compact per-student-module replay summaries from Current-Elo events."""
+    """Aggregate compact per-student-module replay summaries from Sequential-Replay-Elo events."""
     return (
         as_lazy(events)
         .sort(["user_id", "module_code", "attempt_ordinal"])
@@ -1544,7 +1544,7 @@ def build_student_elo_events_batch_replay_from_fact(
     fact: pl.DataFrame | pl.LazyFrame,
     exercise_elo: pl.DataFrame | pl.LazyFrame,
 ) -> pl.DataFrame:
-    """Replay module-local Batch Replay Elo trajectories against fixed Current-Elo difficulty."""
+    """Replay module-local Batch Replay Elo trajectories against fixed Sequential-Replay-Elo difficulty."""
     exercise_map_df = (
         as_lazy(exercise_elo)
         .filter(pl.col("calibrated") & pl.col("exercise_elo").is_not_null())

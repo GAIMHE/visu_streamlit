@@ -269,7 +269,7 @@ def test_available_elo_system_configs_only_exposes_systems_with_local_artifacts(
 
     available = module._available_elo_system_configs(settings)
 
-    assert tuple(available) == ("Current Elo",)
+    assert tuple(available) == ("Sequential Replay Elo",)
 
 
 def test_build_student_elo_payload_respects_step_size_and_final_point() -> None:
@@ -470,7 +470,7 @@ def test_build_student_elo_comparison_payload_aligns_systems() -> None:
         label_lookup=_label_lookup(),
     )
     assert payload["student_ids"] == ["u1", "u2"]
-    assert payload["systems"] == ("Current Elo", "Iterative Elo")
+    assert payload["systems"] == ("Sequential Replay Elo", "Iterative Elo")
     assert payload["frame_cutoffs"] == [0, 2, 3]
 
 
@@ -492,7 +492,7 @@ def test_build_student_elo_comparison_payload_rejects_misaligned_attempts() -> N
 
 
 def test_build_student_elo_comparison_figure_uses_system_styles() -> None:
-    """Test comparison figure renders both systems with distinct line styles."""
+    """Test comparison figure renders both systems with fixed system colors."""
     iterative_events = _events().with_columns(
         (pl.col("student_elo_post") + 5.0).alias("student_elo_post"),
         (pl.col("student_elo_pre") + 5.0).alias("student_elo_pre"),
@@ -507,8 +507,10 @@ def test_build_student_elo_comparison_figure_uses_system_styles() -> None:
     )
     figure = build_student_elo_comparison_figure(payload, frame_idx=1)
     assert len(figure.data) == 2
+    assert figure.data[0].line.color == "#1e7a52"
+    assert figure.data[1].line.color == "#2148a4"
     assert figure.data[0].line.dash == "solid"
-    assert figure.data[1].line.dash == "dash"
+    assert figure.data[1].line.dash == "solid"
     assert "<b>System</b>" in figure.data[0].hovertemplate
 
 
@@ -529,10 +531,10 @@ def test_build_student_elo_comparison_figure_can_filter_to_one_system() -> None:
     figure = build_student_elo_comparison_figure(
         payload,
         frame_idx=1,
-        visible_systems=("Current Elo",),
+        visible_systems=("Sequential Replay Elo",),
     )
     assert len(figure.data) == 1
-    assert figure.data[0].name == "Current Elo"
+    assert figure.data[0].name == "Sequential Replay Elo"
 
 
 def test_build_student_elo_comparison_figure_adds_gap_markers() -> None:
@@ -561,8 +563,8 @@ def test_build_student_elo_comparison_figure_adds_gap_markers() -> None:
     assert figure.layout.annotations[0].text == "11d"
 
 
-def test_build_student_elo_comparison_figure_colors_markers_by_module() -> None:
-    """Test comparison figure uses module-based marker colors within a student path."""
+def test_build_student_elo_comparison_figure_uses_system_marker_colors() -> None:
+    """Test comparison figure colors markers by Elo system rather than module."""
     module_events = _events().with_columns(
         pl.when((pl.col("user_id") == "u1") & (pl.col("attempt_ordinal") == 3))
         .then(pl.lit("M2"))
@@ -581,10 +583,26 @@ def test_build_student_elo_comparison_figure_colors_markers_by_module() -> None:
         step_size=3,
     )
     figure = build_student_elo_comparison_figure(payload, frame_idx=1)
-    current_colors = list(figure.data[0].marker.color)
-    iterative_colors = list(figure.data[1].marker.color)
-    assert len(set(current_colors)) == 2
-    assert current_colors == iterative_colors
+    assert figure.data[0].marker.color == "#1e7a52"
+    assert figure.data[1].marker.color == "#2148a4"
+
+
+def test_build_student_elo_comparison_payload_accepts_batch_replay_labels() -> None:
+    """Test comparison payload can expose Sequential Replay and Batch Replay labels."""
+    batch_events = _events().with_columns(
+        (pl.col("student_elo_post") + 8.0).alias("student_elo_post"),
+        (pl.col("student_elo_pre") + 8.0).alias("student_elo_pre"),
+    )
+
+    payload = build_student_elo_comparison_payload(
+        _events(),
+        batch_events,
+        ["u1"],
+        step_size=2,
+        system_labels=("Sequential Replay Elo", "Batch Replay Elo"),
+    )
+
+    assert payload["systems"] == ("Sequential Replay Elo", "Batch Replay Elo")
 
 
 def test_build_student_elo_comparison_figure_uses_work_mode_marker_symbols() -> None:

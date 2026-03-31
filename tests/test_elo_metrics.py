@@ -456,7 +456,7 @@ Examples
 
 
 def test_current_exercise_elo_keeps_reused_exercise_separate_across_modules(tmp_path: Path) -> None:
-    """Test Current Elo calibrates the same exercise ID independently per module context."""
+    """Test Sequential Replay Elo calibrates the same exercise ID independently per module context."""
     settings = _build_settings(tmp_path)
     fact = _fact(
         [
@@ -632,7 +632,7 @@ def test_current_exercise_elo_keeps_reused_exercise_separate_across_modules(tmp_
 
 
 def test_current_student_elo_resets_when_module_changes(tmp_path: Path) -> None:
-    """Test Current Elo replay restarts attempt ordinal and Elo at each module boundary."""
+    """Test Sequential Replay Elo replay restarts attempt ordinal and Elo at each module boundary."""
     settings = _build_settings(tmp_path)
     fact = _fact(
         [

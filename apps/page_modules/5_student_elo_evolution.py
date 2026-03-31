@@ -44,6 +44,8 @@ from visu2.contracts import RUNTIME_CORE_COLUMNS
 from visu2.figure_analysis import analyze_student_elo_page
 from visu2.remote_query import query_student_elo_events, query_student_fact_label_lookup
 from visu2.student_elo import (
+    build_student_elo_comparison_figure,
+    build_student_elo_comparison_payload,
     build_student_elo_figure,
     build_student_elo_payload,
     load_student_elo_label_lookup,
@@ -63,12 +65,12 @@ BATCH_REPLAY_PROFILES_RELATIVE_PATH = (
     f"artifacts/derived/{BATCH_REPLAY_PROFILES_FILENAME}"
 )
 ELO_SYSTEM_CONFIGS: dict[str, dict[str, str]] = {
-    "Current Elo": {
+    "Sequential Replay Elo": {
         "profiles_filename": CURRENT_PROFILES_FILENAME,
         "profiles_contract_key": "student_elo_profiles",
         "events_relative_path": CURRENT_EVENTS_RELATIVE_PATH,
         "caption": (
-            "Current Elo uses the fixed module-local exercise difficulties calibrated from first "
+            "Sequential Replay Elo uses the fixed module-local exercise difficulties calibrated from first "
             "attempts only, then replays the student sequentially inside the selected module "
             "with the student reset to 1500 at the start of that module."
         ),
@@ -83,6 +85,11 @@ ELO_SYSTEM_CONFIGS: dict[str, dict[str, str]] = {
             "history seen so far, starting from 1500 on the first attempt of that module."
         ),
     },
+}
+ELO_VIEW_OPTIONS: dict[str, tuple[str, ...]] = {
+    "Sequential Replay Elo": ("Sequential Replay Elo",),
+    "Batch Replay Elo": ("Batch Replay Elo",),
+    "Both": ("Sequential Replay Elo", "Batch Replay Elo"),
 }
 ELO_EVENT_QUERY_COLUMNS: tuple[str, ...] = (
     "user_id",
@@ -142,6 +149,49 @@ def _load_payload(
     )
 
 
+@st.cache_data(show_spinner=False)
+def _load_comparison_payload(
+    source_id: str,
+    label_path: Path,
+    exercise_elo_path: Path,
+    left_events_relative_path: str,
+    right_events_relative_path: str,
+    left_label: str,
+    right_label: str,
+    user_ids: tuple[str, ...],
+    module_code: str,
+    step_size: int,
+) -> dict[str, object]:
+    settings = get_settings(source_id)
+    users = list(user_ids)
+    label_lookup = merge_student_elo_label_lookups(
+        query_student_fact_label_lookup(settings, user_ids=users, module_code=module_code),
+        _load_label_lookup(label_path, exercise_elo_path),
+    )
+    left_events = query_student_elo_events(
+        settings,
+        relative_path=left_events_relative_path,
+        user_ids=users,
+        columns=ELO_EVENT_QUERY_COLUMNS,
+        module_code=module_code,
+    )
+    right_events = query_student_elo_events(
+        settings,
+        relative_path=right_events_relative_path,
+        user_ids=users,
+        columns=ELO_EVENT_QUERY_COLUMNS,
+        module_code=module_code,
+    )
+    return build_student_elo_comparison_payload(
+        left_events,
+        right_events,
+        users,
+        step_size,
+        label_lookup=label_lookup,
+        system_labels=(left_label, right_label),
+    )
+
+
 def _parquet_columns(path: Path) -> list[str]:
     return list(pq.ParquetFile(path).schema_arrow.names)
 
@@ -188,7 +238,7 @@ div, p, label {
 
     required = [
         current_exercise_elo_path,
-        all_system_paths["Current Elo"],
+        all_system_paths["Sequential Replay Elo"],
     ]
     missing = [path for path in required if not path.exists()]
     if missing:
@@ -197,12 +247,12 @@ div, p, label {
         st.stop()
 
     available_system_configs = _available_elo_system_configs(settings)
-    if "Current Elo" not in available_system_configs:
-        st.error("Current Elo artifacts are missing or incomplete.")
+    if "Sequential Replay Elo" not in available_system_configs:
+        st.error("Sequential Replay Elo artifacts are missing or incomplete.")
         st.code(
             "\n".join(
                 (
-                    str(all_system_paths["Current Elo"]),
+                    str(all_system_paths["Sequential Replay Elo"]),
                 )
             )
         )
@@ -232,42 +282,56 @@ div, p, label {
     st.title("Student Elo Evolution")
     render_figure_info("student_elo_page")
     system_names = tuple(available_system_configs.keys())
-    selected_system = "Current Elo"
-    if len(system_names) > 1:
-        selected_system = st.radio(
-            "Elo system",
-            options=system_names,
-            index=system_names.index("Current Elo"),
-            horizontal=True,
+    selected_systems = ("Sequential Replay Elo",)
+    if len(system_names) > 1 and "Batch Replay Elo" in system_names:
+        selected_view = st.sidebar.radio(
+            "Elo systems",
+            options=tuple(ELO_VIEW_OPTIONS.keys()),
+            index=0,
             help=(
-                "Current Elo replays one incremental update per attempt. Batch Replay Elo refits "
-                "the student level from the whole module-local prefix at each attempt."
+                "Choose whether to display the sequential replay Elo, the prefix-batch "
+                "Batch Replay Elo, or both overlaid on the same chart."
             ),
         )
+        selected_systems = tuple(
+            system_name
+            for system_name in ELO_VIEW_OPTIONS[selected_view]
+            if system_name in available_system_configs
+        ) or ("Sequential Replay Elo",)
     else:
         st.caption(
             "Batch Replay Elo is not available yet for this source. It will appear once its "
             "artifacts are built locally."
         )
-    selected_system_config = available_system_configs[selected_system]
-    module_profiles = _load_profiles(all_system_paths[selected_system])
+
+    reference_system = (
+        "Sequential Replay Elo"
+        if "Sequential Replay Elo" in available_system_configs
+        else system_names[0]
+    )
+    selected_system_configs = {
+        system_name: available_system_configs[system_name]
+        for system_name in selected_systems
+    }
+    module_profiles = _load_profiles(all_system_paths[reference_system])
     if module_profiles.height == 0:
-        st.info(f"No {selected_system} profiles are available.")
+        st.info(f"No {reference_system} profiles are available.")
         st.stop()
 
     student_summary = summarize_student_module_profiles(module_profiles)
     eligible_students = student_summary.filter(pl.col("eligible_for_replay"))
     if eligible_students.height == 0:
-        st.info(f"No {selected_system} trajectories are replay-eligible.")
+        st.info(f"No {reference_system} trajectories are replay-eligible.")
         st.stop()
-    st.caption(selected_system_config["caption"])
+    for system_name in selected_systems:
+        st.caption(selected_system_configs[system_name]["caption"])
 
     min_attempt_count = int(eligible_students["total_attempts"].min() or 0)
     max_attempt_count = int(eligible_students["total_attempts"].max() or 0)
     median_attempt_count = int(eligible_students["total_attempts"].median() or min_attempt_count or 1)
 
     st.caption(
-        f"Replay-eligible students range from **{min_attempt_count}** to **{max_attempt_count}** total attempts across modules for **{selected_system}**."
+        f"Replay-eligible students range from **{min_attempt_count}** to **{max_attempt_count}** total attempts across modules."
     )
     target_attempts = int(
         st.number_input(
@@ -294,7 +358,7 @@ div, p, label {
         normalized_students = [selected_student]
         st.caption("Using the typed student ID override.")
     else:
-        selection_signature = ("student_elo_attempt_target", selected_system, target_attempts)
+        selection_signature = ("student_elo_attempt_target", target_attempts)
         selection_state_key = "student_elo_selected_students"
         selection_signature_key = "student_elo_attempt_target_signature"
         if st.session_state.get(selection_signature_key) != selection_signature:
@@ -362,6 +426,19 @@ div, p, label {
         st.info("No replay profile is available for the selected module.")
         st.stop()
     selected_module_entry = selected_module_profile[0]
+    selected_module_entries_by_system: dict[str, dict[str, object]] = {}
+    for system_name in selected_systems:
+        system_profiles = _load_profiles(all_system_paths[system_name])
+        rows = (
+            modules_for_student(
+                system_profiles.filter(pl.col("eligible_for_replay")),
+                selected_student_id,
+            )
+            .filter(pl.col("module_code") == selected_module_code)
+            .to_dicts()
+        )
+        if rows:
+            selected_module_entries_by_system[system_name] = rows[0]
 
     st.sidebar.header("Replay")
     step_size = int(
@@ -394,15 +471,41 @@ div, p, label {
     )
 
     try:
-        payload = _load_payload(
-            settings.source_id,
-            settings.learning_catalog_path,
-            current_exercise_elo_path,
-            selected_system_config["events_relative_path"],
-            tuple(normalized_students),
-            selected_module_code,
-            step_size,
-        )
+        if len(selected_systems) == 1:
+            payload = _load_payload(
+                settings.source_id,
+                settings.learning_catalog_path,
+                current_exercise_elo_path,
+                selected_system_configs[selected_systems[0]]["events_relative_path"],
+                tuple(normalized_students),
+                selected_module_code,
+                step_size,
+            )
+            analysis_payload = payload
+            figure_mode = "single"
+        else:
+            payload = _load_comparison_payload(
+                settings.source_id,
+                settings.learning_catalog_path,
+                current_exercise_elo_path,
+                selected_system_configs["Sequential Replay Elo"]["events_relative_path"],
+                selected_system_configs["Batch Replay Elo"]["events_relative_path"],
+                "Sequential Replay Elo",
+                "Batch Replay Elo",
+                tuple(normalized_students),
+                selected_module_code,
+                step_size,
+            )
+            analysis_payload = _load_payload(
+                settings.source_id,
+                settings.learning_catalog_path,
+                current_exercise_elo_path,
+                selected_system_configs["Sequential Replay Elo"]["events_relative_path"],
+                tuple(normalized_students),
+                selected_module_code,
+                step_size,
+            )
+            figure_mode = "comparison"
     except (FileNotFoundError, ValueError) as exc:
         st.error(str(exc))
         st.stop()
@@ -415,7 +518,6 @@ div, p, label {
     frame_cutoffs = payload.get("frame_cutoffs") or [0]
     max_frame_idx = max(0, len(frame_cutoffs) - 1)
     state_signature = (
-        selected_system,
         tuple(student_ids),
         selected_module_code,
         int(step_size),
@@ -437,19 +539,30 @@ div, p, label {
     with summary_cols[0]:
         st.metric("Student", selected_student_id)
     with summary_cols[1]:
-        st.metric("Elo system", selected_system)
-        st.caption("One system at a time")
+        st.metric("Elo systems", " + ".join(selected_systems))
+        st.caption("Toggle from the left panel")
     with summary_cols[2]:
         st.metric("Module", selected_module_entry.get("module_label") or selected_module_code)
         st.caption(selected_module_code)
     with summary_cols[3]:
-        st.metric("Final Elo", f"{float(selected_module_entry.get('final_student_elo') or 0.0):.1f}")
+        if len(selected_systems) == 1:
+            system_entry = selected_module_entries_by_system.get(selected_systems[0], selected_module_entry)
+            st.metric("Final Elo", f"{float(system_entry.get('final_student_elo') or 0.0):.1f}")
+        else:
+            current_final = float(
+                (selected_module_entries_by_system.get("Sequential Replay Elo") or {}).get("final_student_elo")
+                or 0.0
+            )
+            batch_final = float(
+                (selected_module_entries_by_system.get("Batch Replay Elo") or {}).get("final_student_elo") or 0.0
+            )
+            st.metric("Final Elo", f"C {current_final:.1f} | B {batch_final:.1f}")
         st.caption(
             f"{selected_module_entry.get('first_attempt_at')} -> {selected_module_entry.get('last_attempt_at')}"
         )
     st.caption(
         f"Module attempts: **{int(selected_module_entry.get('total_attempts') or 0)}** | "
-        f"Student total across modules in {selected_system}: **{int(selected_student_summary.get('total_attempts') or 0)}**"
+        f"Student total across modules: **{int(selected_student_summary.get('total_attempts') or 0)}**"
     )
 
     c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
@@ -466,7 +579,7 @@ div, p, label {
             st.session_state[frame_key] = min(max_frame_idx, int(st.session_state[frame_key]) + 1)
     with c4:
         st.caption(
-            f"System: **{selected_system}** | "
+            f"Systems: **{' + '.join(selected_systems)}** | "
             f"Student: **{student_ids[0]}** | "
             f"Module: **{selected_module_code}** | "
             f"Step size: **{step_size}** | "
@@ -483,12 +596,20 @@ div, p, label {
     frame_idx = int(st.session_state[frame_key])
     cutoff = int(frame_cutoffs[frame_idx]) if frame_idx < len(frame_cutoffs) else 0
     st.caption(f"Frame {frame_idx}/{max_frame_idx} | Local attempt cutoff: {cutoff}")
-    figure = build_student_elo_figure(
-        payload,
-        frame_idx,
-        gap_days_threshold=gap_days_threshold,
-        system_label=selected_system,
-    )
+    if figure_mode == "single":
+        figure = build_student_elo_figure(
+            payload,
+            frame_idx,
+            gap_days_threshold=gap_days_threshold,
+            system_label=selected_systems[0],
+        )
+    else:
+        figure = build_student_elo_comparison_figure(
+            payload,
+            frame_idx,
+            gap_days_threshold=gap_days_threshold,
+            visible_systems=selected_systems,
+        )
     st.plotly_chart(
         figure,
         width="stretch",
@@ -499,7 +620,7 @@ div, p, label {
             "Dotted vertical markers show gaps between consecutive attempts that exceed the selected day threshold."
         )
 
-    render_figure_analysis(analyze_student_elo_page(payload))
+    render_figure_analysis(analyze_student_elo_page(analysis_payload))
 
     if st.session_state[playing_key]:
         if frame_idx >= max_frame_idx:

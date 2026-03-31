@@ -45,7 +45,7 @@ NODE_COLORS: dict[str, str] = {
     "terminal": "#C8CDD6",
 }
 
-MIN_VISIBLE_TRANSITION_STUDENTS = 10
+MIN_VISIBLE_TRANSITION_STUDENTS = 1
 
 
 def _as_lazy(frame: pl.DataFrame | pl.LazyFrame) -> pl.LazyFrame:

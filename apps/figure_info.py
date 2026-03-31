@@ -177,7 +177,7 @@ FIGURE_INFO: dict[str, dict[str, tuple[str, ...]]] = {
             "Optional dotted vertical markers show large timestamp gaps between consecutive attempts while keeping the x-axis on local attempt ordinal rather than calendar time.",
             "Expected success is computed from the gap between the student's current Elo and the fixed difficulty of the exercise.",
             "Exercise difficulty is fixed offline per module from first attempts only, then both systems reset the student's Elo to 1500 at the first visible attempt of the selected module.",
-            "`Current Elo` applies one sequential update per attempt, while `Batch Replay Elo` refits the student's level from the full module-local prefix seen so far at each attempt.",
+            "`Sequential Replay Elo` applies one sequential update per attempt, while `Batch Replay Elo` refits the student's level from the full module-local prefix seen so far at each attempt.",
             "Exercises are calibrated by raw module/objective/activity/exercise context rather than bare exercise ID, so reused exercises can carry different difficulty in different module contexts.",
             "If an attempted exercise is outside the mapped catalog, it can still be calibrated and replayed; the page then uses fallback labels such as `Unmapped initial-test activity (M1)` to make that missing context explicit.",
         ),
