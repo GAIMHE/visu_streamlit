@@ -70,6 +70,14 @@ def render_dashboard_style() -> None:
     linear-gradient(180deg, var(--bg1), var(--bg2));
   color: var(--ink);
 }
+[data-testid="stMainBlockContainer"],
+[data-testid="stAppViewBlockContainer"],
+.main .block-container {
+  max-width: none !important;
+  width: 100% !important;
+  padding-left: 2rem !important;
+  padding-right: 2rem !important;
+}
 h1, h2, h3 {
   font-family: "Fraunces", Georgia, serif !important;
   color: var(--ink);
