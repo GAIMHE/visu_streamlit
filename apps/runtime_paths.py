@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 OVERVIEW_RUNTIME_RELATIVE_PATHS: tuple[str, ...] = (
+    "data/learning_catalog.json",
     "artifacts/derived/fact_attempt_core.parquet",
+    "artifacts/derived/work_mode_transition_paths.parquet",
 )
 
 BOTTLENECKS_TRANSITIONS_RUNTIME_RELATIVE_PATHS: tuple[str, ...] = (
@@ -32,10 +34,24 @@ CLASSROOM_REPLAY_RUNTIME_RELATIVE_PATHS: tuple[str, ...] = (
     "artifacts/derived/fact_attempt_core.parquet",
 )
 
+CLASSROOM_SANKEY_RUNTIME_RELATIVE_PATHS: tuple[str, ...] = (
+    "data/learning_catalog.json",
+    "artifacts/derived/fact_attempt_core.parquet",
+)
+
 STUDENT_ELO_RUNTIME_RELATIVE_PATHS: tuple[str, ...] = (
     "data/learning_catalog.json",
+    "artifacts/derived/agg_exercise_elo.parquet",
+    "artifacts/derived/agg_exercise_elo_iterative.parquet",
     "artifacts/derived/student_elo_profiles.parquet",
     "artifacts/derived/student_elo_events.parquet",
+    "artifacts/derived/student_elo_profiles_iterative.parquet",
+    "artifacts/derived/student_elo_events_iterative.parquet",
+)
+
+STUDENT_OBJECTIVE_SPIDER_RUNTIME_RELATIVE_PATHS: tuple[str, ...] = (
+    "data/learning_catalog.json",
+    "artifacts/derived/fact_attempt_core.parquet",
 )
 
 USAGE_PAGE_RUNTIME_RELATIVE_PATHS: tuple[str, ...] = (

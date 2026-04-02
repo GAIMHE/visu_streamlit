@@ -22,6 +22,7 @@ This folder is the canonical deep reference for runtime data handling in VISU2.
 - `derived_tables/fact_attempt_core.md`
 - `derived_tables/student_elo_events.md`
 - `derived_tables/student_elo_profiles.md`
+- `derived_tables/work_mode_transition_paths.md`
 - `derived_tables/zpdes_exercise_progression_events.md`
 
 ## Reports and Contracts

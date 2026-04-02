@@ -135,15 +135,24 @@ Examples
     This function is validated through the test suite execution path.
 """
     expected_tables = {
+        "hierarchy_context_lookup",
+        "classroom_mode_profiles",
+        "classroom_activity_summary_by_mode",
         "agg_module_usage_daily",
         "agg_playlist_module_usage",
         "agg_module_activity_usage",
         "agg_exercise_daily",
         "agg_exercise_elo",
+        "agg_exercise_elo_iterative",
         "agg_activity_elo",
         "student_elo_events",
         "student_elo_profiles",
+        "student_elo_events_batch_replay",
+        "student_elo_profiles_batch_replay",
+        "student_elo_events_iterative",
+        "student_elo_profiles_iterative",
         "zpdes_exercise_progression_events",
+        "work_mode_transition_paths",
     }
     assert expected_tables.issubset(set(REQUIRED_AGG_COLUMNS.keys()))
 

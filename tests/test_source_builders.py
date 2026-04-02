@@ -1,0 +1,61 @@
+"""Maureen adapter regressions for the source-local runtime builder."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from visu2.source_builders import _build_maureen_catalog_and_raw
+
+
+def test_build_maureen_catalog_and_raw_uses_researcher_csv_and_preserves_classrooms(tmp_path: Path) -> None:
+    config_path = tmp_path / "module_config.csv"
+    config_path.write_text(
+        "\n".join(
+            [
+                "type;shell;id;short_title;long_title;group_title;description;description_student;targeted_difficulties;status;available_in_specimen;code;prerequisites;init_open;stay_consec_min;nbMinStep;nbMaxComputeThreshold;activating_Threshold;deact_Threshold;deact_prerequisites;window_progression;prom_coeff;student_path;student_path_alt;mapping_nodes;states_definition;learning_items",
+                "module;witch;module-1;Module short;Module long;;;;;visible;FAUX;M16;;;;;;;;;;;;;;;",
+                "objective;witch;objective-1;Objective short;Objective long;;;;;visible;FAUX;M16O1;;Y;;;;;;;;;;;;;;;;",
+                "activity;witch;activity-1;Activity short;Activity long;;;;;visible;FAUX;M16O1A1;;;;;;;;;;;;;;;11111111-1111-1111-1111-111111111111",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    attempts_path = tmp_path / "attempts.csv"
+    attempts_path.write_text(
+        "\n".join(
+            [
+                "UAI,classroom_id,teacher_id,user_id,playlist_or_module_id,objective_id,activity_id,exercise_id,module_short_title,module_long_title,created_at,login_time,is_initial_test,data_score,data_correct,data_nb_tries,data_test_context,data_answer,data_duration,session_duration,work_mode;",
+                "0880021V,class-1,teacher-1,user-1,module-1,objective-1,activity-1,11111111-1111-1111-1111-111111111111,Comprendre,Module 16,2024-11-06 09:29:04.146000+00:00,2024-11-06 09:16:03.548000+00:00,False,1.0,True,1,zpdes,[1],19469.0,1078,zpdes;",
+                "\"0880021V,class-1,teacher-1,user-1,module-1,objective-1,activity-extra,22222222-2222-2222-2222-222222222222,Comprendre,Module 16,2024-11-06 09:23:14.444000+00:00,2024-11-06 09:16:03.548000+00:00,False,0.0,False,1,adaptive-test,\"\"{'groups': [[{'color': '#016680', 'label': 'Groupe 1', 'selection': [{'end': 2, 'start': 0}], 'nbMinAnswers': None, 'correctAnswer': [[{'end': 4, 'start': 0, 'optional': False}]]}]]}\"\",45812.0,1078,adaptive-test;\"",
+                "\"0880021V,class-1,teacher-1,user-1,module-1,objective-1,activity-extra,22222222-2222-2222-2222-222222222222,Comprendre,Module 16,2024-11-06 09:24:14.444000+00:00,2024-11-06 09:16:03.548000+00:00,False,1.0,True,2,adaptive-test,\"\"{'groups': [[{'color': '#016680', 'label': 'Groupe 1', 'selection': [{'end': 2, 'start': 0}], 'nbMinAnswers': None, 'correctAnswer': [[{'end': 4, 'start': 0, 'optional': False}]]}]]}\"\",45812.0,1078,adaptive-test;\"",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    raw_attempts, learning_catalog, zpdes_rules, exercises_json, warnings = _build_maureen_catalog_and_raw(
+        attempts_path,
+        config_path,
+    )
+
+    assert raw_attempts.height == 3
+    assert set(raw_attempts["work_mode"].to_list()) == {"zpdes", "adaptive-test"}
+    assert set(raw_attempts["classroom_id"].to_list()) == {"class-1"}
+    assert set(raw_attempts["teacher_id"].to_list()) == {"teacher-1"}
+    assert raw_attempts["module_id"].to_list() == ["module-1", "module-1", "module-1"]
+    extra_rows = raw_attempts.filter(raw_attempts["activity_id"] == "activity-extra")
+    assert extra_rows["attempt_number"].to_list() == [1, 2]
+    assert raw_attempts["student_attempt_index"].to_list() == [1, 2, 3]
+    assert any("Repaired 2 malformed row(s)" in warning for warning in warnings)
+
+    module = learning_catalog["modules"][0]
+    objective = module["objectives"][0]
+    assert len(objective["activities"]) == 2
+    synthetic_activity = [row for row in objective["activities"] if row["id"] == "activity-extra"][0]
+    assert synthetic_activity["code"] == "M16O1A2"
+    assert any("Added synthetic activity" in warning for warning in warnings)
+
+    assert learning_catalog["exercise_to_hierarchy"]["22222222-2222-2222-2222-222222222222"]["activity_id"] == "activity-extra"
+    assert zpdes_rules["map_id_code"]["code_to_id"]["M16O1A2"] == "activity-extra"
+    exercise_ids = [row["id"] for row in exercises_json["exercises"]]
+    assert "22222222-2222-2222-2222-222222222222" in exercise_ids

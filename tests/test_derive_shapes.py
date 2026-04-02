@@ -40,12 +40,15 @@ from visu2.derive import (
     build_agg_activity_elo_from_exercise_elo,
     build_agg_exercise_daily_from_fact,
     build_agg_exercise_elo_from_fact,
+    build_agg_exercise_elo_iterative_from_fact,
     build_agg_module_activity_usage_from_fact,
     build_agg_module_usage_daily_from_fact,
     build_agg_objective_daily_from_fact,
     build_agg_playlist_module_usage_from_fact,
     build_agg_student_module_progress_from_fact,
+    build_student_elo_events_batch_replay_from_fact,
     build_student_elo_events_from_fact,
+    build_student_elo_profiles_batch_replay_from_events,
     build_student_elo_profiles_from_events,
 )
 
@@ -407,6 +410,22 @@ Examples
     }.issubset(set(agg.columns))
 
 
+def test_iterative_exercise_elo_shape_and_keys() -> None:
+    """Test iterative exercise Elo shape and keys."""
+    from visu2.config import get_settings
+
+    agg = build_agg_exercise_elo_iterative_from_fact(_sample_fact(), settings=get_settings())
+    assert {
+        "exercise_id",
+        "exercise_elo",
+        "calibration_attempts",
+        "calibration_success_rate",
+        "calibrated",
+        "smoothed_calibration_success_rate",
+        "activity_id",
+    }.issubset(set(agg.columns))
+
+
 def test_student_elo_events_and_profiles_shape() -> None:
     """Test student elo events and profiles shape.
 
@@ -436,6 +455,33 @@ Examples
     }.issubset(set(events.columns))
     assert {
         "user_id",
+        "module_code",
+        "module_label",
+        "total_attempts",
+        "final_student_elo",
+        "eligible_for_replay",
+    }.issubset(set(profiles.columns))
+
+
+def test_batch_replay_student_elo_events_and_profiles_shape() -> None:
+    """Test Batch Replay Elo events and profiles expose the same runtime shape."""
+    from visu2.config import get_settings
+
+    exercise_elo = build_agg_exercise_elo_from_fact(_sample_fact(), settings=get_settings())
+    events = build_student_elo_events_batch_replay_from_fact(_sample_fact(), exercise_elo)
+    profiles = build_student_elo_profiles_batch_replay_from_events(events)
+
+    assert {
+        "user_id",
+        "attempt_ordinal",
+        "exercise_elo",
+        "student_elo_pre",
+        "student_elo_post",
+    }.issubset(set(events.columns))
+    assert {
+        "user_id",
+        "module_code",
+        "module_label",
         "total_attempts",
         "final_student_elo",
         "eligible_for_replay",

@@ -42,6 +42,41 @@ FIGURE_INFO: dict[str, dict[str, tuple[str, ...]]] = {
             "Success rate (exercise-balanced) is computed by first calculating a success rate for each exercise, then averaging those exercise-level rates so every exercise counts equally.",
         ),
     },
+    "overview_attempt_concentration_chart": {
+        "What it shows": (
+            "A ranked concentration chart of attempt volume after the current overview filters are applied.",
+            "The chart has two bases: `Content concentration` and `Student concentration`.",
+            "In content concentration, you can switch between exercise, activity, objective, and module level.",
+            "In student concentration, students are ranked globally across all visible attempts.",
+        ),
+        "Metrics": (
+            "The y-axis is always the share of visible attempts covered by the selected bar.",
+            "For content concentration, exercise, activity, and objective rows are ranked by attempts and grouped into rank buckets such as `Top 10%`; module view shows one bar per module.",
+            "For global student concentration, students are ranked by attempts in the current slice, then grouped into the same rank buckets.",
+            "The drilldown table changes with the selected basis: it shows either entities or students.",
+            "Contained exercises means `1` for exercises, and the number of catalog exercises inside the activity, objective, or module at the higher levels.",
+        ),
+        "How to read / interact": (
+            "Use the basis selector to switch between content and student concentration, then choose the relevant content level when content concentration is active.",
+            "The work-mode multiselect restricts the chart to one or several modes inside the current overview filter slice.",
+            "Click a bar to open the matching entity or student rows below the chart.",
+        ),
+    },
+    "overview_work_mode_transitions_sankey": {
+        "What it shows": (
+            "A Sankey diagram of student work-mode histories inside the current overview filter slice.",
+            "Each student enters through their first observed work mode, then follows up to the first three mode changes seen in the raw attempt history.",
+            "Students who never change mode end in `No transition`, and students who keep changing after the third visible change end in `More than 3 transitions`.",
+        ),
+        "Metrics": (
+            "A transition is counted only when the work mode differs from the student's previous attempt; repeated attempts in the same mode do not create extra transitions.",
+            "Link width is the number of students following that part of the path.",
+            "To keep the chart readable, links involving fewer than 10 students are hidden from the display.",
+            "Hover reports the source and target stages, the student count, and the percentage of all students covered by that link.",
+            "Each link uses the destination-mode color so the landing stage is easier to follow visually.",
+            "The figure is rebuilt from the filtered attempt history ordered by `student_attempt_index`, so changing the date or curriculum slice changes the visible paths.",
+        ),
+    },
     "bottlenecks_transitions_bottleneck_chart": {
         "What it shows": (
             "A ranked horizontal bar chart of modules, objectives, or activities where learners appear to struggle the most in the selected slice.",
@@ -50,7 +85,8 @@ FIGURE_INFO: dict[str, dict[str, tuple[str, ...]]] = {
         "Metrics": (
             "Failure rate is the share of attempts that were not successful.",
             "Repeat attempt rate is the share of attempts that were repeats rather than first tries.",
-            "Bottleneck score combines those two signals, with more weight given to low success than to repetition. Higher values indicate stronger candidate bottlenecks.",
+            "Bar length now shows failure rate directly, while bar color shows repeat attempt rate.",
+            "The combined bottleneck score is still kept in hover and analysis as a summary signal, with more weight given to low success than to repetition.",
         ),
     },
     "bottlenecks_transitions_path_chart": {
@@ -106,22 +142,69 @@ FIGURE_INFO: dict[str, dict[str, tuple[str, ...]]] = {
             "`Show cell values` writes the current cumulative success rate percentage only on populated cells.",
         ),
     },
-    "student_elo_page": {
+    "classroom_progression_sankey": {
         "What it shows": (
-            "A replayable Elo trajectory chart for one or two students over their own attempt sequences.",
-            "The small cards above the chart summarize the sampled students with their total attempts, final Elo, and first/last timestamps.",
+            "A static Sankey diagram of one classroom's activity progression in the selected work-mode scope.",
+            "Each student starts at the first activity they reach, then follows the ordered sequence of newly reached activities.",
+            "Revisits to already-seen activities are intentionally ignored so the figure shows progression breadth rather than back-and-forth navigation.",
         ),
         "Metrics": (
-            "The plotted value is post-attempt student Elo after each first visible update.",
-            "The hover reports the timestamp, module, objective, activity, exercise, work mode, outcome, expected success, exercise Elo, and the student's Elo before and after that attempt.",
-            "Expected success is computed from the gap between the student's current Elo and the fixed Elo of the exercise.",
-            "After each attempt, the student Elo is updated by adding a correction proportional to `(outcome - expected success)`; correct answers above expectation increase Elo less than correct answers below expectation.",
-            "Exercise Elo stays fixed during replay and comes from a separate historical calibration stage based on first-attempt data.",
+            "Link width counts unique students following that part of the classroom path.",
+            "`Starting activity step` lets you shift the visible window later in the progression, so the first displayed node can be step 2, step 6, or any later first-time activity rank reached by students.",
+            "`Visible activity steps` controls how many newly reached activity stages remain visible after the chosen starting step. Its maximum automatically follows the selected classroom's longest first-time path.",
+            "When the activity exists in the canonical catalog, the visible node label uses its code, such as `M1O1A1`; the real activity name stays in hover.",
+            "Students who stop inside the visible window go to labels such as `Stopped after 7 activities`, while students who continue beyond the window go to `More than N activities` using the absolute activity count reached so far.",
+            "Activity codes stay visible on the nodes, while hover keeps the real activity names; terminal nodes keep their visible labels.",
+            "Hover reports the source and target activities, the student count, the share of the selected classroom, and the share of students arriving at the source node.",
+            "The figure uses the full time span of the selected classroom in the chosen mode scope; page replay frames are not used here.",
         ),
         "How to use": (
-            "Choose a target attempt count to sample one or two students whose total attempts fall within about +/- 10% of that value.",
+            "Use `Target classroom size (students)` and `Matching classrooms` to keep the current size-based matching workflow.",
+            "If you already know a classroom ID, type it in `Classroom ID override (optional)` to load that classroom directly inside the selected work-mode scope.",
+            "The typed classroom override supersedes the currently selected matching classroom, but the matching list stays available for browsing nearby classes.",
+            "For sources without classroom identifiers, the page collapses to one synthetic classroom containing all students in the selected scope.",
+        ),
+    },
+    "student_elo_page": {
+        "What it shows": (
+            "A replayable module-local Elo chart for one student inside one selected module, with a selector for the Elo system.",
+            "The page first selects an Elo system, then a student, then one of that student's available modules.",
+            "The summary row above the chart shows the selected student, module, module-local attempts, final module-local Elo, and first/last timestamps for that module slice.",
+        ),
+        "Metrics": (
+            "The plotted value is post-attempt student Elo after each visible update inside the selected module only.",
+            "The hover reports timestamp, module, objective, activity, exercise, work mode, outcome, expected success, fixed exercise difficulty, and the student's Elo before and after that attempt.",
+            "Optional dotted vertical markers show large timestamp gaps between consecutive attempts while keeping the x-axis on local attempt ordinal rather than calendar time.",
+            "Expected success is computed from the gap between the student's current Elo and the fixed difficulty of the exercise.",
+            "Exercise difficulty is fixed offline per module from first attempts only, then both systems reset the student's Elo to 1500 at the first visible attempt of the selected module.",
+            "`Sequential Replay Elo` applies one sequential update per attempt, while `Batch Replay Elo` refits the student's level from the full module-local prefix seen so far at each attempt.",
+            "Exercises are calibrated by raw module/objective/activity/exercise context rather than bare exercise ID, so reused exercises can carry different difficulty in different module contexts.",
+            "If an attempted exercise is outside the mapped catalog, it can still be calibrated and replayed; the page then uses fallback labels such as `Unmapped initial-test activity (M1)` to make that missing context explicit.",
+        ),
+        "How to use": (
+            "Choose the Elo system first, then choose a target attempt count to sample one replay-eligible student using that student's total attempts across modules, or type a student ID directly.",
+            "Once the student is fixed, choose one of the modules available for that student; the default is the module with the most attempts.",
             "Use the replay controls to step through the local attempt timeline with a chosen step size and autoplay speed.",
-            "If no students are found in the requested attempt range, try another target count.",
+            "Use `Highlight timestamp gaps >= days` to mark long inactivity periods without switching the chart away from attempt-based progression.",
+            "If no students are found in the requested attempt range, try another target count, or clear the ID override if it does not match an eligible student.",
+        ),
+    },
+    "student_objective_spider": {
+        "What it shows": (
+            "A radar chart for one selected student inside one selected module.",
+            "Every catalog objective in the selected module remains visible as a spoke, even if the student never reached it.",
+            "The chart overlays all-attempt success rate with catalog-relative objective coverage.",
+        ),
+        "Metrics": (
+            "`Success rate` is the share of correct answers across all attempts the student made inside that objective.",
+            "`Coverage %` is the share of catalog exercises in the objective that the student attempted at least once; retries do not increase coverage.",
+            "Raw counts such as `distinct exercises attempted / total objective exercises` stay visible in hover and summary cards.",
+            "Untouched objectives keep `0%` coverage while the success-rate trace leaves a gap instead of inventing a zero score.",
+        ),
+        "How to use": (
+            "Use `Target attempt count` to sample one eligible student near the desired trajectory length.",
+            "If you already know the student ID, type it in `Student ID override (optional)` to load that student directly.",
+            "After a student is selected, choose one of the modules that student actually attempted; the default module is the student's most-attempted one.",
         ),
     },
     "zpdes_transition_efficiency_graph": {

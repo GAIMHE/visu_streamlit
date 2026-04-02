@@ -5,6 +5,9 @@ https://adaptivisu.streamlit.app/
 ## Project and Data Context
 VISU2 is a learning analytics and visualization project built on Adaptiv'Math interaction traces.  
 The repository supports an interactive web app for exploration, visualisation and analysis.  
+Active Streamlit figures now pair their visual output with:
+- an `Info` expander for human-readable methodology,
+- an `Analysis` expander for deterministic, page-scope findings tied to the figure theme, with ranked summaries, lightweight statistical checks when the page data supports them, and caveats when the evidence is too thin.
 
 ## Runtime Data Contract (4 Main Sources)
 The pedagogical hierarchy is: `module -> objective -> activity -> exercise`.
@@ -17,6 +20,7 @@ The pedagogical hierarchy is: `module -> objective -> activity -> exercise`.
 | `data/exercises.json` | Exercise metadata and instruction content | Exercise drilldown details |
 
 Legacy sources in `data/legacy/` are historical lineage only and are not runtime dependencies.
+Source-local runtime namespaces under `artifacts/sources/<source_id>/data/` now normalize the attempt parquet to `student_interaction.parquet` for every source, even when the raw input file keeps its historical name.
 
 ## Project Structure
 ```text
@@ -55,6 +59,8 @@ uv run python scripts/run_slice.py --port 8501
 ```bash
 uv run python scripts/run_slice.py --smoke
 ```
+
+For the source-aware build/upload workflow to Hugging Face, see `README_update_data.md`.
 
 6. Optional lint check:
 ```bash
@@ -102,16 +108,27 @@ uv run python scripts/sync_runtime_assets.py --repo-id <org/repo> --revision <ta
 
 ## Streamlit Pages and Figures
 
+The app now runs through a custom source-aware shell. Runtime assets are resolved per source under:
+
+- `artifacts/sources/main/...`
+- `artifacts/sources/maureen_m16fr/...`
+
+Only pages supported by the active source are shown in the UI.
+
 ### Page 1: Learning Analytics Overview (`apps/streamlit_app.py`)
-This page is the compact entrypoint into the dashboard.  
-It keeps only the high-level volume KPIs and the work-mode summary table.
+This page is the compact shell entrypoint into the dashboard.  
+It keeps the high-level volume KPIs, the work-mode summary table, a concentration view of attempt volume across both content and students, and a global Sankey of work-mode changes across full student histories.
 
 - KPI cards (attempts, unique students, unique exercises)  
   Dataset: `artifacts/derived/fact_attempt_core.parquet`
 - Work Mode Summary Table  
   Dataset: `artifacts/derived/fact_attempt_core.parquet`
+- Attempt Concentration chart + drilldown table  
+  Datasets: `artifacts/derived/fact_attempt_core.parquet`, `data/learning_catalog.json`
+- Work Mode Transitions Sankey  
+  Dataset: `artifacts/derived/work_mode_transition_paths.parquet`
 
-### Page 2: Bottlenecks and Transitions (`apps/pages/1_bottlenecks_and_transitions.py`)
+### Page 2: Bottlenecks and Transitions (`apps/page_modules/1_bottlenecks_and_transitions.py`)
 This page focuses on friction points and navigation flows.  
 It keeps the same bottleneck ranking and transition logic that previously lived on the overview page.
 
@@ -120,7 +137,7 @@ It keeps the same bottleneck ranking and transition logic that previously lived 
 - Path Transitions  
   Dataset: `artifacts/derived/agg_transition_edges.parquet` (with labels from derived aggregates)
 
-### Page 3: Objective-Activity Matrix Heatmap (`apps/pages/2_objective_activity_matrix.py`)
+### Page 3: Objective-Activity Matrix Heatmap (`apps/page_modules/2_objective_activity_matrix.py`)
 This page shows module-internal structure with objectives on rows and local activity positions (`A1..An`) on columns.  
 It supports metric comparison and click-based drilldown to exercise level.
 
@@ -135,7 +152,7 @@ It supports metric comparison and click-based drilldown to exercise level.
 - Exercise instruction panel (row click in drilldown table)  
   Datasets: `artifacts/derived/agg_exercise_daily.parquet`, `artifacts/derived/agg_exercise_elo.parquet`, placeholder image `images/placeholder_exo.png`
 
-### Page 4: ZPDES Transition Efficiency (`apps/pages/3_zpdes_transition_efficiency.py`)
+### Page 4: ZPDES Transition Efficiency (`apps/page_modules/3_zpdes_transition_efficiency.py`)
 This page uses the structural ZPDES lane layout and focuses on ZPDES-mode progression only.  
 It is designed to show whether first attempts on new exercises differ for students coming from earlier content, already-later content, or prior work inside the same activity.
 
@@ -144,7 +161,7 @@ It is designed to show whether first attempts on new exercises differ for studen
 - Hover-based ZPDES first-attempt summaries plus before/after/in-activity cohort summaries  
   Dataset: `artifacts/derived/zpdes_exercise_progression_events.parquet`
 
-### Page 5: Classroom Progression Replay (`apps/pages/4_classroom_progression_replay.py`)
+### Page 5: Classroom Progression Replay (`apps/page_modules/4_classroom_progression_replay.py`)
 This page replays class progression over time as a student-by-activity matrix.  
 It helps inspect pace synchronization, divergence, and emerging bottlenecks in classroom contexts.
 Classrooms are selected by target student count inside the current work-mode scope.
@@ -152,14 +169,30 @@ Classrooms are selected by target student count inside the current work-mode sco
 - Replay matrix (`student x activity`) and cumulative progression states  
   Dataset: `artifacts/derived/fact_attempt_core.parquet`
 
-### Page 6: Student Elo Evolution (`apps/pages/5_student_elo_evolution.py`)
-This page replays one or two student Elo trajectories over their own local attempt sequence.  
-It is useful for comparing progression pace, stability, and recovery after failures against fixed exercise difficulty.
+### Page 6: Student Elo Evolution (`apps/page_modules/5_student_elo_evolution.py`)
+This page compares one student Elo trajectory over that student's own local attempt sequence under two fixed-difficulty systems.  
+It is useful for comparing how the current retrospective item-Elo calibration and the new iterative offline calibration change the same student replay.
 
-- Student Elo replay line chart  
-  Dataset: `artifacts/derived/student_elo_events.parquet`
+- Student Elo comparison replay line chart  
+  Datasets: `artifacts/derived/student_elo_events.parquet`, `artifacts/derived/student_elo_events_iterative.parquet`
 - Student selector and summary cards  
-  Dataset: `artifacts/derived/student_elo_profiles.parquet`
+  Datasets: `artifacts/derived/student_elo_profiles.parquet`, `artifacts/derived/student_elo_profiles_iterative.parquet`
+- Exercise-difficulty comparison  
+  Datasets: `artifacts/derived/agg_exercise_elo.parquet`, `artifacts/derived/agg_exercise_elo_iterative.parquet`
+
+### Page 7: Classroom Progression Sankey (`apps/page_modules/6_classroom_progression_sankey.py`)
+This page renders a static, stage-based Sankey for one selected classroom.  
+It keeps the replay page's classroom-selection workflow, but summarizes the final first-time activity paths instead of animating synchronized frames.
+
+- Classroom activity-progression Sankey  
+  Dataset: `artifacts/derived/fact_attempt_core.parquet`
+
+### Page 8: Student Objective Spider (`apps/page_modules/7_student_objective_spider.py`)
+This page profiles one selected student inside one selected module through an objective-level radar chart.  
+It combines performance and breadth by overlaying all-attempt success rate with catalog-relative exercise coverage across every objective in the chosen module.
+
+- Student objective radar chart  
+  Datasets: `artifacts/derived/fact_attempt_core.parquet`, `data/learning_catalog.json`
 
 ## Further Reading
 - `ressources/README_HF.md`

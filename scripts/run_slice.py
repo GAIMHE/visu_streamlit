@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""CLI entrypoint for running or smoke-checking the Streamlit app."""
+﻿#!/usr/bin/env python3
+"""CLI entrypoint for running or smoke-checking the source-aware Streamlit app."""
 
 from __future__ import annotations
 
@@ -15,31 +15,16 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from visu2.config import get_settings
+from visu2.runtime_sources import DEFAULT_SOURCE_ID, get_runtime_source
 
 
-def _required_artifacts(settings_root: Path) -> list[Path]:
-    """Return the runtime files required before the app can start."""
-    return [
-        settings_root / "artifacts" / "reports" / "consistency_report.json",
-        settings_root / "artifacts" / "derived" / "fact_attempt_core.parquet",
-        settings_root / "artifacts" / "derived" / "agg_activity_daily.parquet",
-        settings_root / "artifacts" / "derived" / "agg_objective_daily.parquet",
-        settings_root / "artifacts" / "derived" / "agg_student_module_progress.parquet",
-        settings_root / "artifacts" / "derived" / "agg_transition_edges.parquet",
-        settings_root / "artifacts" / "derived" / "agg_module_usage_daily.parquet",
-        settings_root / "artifacts" / "derived" / "agg_playlist_module_usage.parquet",
-        settings_root / "artifacts" / "derived" / "agg_module_activity_usage.parquet",
-        settings_root / "artifacts" / "derived" / "agg_exercise_daily.parquet",
-        settings_root / "artifacts" / "derived" / "agg_exercise_elo.parquet",
-        settings_root / "artifacts" / "derived" / "agg_activity_elo.parquet",
-        settings_root / "artifacts" / "derived" / "student_elo_events.parquet",
-        settings_root / "artifacts" / "derived" / "student_elo_profiles.parquet",
-        settings_root / "artifacts" / "derived" / "zpdes_exercise_progression_events.parquet",
-    ]
+def _required_artifacts(source_id: str) -> list[Path]:
+    settings = get_settings(source_id)
+    source = get_runtime_source(source_id)
+    return [settings.runtime_root / rel_path for rel_path in source.runtime_relative_paths]
 
 
 def _smoke_import(app_path: Path) -> None:
-    """Import the app module to catch import-time failures during smoke checks."""
     spec = importlib.util.spec_from_file_location("streamlit_app", app_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Unable to create import spec for {app_path}")
@@ -48,39 +33,35 @@ def _smoke_import(app_path: Path) -> None:
 
 
 def main() -> int:
-    """Run the app in Streamlit or perform a local smoke validation."""
-    parser = argparse.ArgumentParser(description="Run or smoke-check the Streamlit thin slice app.")
+    parser = argparse.ArgumentParser(description="Run or smoke-check the Streamlit app.")
+    parser.add_argument("--port", type=int, default=8501, help="Streamlit port.")
+    parser.add_argument("--smoke", action="store_true", help="Only validate artifact presence and import app module.")
     parser.add_argument(
-        "--port",
-        type=int,
-        default=8501,
-        help="Streamlit port.",
-    )
-    parser.add_argument(
-        "--smoke",
-        action="store_true",
-        help="Only validate artifact presence and import app module.",
+        "--source",
+        type=str,
+        default=DEFAULT_SOURCE_ID,
+        help=f"Runtime source id to validate. Default: {DEFAULT_SOURCE_ID}",
     )
     args = parser.parse_args()
 
-    settings = get_settings()
+    settings = get_settings(args.source)
     app_path = settings.root_dir / "apps" / "learning_analytics_overview.py"
 
     if not app_path.exists():
         print(f"Missing app file: {app_path}")
         return 1
 
-    missing = [path for path in _required_artifacts(settings.root_dir) if not path.exists()]
+    missing = [path for path in _required_artifacts(args.source) if not path.exists()]
     if missing:
-        print("Missing required artifacts:")
+        print(f"Missing required runtime files for source '{args.source}':")
         for path in missing:
             print(f"- {path}")
-        print("Run: python scripts/build_derived.py")
+        print(f"Run: uv run python scripts/build_derived.py --source {args.source}")
         return 1
 
-    _smoke_import(app_path)
     if args.smoke:
-        print("Smoke check successful.")
+        _smoke_import(app_path)
+        print(f"Smoke check successful for source '{args.source}'.")
         return 0
 
     cmd = [

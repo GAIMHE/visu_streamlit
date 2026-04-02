@@ -29,9 +29,12 @@ from datetime import UTC, date, datetime, timedelta
 import polars as pl
 
 from visu2.classroom_progression import (
+    SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID,
+    build_classroom_activity_summary_by_mode,
     build_classroom_mode_profiles,
     build_heatmap_figure,
     build_replay_payload,
+    select_classroom_by_id,
     select_classrooms_near_student_target,
     select_default_classroom,
 )
@@ -163,6 +166,64 @@ Examples
     assert int(zpdes_c1["attempts"][0]) == 4
 
 
+def test_build_classroom_mode_profiles_uses_synthetic_classroom_when_missing() -> None:
+    fact = _base_fact_fixture().with_columns(pl.lit(None, dtype=pl.Utf8).alias("classroom_id"))
+
+    profiles = build_classroom_mode_profiles(fact)
+
+    assert profiles.height > 0
+    assert set(profiles["classroom_id"].to_list()) == {SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID}
+    zpdes_profile = profiles.filter(pl.col("mode_scope") == "zpdes")
+    assert zpdes_profile.height == 1
+    assert int(zpdes_profile["students"][0]) == 3
+
+
+def test_build_replay_payload_all_data_spans_explicit_classrooms() -> None:
+    payload = build_replay_payload(
+        fact=_base_fact_fixture(),
+        classroom_id=SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID,
+        mode_scope="all",
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 1),
+        max_frames=2000,
+        step_size=1,
+    )
+
+    assert payload["classroom_id"] == SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID
+    assert payload["classroom_label"] == "All students"
+    assert payload["total_events_valid_timestamp"] == 5
+    assert sorted(payload["student_ids"]) == ["u1", "u2", "u5"]
+
+
+def test_build_classroom_activity_summary_by_mode_matches_expected_rates() -> None:
+    summary = build_classroom_activity_summary_by_mode(_base_fact_fixture())
+
+    zpdes_a1 = summary.filter(
+        (pl.col("mode_scope") == "zpdes") & (pl.col("activity_label") == "A1")
+    ).row(0, named=True)
+    assert zpdes_a1["classrooms_observed"] == 1
+    assert zpdes_a1["attempts_total"] == 3
+    assert zpdes_a1["successes_total"] == 2
+    assert zpdes_a1["success_rate"] == 2 / 3
+    assert zpdes_a1["weak_classroom_share"] == 0.0
+
+    playlist_a5 = summary.filter(
+        (pl.col("mode_scope") == "playlist") & (pl.col("activity_label") == "A5")
+    ).row(0, named=True)
+    assert playlist_a5["classrooms_observed"] == 1
+    assert playlist_a5["success_rate"] == 1.0
+
+
+def test_build_classroom_activity_summary_by_mode_uses_synthetic_classroom_when_missing() -> None:
+    fact = _base_fact_fixture().with_columns(pl.lit(None, dtype=pl.Utf8).alias("classroom_id"))
+
+    summary = build_classroom_activity_summary_by_mode(fact)
+
+    zpdes = summary.filter(pl.col("mode_scope") == "zpdes")
+    assert zpdes.height > 0
+    assert zpdes["classrooms_observed"].to_list() == [1, 1, 1]
+
+
 def test_select_default_classroom_uses_zpdes_eligibility_then_ranking() -> None:
     """Test select default classroom uses zpdes eligibility then ranking.
 
@@ -231,6 +292,46 @@ def test_select_classrooms_near_student_target_returns_empty_when_no_match() -> 
     )
     selected = select_classrooms_near_student_target(profiles, "zpdes", target_students=20)
     assert selected.height == 0
+
+
+def test_select_classroom_by_id_returns_exact_match_in_scope() -> None:
+    """Test classroom ID override resolves one exact classroom in the selected scope."""
+    profiles = pl.DataFrame(
+        {
+            "mode_scope": ["zpdes", "playlist", "zpdes"],
+            "classroom_id": ["cA", "cA", "cB"],
+            "students": [18, 18, 21],
+            "activities": [10, 10, 14],
+            "objectives": [4, 4, 4],
+            "modules": [1, 1, 1],
+            "attempts": [120, 100, 200],
+            "first_attempt_at": [None, None, None],
+            "last_attempt_at": [None, None, None],
+        }
+    )
+
+    assert select_classroom_by_id(profiles, "zpdes", "cA") == "cA"
+    assert select_classroom_by_id(profiles, "playlist", "cA") == "cA"
+
+
+def test_select_classroom_by_id_returns_none_for_unknown_or_wrong_scope() -> None:
+    """Test classroom ID override rejects unknown IDs and classrooms outside the current scope."""
+    profiles = pl.DataFrame(
+        {
+            "mode_scope": ["zpdes", "playlist"],
+            "classroom_id": ["cA", "cB"],
+            "students": [18, 20],
+            "activities": [10, 12],
+            "objectives": [4, 4],
+            "modules": [1, 1],
+            "attempts": [120, 100],
+            "first_attempt_at": [None, None],
+            "last_attempt_at": [None, None],
+        }
+    )
+
+    assert select_classroom_by_id(profiles, "zpdes", "missing") is None
+    assert select_classroom_by_id(profiles, "zpdes", "cB") is None
 
 
 def test_build_heatmap_figure_overlays_values_only_on_populated_cells() -> None:

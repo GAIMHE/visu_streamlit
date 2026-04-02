@@ -90,6 +90,16 @@ dict[str, Any]
     }
 
 
+def _assert_condition(name: str, actual: Any, *, expected: str, passed: bool) -> dict[str, Any]:
+    """Build a named pass/fail entry for source-specific predicate checks."""
+    return {
+        "name": name,
+        "expected": expected,
+        "actual": actual,
+        "pass": bool(passed),
+    }
+
+
 def _sum_null_counts_from_rowgroup_stats(parquet_path: Path, column: str) -> int:
     """Sum null counts from rowgroup stats.
 
@@ -413,7 +423,7 @@ dict[str, Any]
 
 """
     catalog_payload = load_learning_catalog(settings.learning_catalog_path)
-    zpdes_rules_payload = load_zpdes_rules(settings.zpdes_rules_path)
+    zpdes_rules_payload = load_zpdes_rules(settings.build_zpdes_rules_path)
     exercises_payload = load_exercises(settings.exercises_json_path)
     parquet = _parquet_profile(settings)
     catalog = _catalog_integrity(catalog_payload)
@@ -436,65 +446,138 @@ dict[str, Any]
         "exercises_count": len(exercise_ids),
     }
 
-    checks_list = [
-        _assert_equal("parquet_rows", row_counts["parquet_rows"], EXPECTED_BASELINE["parquet_rows"]),
-        _assert_equal(
-            "parquet_columns", row_counts["parquet_columns"], EXPECTED_BASELINE["parquet_columns"]
-        ),
-        _assert_equal(
-            "parquet_row_groups",
-            row_counts["parquet_row_groups"],
-            EXPECTED_BASELINE["parquet_row_groups"],
-        ),
-        _assert_equal(
-            "catalog_modules", row_counts["catalog_modules"], EXPECTED_BASELINE["catalog_modules"]
-        ),
-        _assert_equal(
-            "catalog_objectives",
-            row_counts["catalog_objectives"],
-            EXPECTED_BASELINE["catalog_objectives"],
-        ),
-        _assert_equal(
-            "catalog_activities",
-            row_counts["catalog_activities"],
-            EXPECTED_BASELINE["catalog_activities"],
-        ),
-        _assert_equal(
-            "catalog_exercises_unique",
-            row_counts["catalog_exercises_unique"],
-            EXPECTED_BASELINE["catalog_exercises_unique"],
-        ),
-        _assert_equal(
-            "exercises_count", row_counts["exercises_count"], EXPECTED_BASELINE["exercises_count"]
-        ),
-        _assert_equal(
-            "catalog_missing_module_objective_refs",
-            catalog["missing_module_objective_refs"],
-            EXPECTED_BASELINE["catalog_missing_module_objective_refs"],
-        ),
-        _assert_equal(
-            "catalog_missing_objective_activity_refs",
-            catalog["missing_objective_activity_refs"],
-            EXPECTED_BASELINE["catalog_missing_objective_activity_refs"],
-        ),
-    ]
+    if settings.source_id == "main":
+        checks_list = [
+            _assert_equal("parquet_rows", row_counts["parquet_rows"], EXPECTED_BASELINE["parquet_rows"]),
+            _assert_equal(
+                "parquet_columns", row_counts["parquet_columns"], EXPECTED_BASELINE["parquet_columns"]
+            ),
+            _assert_equal(
+                "parquet_row_groups",
+                row_counts["parquet_row_groups"],
+                EXPECTED_BASELINE["parquet_row_groups"],
+            ),
+            _assert_equal(
+                "catalog_modules", row_counts["catalog_modules"], EXPECTED_BASELINE["catalog_modules"]
+            ),
+            _assert_equal(
+                "catalog_objectives",
+                row_counts["catalog_objectives"],
+                EXPECTED_BASELINE["catalog_objectives"],
+            ),
+            _assert_equal(
+                "catalog_activities",
+                row_counts["catalog_activities"],
+                EXPECTED_BASELINE["catalog_activities"],
+            ),
+            _assert_equal(
+                "catalog_exercises_unique",
+                row_counts["catalog_exercises_unique"],
+                EXPECTED_BASELINE["catalog_exercises_unique"],
+            ),
+            _assert_equal(
+                "exercises_count", row_counts["exercises_count"], EXPECTED_BASELINE["exercises_count"]
+            ),
+            _assert_equal(
+                "catalog_missing_module_objective_refs",
+                catalog["missing_module_objective_refs"],
+                EXPECTED_BASELINE["catalog_missing_module_objective_refs"],
+            ),
+            _assert_equal(
+                "catalog_missing_objective_activity_refs",
+                catalog["missing_objective_activity_refs"],
+                EXPECTED_BASELINE["catalog_missing_objective_activity_refs"],
+            ),
+        ]
 
-    for key, expected in EXPECTED_SPARSE_NULL_COUNTS.items():
-        checks_list.append(_assert_equal(f"null_count_{key}", parquet["null_counts"][key], expected))
+        for key, expected in EXPECTED_SPARSE_NULL_COUNTS.items():
+            checks_list.append(_assert_equal(f"null_count_{key}", parquet["null_counts"][key], expected))
 
-    for key, expected in EXPECTED_BASELINE.items():
-        if key in metadata_health:
-            checks_list.append(_assert_equal(key, metadata_health[key], expected))
+        for key, expected in EXPECTED_BASELINE.items():
+            if key in metadata_health:
+                checks_list.append(_assert_equal(key, metadata_health[key], expected))
+    else:
+        work_mode_counts = (
+            pl.scan_parquet(settings.parquet_path)
+            .group_by("work_mode")
+            .agg(pl.len().alias("attempts"))
+            .collect()
+        )
+        checks_list = [
+            _assert_condition(
+                "parquet_rows_nonzero",
+                row_counts["parquet_rows"],
+                expected="> 0",
+                passed=row_counts["parquet_rows"] > 0,
+            ),
+            _assert_condition(
+                "catalog_modules_nonzero",
+                row_counts["catalog_modules"],
+                expected="> 0",
+                passed=row_counts["catalog_modules"] > 0,
+            ),
+            _assert_condition(
+                "catalog_objectives_nonzero",
+                row_counts["catalog_objectives"],
+                expected="> 0",
+                passed=row_counts["catalog_objectives"] > 0,
+            ),
+            _assert_condition(
+                "catalog_activities_nonzero",
+                row_counts["catalog_activities"],
+                expected="> 0",
+                passed=row_counts["catalog_activities"] > 0,
+            ),
+            _assert_condition(
+                "catalog_exercises_unique_nonzero",
+                row_counts["catalog_exercises_unique"],
+                expected="> 0",
+                passed=row_counts["catalog_exercises_unique"] > 0,
+            ),
+            _assert_condition(
+                "catalog_missing_module_objective_refs",
+                catalog["missing_module_objective_refs"],
+                expected="== 0",
+                passed=catalog["missing_module_objective_refs"] == 0,
+            ),
+            _assert_condition(
+                "catalog_missing_objective_activity_refs",
+                catalog["missing_objective_activity_refs"],
+                expected="== 0",
+                passed=catalog["missing_objective_activity_refs"] == 0,
+            ),
+            _assert_condition(
+                "all_catalog_exercises_in_exercises_json",
+                metadata_health["all_catalog_exercises_in_exercises_json"],
+                expected="== 1",
+                passed=metadata_health["all_catalog_exercises_in_exercises_json"] == 1,
+            ),
+            _assert_condition(
+                "work_modes_present",
+                int(work_mode_counts.height),
+                expected=">= 1",
+                passed=work_mode_counts.height >= 1,
+            ),
+        ]
+        metadata_health = {
+            **metadata_health,
+            "work_mode_count": int(work_mode_counts.height),
+            "work_mode_attempts": {
+                str(row["work_mode"]): int(row["attempts"])
+                for row in work_mode_counts.to_dicts()
+            },
+        }
 
     check_map = {entry["name"]: entry for entry in checks_list}
     all_pass = all(entry["pass"] for entry in checks_list)
 
     return {
         "generated_at_utc": _ts(),
+        "source_id": settings.source_id,
         "status": "pass" if all_pass else "fail",
         "row_counts": row_counts,
         "null_counts": parquet["null_counts"],
         "time_span_utc": parquet["time_span_utc"],
-        "overlap_metrics": {key: int(value) for key, value in metadata_health.items()},
+        "overlap_metrics": metadata_health,
         "checks": check_map,
     }

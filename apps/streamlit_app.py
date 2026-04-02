@@ -1,11 +1,10 @@
-"""Main Streamlit overview page for top-level learning analytics summaries."""
+﻿"""Custom source-aware Streamlit shell for the learning analytics app."""
 
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
-import polars as pl
 import streamlit as st
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -16,202 +15,99 @@ if str(SRC_DIR) not in sys.path:
 if str(APPS_DIR) not in sys.path:
     sys.path.insert(0, str(APPS_DIR))
 
-from figure_info import render_figure_info
-from overview_shared import (
-    build_fact_query,
-    collect_core_compatibility,
-    collect_lazy,
-    format_missing_table_columns,
-    load_fact_dimensions,
-    parquet_columns,
-    render_curriculum_filters,
-    render_dashboard_style,
+from overview_shared import render_dashboard_style
+from page_registry import (
+    PAGE_SPEC_BY_ID,
+    PageSpec,
+    default_page_id_for_source,
+    import_page_module,
+    visible_pages_for_source,
 )
 from runtime_bootstrap import bootstrap_runtime_assets
-from runtime_paths import OVERVIEW_RUNTIME_RELATIVE_PATHS
+from source_state import (
+    get_active_page_id,
+    get_active_source_id,
+    set_active_page_id,
+    set_active_source_id,
+)
 
-from visu2.config import get_settings
+from visu2.runtime_sources import get_runtime_source, list_runtime_sources
 
 st.set_page_config(
-    page_title="Learning Analytics Overview",
+    page_title="Learning Analytics Explorer",
     page_icon=":bar_chart:",
     layout="wide",
 )
 
-render_dashboard_style()
 
-OVERVIEW_RUNTIME_TABLES: tuple[str, ...] = ("fact_attempt_core",)
+def _source_option_label(source_id: str) -> str:
+    source = get_runtime_source(source_id)
+    return f"{source.label} [{source.source_id}]"
+
+
+def _select_source() -> str:
+    source_specs = list_runtime_sources()
+    source_ids = [spec.source_id for spec in source_specs]
+    active_source_id = get_active_source_id()
+    if active_source_id not in source_ids:
+        active_source_id = source_ids[0]
+    selected_source = st.sidebar.selectbox(
+        "Dataset source",
+        options=source_ids,
+        index=source_ids.index(active_source_id),
+        format_func=_source_option_label,
+    )
+    if selected_source != active_source_id:
+        set_active_source_id(selected_source)
+        st.rerun()
+    return selected_source
+
+
+def _select_page(source_id: str) -> str:
+    source = get_runtime_source(source_id)
+    pages = visible_pages_for_source(source)
+    default_page_id = default_page_id_for_source(source)
+    visible_ids = [page.page_id for page in pages]
+    label_by_id = {page.page_id: page.label for page in pages}
+    requested_page_id = get_active_page_id(default_page_id)
+    if requested_page_id not in visible_ids:
+        show_redirect_info = requested_page_id != "home"
+        requested_page_id = default_page_id
+        set_active_page_id(requested_page_id)
+        if show_redirect_info:
+            fallback_label = label_by_id.get(requested_page_id, requested_page_id)
+            st.sidebar.info(
+                f"That page is not available for the selected source. Showing {fallback_label} instead."
+            )
+    selected_page_id = st.sidebar.radio(
+        "Page",
+        options=visible_ids,
+        index=visible_ids.index(requested_page_id),
+        format_func=lambda page_id: label_by_id.get(page_id, page_id),
+    )
+    if selected_page_id != requested_page_id:
+        set_active_page_id(selected_page_id)
+        st.rerun()
+    return selected_page_id
+
+
+def _render_page(source_id: str, page: PageSpec) -> None:
+    bootstrap_runtime_assets(source_id, page.bootstrap_runtime_paths)
+    module = import_page_module(page)
+    renderer = getattr(module, "main", None)
+    if not callable(renderer):
+        raise RuntimeError(f"Page module {page.module_path} does not expose a callable main().")
+    renderer()
 
 
 def main() -> None:
-    """Render the simplified overview page."""
-    bootstrap_runtime_assets(OVERVIEW_RUNTIME_RELATIVE_PATHS)
-    settings = get_settings()
-    fact_path = settings.artifacts_derived_dir / "fact_attempt_core.parquet"
+    st.sidebar.title("Learning Analytics")
+    render_dashboard_style()
+    source_id = _select_source()
+    selected_page_id = _select_page(source_id)
 
-    required = [fact_path]
-    missing = [path for path in required if not path.exists()]
-    if missing:
-        st.error("Missing derived artifacts. Run `python scripts/build_derived.py` first.")
-        st.code("\n".join(str(path) for path in missing))
-        st.stop()
-
-    compatibility = collect_core_compatibility(
-        table_columns={"fact_attempt_core": parquet_columns(fact_path)},
-        required_tables=OVERVIEW_RUNTIME_TABLES,
-    )
-    if compatibility["status"] == "incompatible":
-        st.error(
-            "Artifact status: INCOMPATIBLE. One or more core columns are missing. "
-            "Rebuild artifacts with `uv run python scripts/build_derived.py --strict-checks`."
-        )
-        st.markdown("**Missing core columns:**")
-        st.markdown(format_missing_table_columns(compatibility["missing_core_by_table"]))
-        st.stop()
-
-    dimension_domain = load_fact_dimensions(fact_path)
-    filters = render_curriculum_filters(dimension_domain)
-
-    fact_query = build_fact_query(
-        fact_path=fact_path,
-        start_date=filters.start_date,
-        end_date=filters.end_date,
-        module_code=filters.module_code,
-        objective_id=filters.objective_id,
-        activity_id=filters.activity_id,
-    )
-
-    kpi = fact_query.select(
-        pl.len().alias("attempts"),
-        pl.col("user_id").drop_nulls().n_unique().alias("unique_students"),
-        pl.col("exercise_id").drop_nulls().n_unique().alias("unique_exercises"),
-    )
-    kpi = collect_lazy(kpi).to_dicts()[0]
-
-    st.title("Learning Analytics Overview")
-
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Attempts", f"{int(kpi['attempts']):,}")
-    c2.metric("Unique Students", f"{int(kpi['unique_students']):,}")
-    c3.metric("Unique Exercises", f"{int(kpi['unique_exercises']):,}")
-
-    st.markdown(
-        "The Adaptiv'Math dataset contains interaction traces from a large-scale adaptive digital "
-        "math learning environment used in real classrooms.\n\n"
-        "It includes learning trajectories from more than 29,000 students, capturing how learners "
-        "navigate structured math content over time.\n\n"
-        "The traces combine algorithm-driven progression and teacher-defined sequencing."
-    )
-
-    st.subheader("Work Mode Summary")
-    render_figure_info("overview_work_mode_summary_table")
-    work_mode_summary = (
-        fact_query.filter(pl.col("work_mode").is_not_null())
-        .group_by("work_mode")
-        .agg(
-            pl.len().alias("attempts"),
-            pl.col("user_id").drop_nulls().n_unique().alias("unique_students"),
-            pl.col("module_code").drop_nulls().n_unique().alias("unique_modules_explored"),
-            pl.col("objective_id").drop_nulls().n_unique().alias("unique_objectives_explored"),
-            pl.col("activity_id").drop_nulls().n_unique().alias("unique_activities_explored"),
-            pl.col("data_correct").cast(pl.Float64).mean().alias("success_rate"),
-            (pl.col("attempt_number") > 1).cast(pl.Float64).mean().alias("repeat_attempt_rate"),
-        )
-        .join(
-            fact_query.filter(pl.col("work_mode").is_not_null() & pl.col("exercise_id").is_not_null())
-            .group_by(["work_mode", "exercise_id"])
-            .agg(pl.col("data_correct").cast(pl.Float64).mean().alias("exercise_success_rate"))
-            .group_by("work_mode")
-            .agg(
-                pl.col("exercise_success_rate")
-                .mean()
-                .alias("exercise_balanced_success_rate")
-            ),
-            on="work_mode",
-            how="left",
-        )
-        .join(
-            fact_query.filter(pl.col("work_mode").is_not_null() & pl.col("activity_id").is_not_null())
-            .group_by(["work_mode", "activity_id"])
-            .agg(pl.len().alias("activity_attempts"))
-            .group_by("work_mode")
-            .agg(pl.col("activity_attempts").median().alias("median_attempts_per_activity")),
-            on="work_mode",
-            how="left",
-        )
-        .sort("attempts", descending=True)
-    )
-    work_mode_summary = collect_lazy(work_mode_summary)
-
-    if work_mode_summary.height == 0:
-        st.info("No work mode rows available after filters.")
-        return
-
-    available_work_modes = work_mode_summary["work_mode"].to_list()
-    selected_work_modes = st.multiselect(
-        "Work modes shown",
-        options=available_work_modes,
-        default=available_work_modes,
-    )
-    if not selected_work_modes:
-        st.info("Select at least one work mode to render the summary table.")
-        return
-
-    selected_work_mode_summary = work_mode_summary.filter(pl.col("work_mode").is_in(selected_work_modes))
-    if selected_work_mode_summary.height == 0:
-        st.info("No rows available for the selected work modes.")
-        return
-
-    summary_table = selected_work_mode_summary.select(
-        [
-            "work_mode",
-            "attempts",
-            "success_rate",
-            "exercise_balanced_success_rate",
-            "unique_students",
-            "unique_modules_explored",
-            "unique_objectives_explored",
-            "unique_activities_explored",
-            "median_attempts_per_activity",
-            "repeat_attempt_rate",
-        ]
-    ).sort("attempts", descending=True).to_pandas()
-    summary_display = summary_table.copy()
-    summary_display["success_rate"] = summary_display["success_rate"].map(
-        lambda value: f"{(float(value) if value is not None else 0.0) * 100.0:.2f}%"
-    )
-    summary_display["exercise_balanced_success_rate"] = summary_display[
-        "exercise_balanced_success_rate"
-    ].map(lambda value: f"{(float(value) if value is not None else 0.0) * 100.0:.2f}%")
-    summary_display["repeat_attempt_rate"] = summary_display["repeat_attempt_rate"].map(
-        lambda value: f"{(float(value) if value is not None else 0.0) * 100.0:.2f}%"
-    )
-    st.dataframe(
-        summary_display,
-        width="stretch",
-        hide_index=True,
-        column_config={
-            "work_mode": "Work mode",
-            "attempts": st.column_config.NumberColumn("Attempts", format="%d"),
-            "success_rate": "Success rate (attempt-weighted)",
-            "exercise_balanced_success_rate": "Success rate (exercise-balanced)",
-            "unique_students": st.column_config.NumberColumn("Unique students", format="%d"),
-            "unique_modules_explored": st.column_config.NumberColumn(
-                "Unique modules explored", format="%d"
-            ),
-            "unique_objectives_explored": st.column_config.NumberColumn(
-                "Unique objectives explored", format="%d"
-            ),
-            "unique_activities_explored": st.column_config.NumberColumn(
-                "Unique activities explored", format="%d"
-            ),
-            "median_attempts_per_activity": st.column_config.NumberColumn(
-                "Median attempts per activity",
-                format="%.2f",
-            ),
-            "repeat_attempt_rate": "Repeat attempt rate",
-        },
-    )
+    page = PAGE_SPEC_BY_ID[selected_page_id]
+    _render_page(source_id, page)
 
 
 if __name__ == "__main__":

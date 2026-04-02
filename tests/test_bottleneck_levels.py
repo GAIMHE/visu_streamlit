@@ -213,3 +213,39 @@ Examples
         level="Module",
     )
     assert only_non_canonical.height == 0
+
+
+def test_apply_bottleneck_filters_accepts_source_specific_module_scope() -> None:
+    """Test source-specific module scopes can override the main-dataset canonical modules."""
+    source = pl.DataFrame(
+        {
+            "date_utc": [date(2025, 1, 1), date(2025, 1, 1)],
+            "module_id": ["m16", "m99"],
+            "module_code": ["M16", "M99"],
+            "module_label": ["Module 16", "Module 99"],
+            "objective_id": ["o1", "o9"],
+            "objective_label": ["Objective 1", "Objective 9"],
+            "activity_id": ["a1", "a9"],
+            "activity_label": ["Activity 1", "Activity 9"],
+            "attempts": [12, 8],
+            "success_rate": [0.4, 0.5],
+            "repeat_attempt_rate": [0.2, 0.1],
+            "unique_students": [6, 4],
+            "median_duration": [10.0, 11.0],
+            "avg_attempt_number": [1.1, 1.0],
+        }
+    )
+
+    filtered = apply_bottleneck_filters(
+        frame=source,
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 1),
+        module_code=None,
+        objective_id=None,
+        activity_id=None,
+        level="Activity",
+        canonical_modules=("M16",),
+    )
+
+    assert filtered.height == 1
+    assert filtered["module_code"].to_list() == ["M16"]

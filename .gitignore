@@ -47,7 +47,11 @@ htmlcov/
 # Local generated outputs
 artifacts/
 !artifacts/.gitkeep
+
+#data
 data/
+data_maureen/
+data_margot/
 
 # Local Codex assistant config
 AGENTS.md
@@ -69,3 +73,5 @@ Desktop.ini
 
 # Extra ressources
 ressources/figures/
+ressources/summaries
+iterations/
