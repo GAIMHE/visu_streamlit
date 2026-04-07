@@ -40,6 +40,14 @@ st.set_page_config(
 )
 
 
+def _clear_page_data_cache() -> None:
+    """Best-effort clear of Streamlit's data cache on navigation changes."""
+    try:
+        st.cache_data.clear()
+    except Exception:
+        return
+
+
 def _source_option_label(source_id: str) -> str:
     source = get_runtime_source(source_id)
     return f"{source.label} [{source.source_id}]"
@@ -59,6 +67,7 @@ def _select_source() -> str:
     )
     if selected_source != active_source_id:
         set_active_source_id(selected_source)
+        _clear_page_data_cache()
         st.rerun()
     return selected_source
 
@@ -74,6 +83,7 @@ def _select_page(source_id: str) -> str:
         show_redirect_info = requested_page_id != "home"
         requested_page_id = default_page_id
         set_active_page_id(requested_page_id)
+        _clear_page_data_cache()
         if show_redirect_info:
             fallback_label = label_by_id.get(requested_page_id, requested_page_id)
             st.sidebar.info(
@@ -87,6 +97,7 @@ def _select_page(source_id: str) -> str:
     )
     if selected_page_id != requested_page_id:
         set_active_page_id(selected_page_id)
+        _clear_page_data_cache()
         st.rerun()
     return selected_page_id
 
