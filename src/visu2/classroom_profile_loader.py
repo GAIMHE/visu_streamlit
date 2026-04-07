@@ -1,4 +1,4 @@
-"""Load classroom mode profiles, with a fact-table fallback when the artifact is missing."""
+"""Load classroom mode profiles, preferring selector artifacts before fact fallback."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import pyarrow.parquet as pq
 
 from .classroom_progression import build_classroom_mode_profiles
 from .config import Settings
-from .contracts import RUNTIME_CORE_COLUMNS
+from .contracts import REQUIRED_AGG_COLUMNS, RUNTIME_CORE_COLUMNS
 from .remote_query import query_runtime_parquet
 
 CLASSROOM_PROFILE_FACT_COLUMNS: tuple[str, ...] = (
@@ -26,6 +26,7 @@ CLASSROOM_PROFILE_FACT_COLUMNS: tuple[str, ...] = (
     "exercise_id",
     "attempt_number",
 )
+CLASSROOM_PROFILE_COLUMNS: tuple[str, ...] = tuple(REQUIRED_AGG_COLUMNS["classroom_mode_profiles"])
 
 
 def _parquet_columns(path: Path) -> list[str]:
@@ -39,8 +40,29 @@ def _has_profile_contract(path: Path) -> bool:
     return all(column in _parquet_columns(path) for column in required)
 
 
+def _query_profiles_artifact(settings: Settings) -> pl.DataFrame | None:
+    """Return selector profiles from the runtime artifact, local or remote."""
+    try:
+        profiles = query_runtime_parquet(
+            settings,
+            "artifacts/derived/classroom_mode_profiles.parquet",
+            columns=CLASSROOM_PROFILE_COLUMNS,
+        )
+    except Exception:
+        return None
+
+    missing = [
+        column
+        for column in RUNTIME_CORE_COLUMNS["classroom_mode_profiles"]
+        if column not in profiles.columns
+    ]
+    if missing:
+        return None
+    return profiles
+
+
 def load_or_build_classroom_mode_profiles(settings: Settings) -> tuple[pl.DataFrame, str]:
-    """Return classroom profiles from the artifact when available, else rebuild from fact data.
+    """Return classroom profiles from selector artifacts when available, else rebuild from fact data.
 
     Returns
     -------
@@ -52,6 +74,15 @@ def load_or_build_classroom_mode_profiles(settings: Settings) -> tuple[pl.DataFr
     profiles_path = settings.artifacts_derived_dir / "classroom_mode_profiles.parquet"
     if _has_profile_contract(profiles_path):
         return pl.read_parquet(profiles_path), "artifact"
+
+    artifact_profiles = _query_profiles_artifact(settings)
+    if artifact_profiles is not None:
+        try:
+            profiles_path.parent.mkdir(parents=True, exist_ok=True)
+            artifact_profiles.write_parquet(profiles_path)
+        except OSError:
+            pass
+        return artifact_profiles, "artifact"
 
     fact = query_runtime_parquet(
         settings,

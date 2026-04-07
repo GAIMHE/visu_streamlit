@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import polars as pl
 
 from visu2.classroom_profile_loader import (
+    CLASSROOM_PROFILE_COLUMNS,
     CLASSROOM_PROFILE_FACT_COLUMNS,
     load_or_build_classroom_mode_profiles,
 )
@@ -95,4 +96,26 @@ def test_load_or_build_classroom_mode_profiles_falls_back_to_fact_when_missing(
     assert source_kind == "fact_fallback"
     assert profiles.height == 2
     assert sorted(profiles["mode_scope"].to_list()) == ["all", "zpdes"]
+    assert (settings.artifacts_derived_dir / "classroom_mode_profiles.parquet").exists()
+
+
+def test_load_or_build_classroom_mode_profiles_queries_selector_artifact_before_fact_fallback(
+    tmp_path: Path, monkeypatch
+) -> None:
+    settings = SimpleNamespace(artifacts_derived_dir=tmp_path / "artifacts" / "derived")
+    expected = _sample_profiles()
+
+    def fake_query(_settings, relative_path, *, columns, **kwargs):
+        assert _settings is settings
+        if relative_path == "artifacts/derived/classroom_mode_profiles.parquet":
+            assert tuple(columns) == CLASSROOM_PROFILE_COLUMNS
+            return expected
+        raise AssertionError("fact_attempt_core should not be queried when selector profiles are available.")
+
+    monkeypatch.setattr("visu2.classroom_profile_loader.query_runtime_parquet", fake_query)
+
+    profiles, source_kind = load_or_build_classroom_mode_profiles(settings)
+
+    assert source_kind == "artifact"
+    assert profiles.equals(expected)
     assert (settings.artifacts_derived_dir / "classroom_mode_profiles.parquet").exists()
