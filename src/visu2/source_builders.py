@@ -245,14 +245,113 @@ def _choose_unique_value(
     if len(normalized) > 1:
         warnings.append(
             f"Multiple {label} values found; using the first in sorted order: {normalized[0]!r}."
-        )
+    )
     return normalized[0]
+
+
+def _json_title_pair(payload: dict[str, Any] | None) -> tuple[str | None, str | None]:
+    if not isinstance(payload, dict):
+        return None, None
+    title = payload.get("title")
+    if not isinstance(title, dict):
+        return None, None
+    short_title = _clean_text(title.get("short"))
+    long_title = _clean_text(title.get("long"))
+    return short_title, long_title
+
+
+def _load_single_module_researcher_config_metadata(
+    config_json_path: Path | None,
+    *,
+    module_id: str,
+) -> tuple[dict[str, Any] | None, dict[str, dict[str, Any]], dict[str, dict[str, Any]], tuple[str, ...]]:
+    if config_json_path is None:
+        return None, {}, {}, ()
+    if not config_json_path.exists():
+        return None, {}, {}, (f"MIA config file not found at {config_json_path}; using synthetic labels.",)
+
+    try:
+        payload = json.loads(config_json_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as err:
+        return None, {}, {}, (
+            f"Failed to parse MIA config JSON at {config_json_path}: {err}. Using synthetic labels.",
+        )
+
+    config = payload.get("config")
+    if not isinstance(config, dict):
+        return None, {}, {}, (
+            f"MIA config JSON at {config_json_path} is missing a top-level 'config' object; using synthetic labels.",
+        )
+
+    module_entries = config.get("module")
+    objective_entries = config.get("objective")
+    activity_entries = config.get("activity")
+    if not isinstance(module_entries, dict) or not isinstance(objective_entries, dict) or not isinstance(activity_entries, dict):
+        return None, {}, {}, (
+            f"MIA config JSON at {config_json_path} is missing one of module/objective/activity maps; using synthetic labels.",
+        )
+
+    module_entry = next(
+        (
+            value
+            for value in module_entries.values()
+            if isinstance(value, dict) and _clean_text(value.get("id")) == module_id
+        ),
+        None,
+    )
+    if module_entry is None:
+        return None, {}, {}, (
+            f"MIA config JSON at {config_json_path} does not define module_id {module_id}; using synthetic labels.",
+        )
+
+    module_short, module_long = _json_title_pair(module_entry)
+    module_code = _clean_text(module_entry.get("code"))
+    module_metadata = {
+        "code": module_code,
+        "short_title": module_short,
+        "long_title": module_long,
+        "status": _clean_text(module_entry.get("visibilityStatus")) or "visible",
+        "source_files": [str(config_json_path)],
+    }
+
+    objective_metadata_by_id: dict[str, dict[str, Any]] = {}
+    for value in objective_entries.values():
+        if not isinstance(value, dict):
+            continue
+        objective_id = _clean_text(value.get("id"))
+        if objective_id is None:
+            continue
+        short_title, long_title = _json_title_pair(value)
+        objective_metadata_by_id[objective_id] = {
+            "code": _clean_text(value.get("code")),
+            "short_title": short_title,
+            "long_title": long_title,
+            "status": _clean_text(value.get("visibilityStatus")) or "visible",
+        }
+
+    activity_metadata_by_id: dict[str, dict[str, Any]] = {}
+    for value in activity_entries.values():
+        if not isinstance(value, dict):
+            continue
+        activity_id = _clean_text(value.get("id"))
+        if activity_id is None:
+            continue
+        short_title, long_title = _json_title_pair(value)
+        activity_metadata_by_id[activity_id] = {
+            "code": _clean_text(value.get("code")),
+            "short_title": short_title,
+            "long_title": long_title,
+            "status": _clean_text(value.get("visibilityStatus")) or "visible",
+        }
+
+    return module_metadata, objective_metadata_by_id, activity_metadata_by_id, ()
 
 
 def _build_single_module_researcher_catalog_and_raw(
     attempts_csv_path: Path,
     *,
     source_id: str,
+    config_json_path: Path | None = None,
     module_code: str = "M1",
 ) -> tuple[pl.DataFrame, dict[str, Any], dict[str, Any], tuple[str, ...]]:
     attempts, parse_warnings = _load_maureen_researcher_attempts(attempts_csv_path)
@@ -269,18 +368,56 @@ def _build_single_module_researcher_catalog_and_raw(
             f"got {module_ids!r}."
         )
     module_id = module_ids[0]
-    module_short = _choose_unique_value(
-        attempts["module_short_title"].to_list(),
-        label="module_short_title",
-        default=module_code,
-        warnings=warnings,
+    module_metadata, objective_metadata_by_id, activity_metadata_by_id, config_warnings = (
+        _load_single_module_researcher_config_metadata(
+            config_json_path,
+            module_id=module_id,
+        )
     )
-    module_long = _choose_unique_value(
-        attempts["module_long_title"].to_list(),
-        label="module_long_title",
-        default=module_short,
-        warnings=warnings,
-    )
+    warnings.extend(config_warnings)
+    module_code = _clean_text(module_metadata["code"]) if module_metadata else module_code
+    if module_metadata and _clean_text(module_metadata.get("short_title")):
+        module_short = str(module_metadata["short_title"])
+        csv_module_shorts = sorted(
+            {
+                str(value).strip()
+                for value in attempts["module_short_title"].to_list()
+                if str(value or "").strip()
+            }
+        )
+        if csv_module_shorts and csv_module_shorts != [module_short]:
+            warnings.append(
+                "MIA config short module title differs from the researcher CSV; using the config title "
+                f"{module_short!r}."
+            )
+    else:
+        module_short = _choose_unique_value(
+            attempts["module_short_title"].to_list(),
+            label="module_short_title",
+            default=module_code,
+            warnings=warnings,
+        )
+    if module_metadata and _clean_text(module_metadata.get("long_title")):
+        module_long = str(module_metadata["long_title"])
+        csv_module_longs = sorted(
+            {
+                str(value).strip()
+                for value in attempts["module_long_title"].to_list()
+                if str(value or "").strip()
+            }
+        )
+        if csv_module_longs and csv_module_longs != [module_long]:
+            warnings.append(
+                "MIA config long module title differs from the researcher CSV; using the config title "
+                f"{module_long!r}."
+            )
+    else:
+        module_long = _choose_unique_value(
+            attempts["module_long_title"].to_list(),
+            label="module_long_title",
+            default=module_short,
+            warnings=warnings,
+        )
 
     attempts = (
         attempts.with_columns(
@@ -305,18 +442,37 @@ def _build_single_module_researcher_catalog_and_raw(
     )
     if not objective_rows:
         raise ValueError("Single-module researcher source is missing objective_id values.")
+    objective_rows.sort(
+        key=lambda row: (
+            0,
+            _code_sort_key(objective_metadata_by_id[str(row["objective_id"])]["code"]),
+            str(row["objective_id"]),
+        )
+        if str(row["objective_id"]) in objective_metadata_by_id
+        and objective_metadata_by_id[str(row["objective_id"])].get("code")
+        else (
+            1,
+            row["first_seen_utc"] or datetime.max.replace(tzinfo=UTC),
+            str(row["objective_id"]),
+        )
+    )
 
     objectives_by_id: dict[str, dict[str, Any]] = {}
     objective_order: list[str] = []
     for idx, row in enumerate(objective_rows, start=1):
         objective_id = str(row["objective_id"])
+        objective_metadata = objective_metadata_by_id.get(objective_id, {})
         code_suffix = f"{idx:02d}"
+        objective_code = _clean_text(objective_metadata.get("code")) or f"{module_code}O{code_suffix}"
+        objective_short = _clean_text(objective_metadata.get("short_title")) or f"Objective {code_suffix}"
+        objective_long = _clean_text(objective_metadata.get("long_title")) or f"Synthetic objective {code_suffix}"
         objectives_by_id[objective_id] = {
             "id": objective_id,
-            "code": f"{module_code}O{code_suffix}",
-            "short_title": f"Objective {code_suffix}",
-            "long_title": f"Synthetic objective {code_suffix}",
-            "status": "synthetic",
+            "code": objective_code,
+            "short_title": objective_short,
+            "long_title": objective_long,
+            "status": _clean_text(objective_metadata.get("status"))
+            or ("visible" if objective_metadata else "synthetic"),
             "activity_ids": [],
         }
         objective_order.append(objective_id)
@@ -339,6 +495,22 @@ def _build_single_module_researcher_catalog_and_raw(
     )
     if not activity_rows:
         raise ValueError("Single-module researcher source is missing activity_id values.")
+    activity_rows.sort(
+        key=lambda row: (
+            str(row["objective_id"]),
+            0,
+            _code_sort_key(activity_metadata_by_id[str(row["activity_id"])]["code"]),
+            str(row["activity_id"]),
+        )
+        if str(row["activity_id"]) in activity_metadata_by_id
+        and activity_metadata_by_id[str(row["activity_id"])].get("code")
+        else (
+            str(row["objective_id"]),
+            1,
+            row["first_seen_utc"] or datetime.max.replace(tzinfo=UTC),
+            str(row["activity_id"]),
+        )
+    )
 
     activities_by_id: dict[str, dict[str, Any]] = {}
     activity_counts_by_objective: defaultdict[str, int] = defaultdict(int)
@@ -351,12 +523,17 @@ def _build_single_module_researcher_catalog_and_raw(
         activity_counts_by_objective[objective_id] += 1
         suffix = f"{activity_counts_by_objective[objective_id]:02d}"
         objective_payload["activity_ids"].append(activity_id)
+        activity_metadata = activity_metadata_by_id.get(activity_id, {})
+        activity_code = _clean_text(activity_metadata.get("code")) or f"{objective_payload['code']}A{suffix}"
+        activity_short = _clean_text(activity_metadata.get("short_title")) or f"Activity {suffix}"
+        activity_long = _clean_text(activity_metadata.get("long_title")) or f"Synthetic activity {suffix}"
         activities_by_id[activity_id] = {
             "id": activity_id,
-            "code": f"{objective_payload['code']}A{suffix}",
-            "short_title": f"Activity {suffix}",
-            "long_title": f"Synthetic activity {suffix}",
-            "status": "synthetic",
+            "code": activity_code,
+            "short_title": activity_short,
+            "long_title": activity_long,
+            "status": _clean_text(activity_metadata.get("status"))
+            or ("visible" if activity_metadata else "synthetic"),
             "exercise_ids": [str(exercise_id) for exercise_id in row["exercise_ids"]],
         }
 
@@ -368,7 +545,7 @@ def _build_single_module_researcher_catalog_and_raw(
             "code": module_code,
             "short_title": module_short,
             "long_title": module_long,
-            "sources": ["mia_attempts"],
+            "sources": ["mia_attempts", *(["mia_config"] if module_metadata else [])],
         }
     }
 
@@ -448,13 +625,16 @@ def _build_single_module_researcher_catalog_and_raw(
     learning_catalog = {
         "meta": {
             "generated_by": "visu2 single-module researcher adapter",
-            "source_id": source_id,
-            "build_timestamp_utc": datetime.now(UTC).isoformat(),
-            "version": "single_module_runtime_v1",
-            "source_files": [str(attempts_csv_path)],
-            "counts": {
-                "modules": len(modules_payload),
-                "objectives": len(objectives_by_id),
+                "source_id": source_id,
+                "build_timestamp_utc": datetime.now(UTC).isoformat(),
+                "version": "single_module_runtime_v2",
+                "source_files": [
+                    str(attempts_csv_path),
+                    *(module_metadata["source_files"] if module_metadata else []),
+                ],
+                "counts": {
+                    "modules": len(modules_payload),
+                    "objectives": len(objectives_by_id),
                 "activities": len(activities_by_id),
                 "exercises_unique": len(exercise_to_hierarchy),
             },
@@ -1036,10 +1216,16 @@ def materialize_source_runtime_inputs(settings: Settings) -> SourceMaterializati
 
     if source.build_profile == "single_module_researcher":
         attempts_csv_path = settings.root_dir / source.raw_inputs["attempts_csv"]
+        config_json_path = (
+            settings.root_dir / source.raw_inputs["config_json"]
+            if "config_json" in source.raw_inputs
+            else None
+        )
         raw_attempts, learning_catalog, exercises_json, warnings = (
             _build_single_module_researcher_catalog_and_raw(
                 attempts_csv_path,
                 source_id=settings.source_id,
+                config_json_path=config_json_path,
             )
         )
         raw_attempts.write_parquet(settings.parquet_path)

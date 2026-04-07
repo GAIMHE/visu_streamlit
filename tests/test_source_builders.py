@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from visu2.source_builders import (
@@ -115,3 +116,101 @@ def test_build_single_module_researcher_catalog_and_raw_synthesizes_catalog(tmp_
         "22222222-2222-2222-2222-222222222222",
         "33333333-3333-3333-3333-333333333333",
     ]
+
+
+def test_build_single_module_researcher_catalog_and_raw_prefers_config_labels(tmp_path: Path) -> None:
+    attempts_path = tmp_path / "mia_attempts.csv"
+    attempts_path.write_text(
+        "\n".join(
+            [
+                "UAI,classroom_id,teacher_id,user_id,playlist_or_module_id,objective_id,activity_id,exercise_id,module_short_title,module_long_title,created_at,login_time,is_initial_test,data_score,data_correct,data_nb_tries,data_test_context,data_answer,data_duration,session_duration,work_mode;",
+                "001,class-1,teacher-1,user-1,module-101,objective-1,activity-1,11111111-1111-1111-1111-111111111111,Sens des nombres,Module 1,2025-01-01 09:00:00+00:00,2025-01-01 08:59:00+00:00,False,1.0,True,1,zpdes,[1],10.0,100,zpdes;",
+                "001,class-1,teacher-2,user-2,module-101,objective-2,activity-2,22222222-2222-2222-2222-222222222222,Sens des nombres,Module 1,2025-01-02 09:00:00+00:00,2025-01-02 08:59:00+00:00,False,0.0,False,1,adaptive-test,[0],12.0,200,adaptive-test;",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    config_path = tmp_path / "config_mia.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "config": {
+                    "module": {
+                        "101": {
+                            "id": "module-101",
+                            "code": "M101",
+                            "title": {
+                                "short": "Réapprentissage du sens des nombres",
+                                "long": "Module 1",
+                            },
+                            "visibilityStatus": "VISIBLE",
+                        }
+                    },
+                    "objective": {
+                        "obj-1": {
+                            "id": "objective-1",
+                            "code": "M101O1",
+                            "title": {
+                                "short": "Positionner des nombres entiers",
+                                "long": "Objectif 1",
+                            },
+                            "visibilityStatus": "VISIBLE",
+                        },
+                        "obj-2": {
+                            "id": "objective-2",
+                            "code": "M101O2",
+                            "title": {
+                                "short": "Comparer des nombres entiers",
+                                "long": "Objectif 2",
+                            },
+                            "visibilityStatus": "VISIBLE",
+                        },
+                    },
+                    "activity": {
+                        "act-1": {
+                            "id": "activity-1",
+                            "code": "M101O1A1",
+                            "title": {
+                                "short": "Positionner sur un segment",
+                                "long": "Activité 1",
+                            },
+                            "visibilityStatus": "VISIBLE",
+                        },
+                        "act-2": {
+                            "id": "activity-2",
+                            "code": "M101O2A1",
+                            "title": {
+                                "short": "Comparer des nombres",
+                                "long": "Activité 1",
+                            },
+                            "visibilityStatus": "VISIBLE",
+                        },
+                    },
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    raw_attempts, learning_catalog, exercises_json, warnings = (
+        _build_single_module_researcher_catalog_and_raw(
+            attempts_path,
+            source_id="mia_module1",
+            config_json_path=config_path,
+        )
+    )
+
+    assert raw_attempts.height == 2
+    assert any("using the config title" in warning for warning in warnings)
+    module = learning_catalog["modules"][0]
+    assert module["code"] == "M101"
+    assert module["title"]["short"] == "Réapprentissage du sens des nombres"
+    assert module["objectives"][0]["code"] == "M101O1"
+    assert module["objectives"][0]["title"]["short"] == "Positionner des nombres entiers"
+    assert module["objectives"][0]["activities"][0]["code"] == "M101O1A1"
+    assert module["objectives"][0]["activities"][0]["title"]["short"] == "Positionner sur un segment"
+    assert module["objectives"][1]["code"] == "M101O2"
+    assert module["objectives"][1]["activities"][0]["code"] == "M101O2A1"
+    assert learning_catalog["id_label_index"]["objective-1"]["short_title"] == "Positionner des nombres entiers"
+    assert exercises_json["exercises"][0]["objectives"] == ["objective-1"]

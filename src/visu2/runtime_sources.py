@@ -277,7 +277,7 @@ RUNTIME_SOURCES: dict[str, RuntimeSourceSpec] = {
         label="MIA Module 1",
         description=(
             "Single-module remediation dataset adapted from a researcher export, "
-            "with a synthetic catalog and the reduced page surface used for partial sources."
+            "with a config-enriched catalog and the reduced page surface used for partial sources."
         ),
         runtime_root_relative=Path("artifacts") / "sources" / "mia_module1",
         local_root_relative=Path("artifacts") / "local" / "mia_module1",
@@ -286,6 +286,7 @@ RUNTIME_SOURCES: dict[str, RuntimeSourceSpec] = {
         raw_inputs={
             "attempts_csv": Path("data_MIA")
             / "researcher_data-053df3ec-5501-4ad8-9917-a935bcf76740.csv",
+            "config_json": Path("data_MIA") / "config_mia.json",
         },
         supported_pages=(
             "overview",
