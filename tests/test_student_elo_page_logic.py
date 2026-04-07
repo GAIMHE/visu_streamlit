@@ -44,6 +44,7 @@ from visu2.student_elo import (
     build_student_elo_figure,
     build_student_elo_payload,
     load_student_elo_label_lookup,
+    load_student_elo_profiles,
     merge_student_elo_label_lookups,
     modules_for_student,
     select_default_students,
@@ -380,6 +381,63 @@ def test_load_student_elo_label_lookup_includes_orphan_fallback_labels(tmp_path:
 
     assert orphan_row["objective_label"] == "Unmapped initial-test objective (M1)"
     assert orphan_row["activity_label"] == "Unmapped initial-test activity (M1)"
+
+
+def test_load_student_elo_profiles_backfills_module_fields_from_catalog(tmp_path: Path) -> None:
+    """Test older Elo profile artifacts can recover module code/label from the catalog."""
+    catalog = {
+        "meta": {},
+        "id_label_index": {},
+        "conflicts": {},
+        "orphans": [],
+        "exercise_to_hierarchy": {},
+        "modules": [
+            {
+                "id": "m1",
+                "code": "M1",
+                "title": {"short": "Module 1", "long": "Numbers"},
+                "objectives": [
+                    {
+                        "id": "o1",
+                        "code": "M1O1",
+                        "title": {"short": "Objective 1", "long": "Objective 1"},
+                        "activities": [
+                            {
+                                "id": "a1",
+                                "code": "M1O1A1",
+                                "title": {"short": "Activity 1", "long": "Activity 1"},
+                                "exercise_ids": ["e1"],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    catalog_path = tmp_path / "learning_catalog.json"
+    catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
+
+    profiles_path = tmp_path / "student_elo_profiles.parquet"
+    pl.DataFrame(
+        {
+            "user_id": ["u1"],
+            "module_id": ["m1"],
+            "total_attempts": [12],
+            "first_attempt_at": [datetime(2025, 1, 1, 9, 0, 0)],
+            "last_attempt_at": [datetime(2025, 1, 1, 9, 30, 0)],
+            "unique_modules": [1],
+            "unique_objectives": [2],
+            "unique_activities": [3],
+            "final_student_elo": [1512.0],
+            "eligible_for_replay": [True],
+        }
+    ).write_parquet(profiles_path)
+
+    loaded = load_student_elo_profiles(profiles_path, learning_catalog_path=catalog_path)
+    row = loaded.to_dicts()[0]
+
+    assert row["module_code"] == "M1"
+    assert row["module_label"] == "Module 1"
 
 
 def test_merge_student_elo_label_lookups_keeps_fact_specific_context() -> None:

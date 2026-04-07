@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from bisect import bisect_right
 from dataclasses import dataclass
 from math import ceil, erfc, isnan, sqrt
 from statistics import mean
@@ -1232,6 +1233,85 @@ def analyze_zpdes_transition_population(
             "Across modules, the page-wide ZPDES analysis mainly surfaces raw weak prerequisite outcomes rather than a single dominant recovery pattern."
         )
     return FigureAnalysis(findings=tuple(findings), interpretation=interpretation)
+
+
+def analyze_m1_individual_path(
+    payload: dict[str, Any] | None,
+    *,
+    frame_idx: int,
+) -> FigureAnalysis:
+    if not payload:
+        return _insufficient()
+    student_ids = [str(user_id) for user_id in payload.get("student_ids") or [] if str(user_id).strip()]
+    if not student_ids:
+        return _insufficient()
+    frame_cutoffs = [int(value) for value in payload.get("frame_cutoffs") or [0]]
+    current_idx = min(max(0, int(frame_idx)), len(frame_cutoffs) - 1)
+    cutoff = frame_cutoffs[current_idx]
+    user_id = student_ids[0]
+    series = ((payload.get("series") or {}).get(user_id)) or {}
+    ordinals = [int(value) for value in series.get("attempt_ordinal") or []]
+    if not ordinals:
+        return _insufficient()
+
+    visible_count = bisect_right(ordinals, cutoff)
+    visible_activity_ids = [str(value or "") for value in (series.get("activity_id") or [])[:visible_count]]
+    visible_labels = [str(value or "") for value in (series.get("activity_label") or [])[:visible_count]]
+    visible_outcomes = [float(value or 0.0) for value in (series.get("outcome") or [])[:visible_count]]
+    visible_mapped = [bool(value) for value in (series.get("is_mapped_activity") or [])[:visible_count]]
+
+    mapped_attempts = sum(1 for value in visible_mapped if value)
+    unmapped_attempts = visible_count - mapped_attempts
+    mapped_successes = sum(
+        outcome for outcome, is_mapped in zip(visible_outcomes, visible_mapped, strict=False) if is_mapped
+    )
+    visited_activities = sorted(
+        {
+            activity_id
+            for activity_id, is_mapped in zip(visible_activity_ids, visible_mapped, strict=False)
+            if is_mapped and activity_id
+        }
+    )
+
+    compressed: list[tuple[str, str]] = []
+    for activity_id, label, is_mapped in zip(
+        visible_activity_ids,
+        visible_labels,
+        visible_mapped,
+        strict=False,
+    ):
+        if not is_mapped or not activity_id:
+            continue
+        if not compressed or compressed[-1][0] != activity_id:
+            compressed.append((activity_id, label or activity_id))
+    recent_transitions = [
+        f"{compressed[idx][1]} -> {compressed[idx + 1][1]}"
+        for idx in range(max(0, len(compressed) - 4), max(0, len(compressed) - 1))
+    ]
+
+    findings = [
+        f"{user_id} is currently at {_format_num(visible_count, digits=0)} visible M1 attempts and has touched {_format_num(len(visited_activities), digits=0)} mapped activities.",
+    ]
+    if mapped_attempts > 0:
+        findings.append(
+            f"Mapped activity success is {_format_pct(mapped_successes / mapped_attempts)} across {_format_num(mapped_attempts, digits=0)} mapped attempts."
+        )
+    if recent_transitions:
+        findings.append(f"Recent distinct mapped moves: {' | '.join(recent_transitions[-3:])}.")
+
+    caveats: list[str] = []
+    if unmapped_attempts > 0:
+        caveats.append(
+            f"{_format_num(unmapped_attempts, digits=0)} visible attempt(s) are outside the M1 topology and are excluded from node coloring and arrows."
+        )
+    if visible_count <= 3:
+        caveats.append("Very early replay frames are low-evidence and can change shape quickly.")
+
+    interpretation = (
+        f"The replay is currently showing {_format_num(visible_count, digits=0)} of {_format_num(len(ordinals), digits=0)} M1 attempts "
+        f"for {user_id}; node color reflects cumulative activity success while size reflects cumulative activity exposure."
+    )
+    return FigureAnalysis(findings=tuple(findings), interpretation=interpretation, caveats=tuple(caveats))
 
 
 def analyze_classroom_progression_replay(payload: dict[str, Any] | None) -> FigureAnalysis:

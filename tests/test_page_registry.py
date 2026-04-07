@@ -42,20 +42,29 @@ def test_student_elo_page_exposes_current_and_batch_replay_systems() -> None:
     )
 
 
+def test_m1_individual_path_page_bootstraps_light_assets_only() -> None:
+    page = PAGE_SPEC_BY_ID["m1_individual_path"]
+
+    assert page.bootstrap_runtime_paths == (
+        "data/learning_catalog.json",
+        "data/zpdes_rules.json",
+        "artifacts/derived/student_elo_profiles.parquet",
+    )
+    assert page.remote_query_paths == ("artifacts/derived/fact_attempt_core.parquet",)
+
+
 def test_classroom_pages_bootstrap_only_selector_artifacts() -> None:
     replay = PAGE_SPEC_BY_ID["classroom_replay"]
     sankey = PAGE_SPEC_BY_ID["classroom_sankey"]
 
-    assert replay.bootstrap_runtime_paths == ("artifacts/derived/classroom_mode_profiles.parquet",)
+    assert replay.bootstrap_runtime_paths == ()
     assert replay.remote_query_paths == ("artifacts/derived/fact_attempt_core.parquet",)
 
-    assert sankey.bootstrap_runtime_paths == (
-        "data/learning_catalog.json",
-        "artifacts/derived/classroom_mode_profiles.parquet",
-    )
+    assert sankey.bootstrap_runtime_paths == ("data/learning_catalog.json",)
     assert sankey.remote_query_paths == ("artifacts/derived/fact_attempt_core.parquet",)
 
 
 def test_default_page_id_for_source_uses_first_visible_page() -> None:
     assert default_page_id_for_source(get_runtime_source("main")) == "overview"
     assert default_page_id_for_source(get_runtime_source("maureen_m16fr")) == "overview"
+    assert default_page_id_for_source(get_runtime_source("mia_module1")) == "overview"

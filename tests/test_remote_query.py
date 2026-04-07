@@ -14,6 +14,7 @@ from visu2.remote_query import (
     query_runtime_parquet,
     query_student_elo_events,
     query_student_fact_label_lookup,
+    query_student_module_attempts,
     resolve_runtime_parquet_reference,
 )
 
@@ -116,6 +117,43 @@ def test_query_student_elo_events_can_filter_one_module(tmp_path) -> None:
         {"user_id": "u1", "module_code": "M1", "attempt_ordinal": 1},
         {"user_id": "u1", "module_code": "M1", "attempt_ordinal": 2},
     ]
+
+
+def test_query_student_module_attempts_returns_fact_rows_in_deterministic_order(tmp_path) -> None:
+    settings = _build_settings(tmp_path)
+    fact_path = settings.artifacts_derived_dir / "fact_attempt_core.parquet"
+    pl.DataFrame(
+        {
+            "created_at": [
+                datetime(2025, 1, 1, 9, 5, tzinfo=UTC),
+                datetime(2025, 1, 1, 9, 0, tzinfo=UTC),
+                datetime(2025, 1, 1, 9, 10, tzinfo=UTC),
+            ],
+            "date_utc": [date(2025, 1, 1), date(2025, 1, 1), date(2025, 1, 1)],
+            "user_id": ["u1", "u1", "u1"],
+            "activity_id": ["a2", "a1", "a2"],
+            "activity_label": ["A2", "A1", "A2"],
+            "objective_id": ["o1", "o1", "o1"],
+            "objective_label": ["Objective 1", "Objective 1", "Objective 1"],
+            "exercise_id": ["e2", "e1", "e3"],
+            "data_correct": [0, 1, 1],
+            "work_mode": ["zpdes", "adaptive-test", "playlist"],
+            "attempt_number": [1, 1, 2],
+            "module_code": ["M1", "M1", "M1"],
+            "module_label": ["Module 1", "Module 1", "Module 1"],
+            "classroom_id": ["c1", "c1", "c1"],
+        }
+    ).write_parquet(fact_path)
+
+    frame = query_student_module_attempts(
+        settings,
+        user_ids=("u1",),
+        module_code="M1",
+        columns=("user_id", "activity_id", "exercise_id", "created_at", "attempt_number"),
+    )
+
+    assert frame["activity_id"].to_list() == ["a1", "a2", "a2"]
+    assert frame["exercise_id"].to_list() == ["e1", "e2", "e3"]
 
 
 def test_resolve_runtime_parquet_reference_uses_hf_source_when_local_missing(tmp_path, monkeypatch) -> None:

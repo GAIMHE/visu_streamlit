@@ -8,7 +8,6 @@ from datetime import date
 from pathlib import Path
 
 import polars as pl
-import pyarrow.parquet as pq
 import streamlit as st
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -25,6 +24,7 @@ from overview_shared import render_population_filters
 from plotly_config import build_plotly_chart_config
 from source_state import get_active_source_id
 
+from visu2.classroom_profile_loader import load_or_build_classroom_mode_profiles
 from visu2.classroom_progression import (
     SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID,
     VALID_MODE_SCOPES,
@@ -38,7 +38,6 @@ from visu2.classroom_progression_sankey import (
     max_classroom_activity_path_length,
 )
 from visu2.config import get_settings
-from visu2.contracts import RUNTIME_CORE_COLUMNS
 from visu2.figure_analysis import analyze_classroom_progression_sankey
 from visu2.remote_query import query_fact_attempts_for_classroom
 from visu2.runtime_sources import get_runtime_source
@@ -51,8 +50,9 @@ MODE_OPTIONS = {
 
 
 @st.cache_data(show_spinner=False)
-def _load_profiles(profiles_path: Path) -> pl.DataFrame:
-    return pl.read_parquet(profiles_path)
+def _load_profiles(source_id: str) -> tuple[pl.DataFrame, str]:
+    settings = get_settings(source_id)
+    return load_or_build_classroom_mode_profiles(settings)
 
 
 @st.cache_data(show_spinner=False)
@@ -115,10 +115,6 @@ def _mode_label(mode_scope: str) -> str:
     return mode_scope
 
 
-def _parquet_columns(path: Path) -> list[str]:
-    return list(pq.ParquetFile(path).schema_arrow.names)
-
-
 def main() -> None:
     st.markdown(
         """
@@ -139,29 +135,21 @@ div, p, label {
         unsafe_allow_html=True,
     )
     settings = get_settings(get_active_source_id())
-    profiles_path = settings.artifacts_derived_dir / "classroom_mode_profiles.parquet"
     learning_catalog_path = settings.learning_catalog_path
-    if not profiles_path.exists():
-        st.error("Missing artifact: classroom_mode_profiles.parquet.")
-        st.code("uv run python scripts/build_derived.py --strict-checks")
-        st.stop()
     if not learning_catalog_path.exists():
         st.error("Missing runtime metadata: learning_catalog.json.")
         st.code("uv run python scripts/build_derived.py --strict-checks")
         st.stop()
-
-    missing_profiles_columns = [
-        column
-        for column in RUNTIME_CORE_COLUMNS["classroom_mode_profiles"]
-        if column not in _parquet_columns(profiles_path)
-    ]
-    if missing_profiles_columns:
-        st.error("Classroom Sankey page cannot run: classroom_mode_profiles is missing required columns.")
-        st.markdown("- " + "\n- ".join(f"`{name}`" for name in missing_profiles_columns))
-        st.code("uv run python scripts/build_derived.py --strict-checks")
+    try:
+        profiles, profiles_source = _load_profiles(settings.source_id)
+    except (FileNotFoundError, ValueError) as exc:
+        st.error(str(exc))
         st.stop()
-
-    profiles = _load_profiles(profiles_path)
+    if profiles_source == "fact_fallback":
+        st.info(
+            "Selector profiles were rebuilt from `fact_attempt_core` because "
+            "`classroom_mode_profiles.parquet` was unavailable in the runtime source."
+        )
     if profiles.height == 0:
         st.info("No valid classroom rows found (excluding null and 'None').")
         st.stop()

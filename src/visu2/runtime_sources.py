@@ -13,6 +13,7 @@ MAIN_RUNTIME_DATA_RELATIVE_PATHS: tuple[str, ...] = (
 )
 
 MAUREEN_RUNTIME_DATA_RELATIVE_PATHS: tuple[str, ...] = COMMON_RUNTIME_DATA_RELATIVE_PATHS
+MIA_RUNTIME_DATA_RELATIVE_PATHS: tuple[str, ...] = COMMON_RUNTIME_DATA_RELATIVE_PATHS
 
 COMMON_LOCAL_BUILD_DATA_RELATIVE_PATHS: tuple[str, ...] = (
     "data/student_interaction.parquet",
@@ -25,6 +26,7 @@ MAUREEN_LOCAL_BUILD_DATA_RELATIVE_PATHS: tuple[str, ...] = (
     *COMMON_LOCAL_BUILD_DATA_RELATIVE_PATHS,
     "data/zpdes_rules.json",
 )
+MIA_LOCAL_BUILD_DATA_RELATIVE_PATHS: tuple[str, ...] = COMMON_LOCAL_BUILD_DATA_RELATIVE_PATHS
 
 COMMON_LOCAL_BUILD_REPORT_RELATIVE_PATHS: tuple[str, ...] = (
     "artifacts/reports/consistency_report.json",
@@ -77,6 +79,8 @@ MAUREEN_REQUIRED_RUNTIME_DERIVED_TABLES: tuple[str, ...] = tuple(
     for table_name in MAUREEN_RUNTIME_DERIVED_TABLES
     if table_name not in {"student_elo_events_batch_replay", "student_elo_profiles_batch_replay"}
 )
+MIA_RUNTIME_DERIVED_TABLES: tuple[str, ...] = MAUREEN_RUNTIME_DERIVED_TABLES
+MIA_REQUIRED_RUNTIME_DERIVED_TABLES: tuple[str, ...] = MAUREEN_REQUIRED_RUNTIME_DERIVED_TABLES
 
 COMMON_LEGACY_DERIVED_TABLES: tuple[str, ...] = (
     "hierarchy_context_lookup",
@@ -94,6 +98,7 @@ MAIN_LEGACY_DERIVED_TABLES: tuple[str, ...] = (
 )
 
 MAUREEN_LEGACY_DERIVED_TABLES: tuple[str, ...] = COMMON_LEGACY_DERIVED_TABLES
+MIA_LEGACY_DERIVED_TABLES: tuple[str, ...] = COMMON_LEGACY_DERIVED_TABLES
 
 COMMON_LEGACY_REPORT_RELATIVE_PATHS: tuple[str, ...] = ("artifacts/reports/hierarchy_resolution_report.json",)
 
@@ -110,6 +115,7 @@ COMMON_LEGACY_CLEANUP_RELATIVE_PATHS: tuple[str, ...] = (
 MAIN_LEGACY_CLEANUP_RELATIVE_PATHS: tuple[str, ...] = COMMON_LEGACY_CLEANUP_RELATIVE_PATHS
 
 MAUREEN_LEGACY_CLEANUP_RELATIVE_PATHS: tuple[str, ...] = COMMON_LEGACY_CLEANUP_RELATIVE_PATHS
+MIA_LEGACY_CLEANUP_RELATIVE_PATHS: tuple[str, ...] = COMMON_LEGACY_CLEANUP_RELATIVE_PATHS
 
 ALL_PAGE_IDS: frozenset[str] = frozenset(
     {
@@ -117,6 +123,7 @@ ALL_PAGE_IDS: frozenset[str] = frozenset(
         "bottlenecks",
         "matrix",
         "zpdes_transition_efficiency",
+        "m1_individual_path",
         "classroom_replay",
         "student_elo",
         "classroom_sankey",
@@ -264,6 +271,54 @@ RUNTIME_SOURCES: dict[str, RuntimeSourceSpec] = {
             + _derived_runtime_relative_paths(MAUREEN_LEGACY_DERIVED_TABLES)
         ),
         legacy_cleanup_relative_paths=MAUREEN_LEGACY_CLEANUP_RELATIVE_PATHS,
+    ),
+    "mia_module1": RuntimeSourceSpec(
+        source_id="mia_module1",
+        label="MIA Module 1",
+        description=(
+            "Single-module remediation dataset adapted from a researcher export, "
+            "with a synthetic catalog and the reduced page surface used for partial sources."
+        ),
+        runtime_root_relative=Path("artifacts") / "sources" / "mia_module1",
+        local_root_relative=Path("artifacts") / "local" / "mia_module1",
+        legacy_root_relative=Path("artifacts") / "legacy" / "mia_module1",
+        build_profile="single_module_researcher",
+        raw_inputs={
+            "attempts_csv": Path("data_MIA")
+            / "researcher_data-053df3ec-5501-4ad8-9917-a935bcf76740.csv",
+        },
+        supported_pages=(
+            "overview",
+            "bottlenecks",
+            "matrix",
+            "student_elo",
+            "classroom_replay",
+            "classroom_sankey",
+            "student_objective_spider",
+        ),
+        capability_flags=frozenset(
+            {
+                CAPABILITY_HAS_CLASSROOMS,
+                CAPABILITY_HAS_EXERCISE_METADATA,
+                CAPABILITY_HAS_EXACT_MIN_STUDENT_ATTEMPT_FILTER,
+                CAPABILITY_HAS_CLASSROOM_ALL_DATA_OPTION,
+            }
+        ),
+        remote_config_key="mia_module1",
+        runtime_relative_paths=(
+            MIA_RUNTIME_DATA_RELATIVE_PATHS
+            + _derived_runtime_relative_paths(MIA_REQUIRED_RUNTIME_DERIVED_TABLES)
+        ),
+        runtime_derived_tables=MIA_RUNTIME_DERIVED_TABLES,
+        local_build_relative_paths=(
+            MIA_LOCAL_BUILD_DATA_RELATIVE_PATHS + COMMON_LOCAL_BUILD_REPORT_RELATIVE_PATHS
+        ),
+        legacy_derived_tables=MIA_LEGACY_DERIVED_TABLES,
+        legacy_relative_paths=(
+            COMMON_LEGACY_REPORT_RELATIVE_PATHS
+            + _derived_runtime_relative_paths(MIA_LEGACY_DERIVED_TABLES)
+        ),
+        legacy_cleanup_relative_paths=MIA_LEGACY_CLEANUP_RELATIVE_PATHS,
     ),
 }
 

@@ -217,6 +217,114 @@ def _quadratic_curve_points(
     return out
 
 
+def build_transition_layout(
+    nodes: pl.DataFrame,
+) -> dict[str, object]:
+    """Return reusable node-position metadata for ZPDES topology figures."""
+    if nodes.height == 0:
+        return {
+            "node_rows": [],
+            "objective_rows": [],
+            "activity_rows": [],
+            "objective_codes": [],
+            "lane_pos": {},
+            "max_activity_idx": 1,
+            "node_positions": {},
+        }
+
+    node_rows = nodes.to_dicts()
+    objective_codes = sorted(
+        {
+            str(row.get("objective_code") or "")
+            for row in node_rows
+            if str(row.get("objective_code") or "").strip()
+        },
+        key=objective_sort_key,
+    )
+    if not objective_codes:
+        objective_codes = ["(no objective lane)"]
+    lane_pos = {code: idx for idx, code in enumerate(objective_codes)}
+    max_activity_idx = max(
+        [int(row["activity_index"]) for row in node_rows if row.get("activity_index") is not None] + [1]
+    )
+
+    node_positions: dict[str, tuple[float, float]] = {}
+    for row in node_rows:
+        node_code = str(row.get("node_code") or "")
+        objective_code = str(row.get("objective_code") or "") or objective_codes[0]
+        y_pos = float(-lane_pos.get(objective_code, len(objective_codes)))
+        if str(row.get("node_type")) == "objective":
+            x_pos = 0.0
+        else:
+            idx = row.get("activity_index")
+            x_pos = float(idx if isinstance(idx, int) and idx > 0 else 1)
+        node_positions[node_code] = (x_pos, y_pos)
+
+    return {
+        "node_rows": node_rows,
+        "objective_rows": [row for row in node_rows if str(row.get("node_type")) == "objective"],
+        "activity_rows": [row for row in node_rows if str(row.get("node_type")) == "activity"],
+        "objective_codes": objective_codes,
+        "lane_pos": lane_pos,
+        "max_activity_idx": max_activity_idx,
+        "node_positions": node_positions,
+    }
+
+
+def add_structural_dependency_traces(
+    fig: go.Figure,
+    edges: pl.DataFrame,
+    node_positions: dict[str, tuple[float, float]],
+    *,
+    curve_intra_objective_edges: bool,
+) -> None:
+    """Add the shared structural dependency background to an existing figure."""
+    edge_rows = edges.to_dicts()
+    same_lane_edge_rank: dict[float, int] = {}
+    structural_legend_added = {"activation": False, "deactivation": False, "intra": False}
+
+    for edge in edge_rows:
+        from_code = str(edge.get("from_node_code") or "")
+        to_code = str(edge.get("to_node_code") or "")
+        if from_code not in node_positions or to_code not in node_positions:
+            continue
+        x0, y0 = node_positions[from_code]
+        x1, y1 = node_positions[to_code]
+        edge_type = str(edge.get("edge_type") or "activation")
+        same_lane = abs(y0 - y1) < 1e-9
+        use_curve = curve_intra_objective_edges and same_lane and abs(x1 - x0) > 0.45
+        if use_curve:
+            rank_key = round(y0, 2)
+            rank = same_lane_edge_rank.get(rank_key, 0)
+            same_lane_edge_rank[rank_key] = rank + 1
+            tier = rank // 2
+            curve_height = 0.28 + 0.06 * max(0, abs(x1 - x0) - 1) + 0.10 * tier
+            curve_sign = 1.0 if rank % 2 == 0 else -1.0
+            mx = (x0 + x1) / 2.0
+            my = (y0 + y1) / 2.0 + curve_sign * curve_height
+            points = _quadratic_curve_points(
+                (x0, y0), (mx, my), (x1, y1), steps=int(max(12, abs(x1 - x0) * 14))
+            )
+            trace_key = "intra"
+        else:
+            points = [(x0, y0), (x1, y1)]
+            trace_key = edge_type
+        line_cfg = _structural_edge_style(edge_type, same_lane)
+        show_legend = not structural_legend_added[trace_key]
+        structural_legend_added[trace_key] = True
+        fig.add_trace(
+            go.Scatter(
+                x=[point[0] for point in points],
+                y=[point[1] for point in points],
+                mode="lines",
+                line=line_cfg,
+                hoverinfo="skip",
+                name="Structural dependency",
+                showlegend=show_legend,
+            )
+        )
+
+
 def attach_transition_metric_to_nodes(
     nodes: pl.DataFrame,
     agg_activity_elo: pl.DataFrame | pl.LazyFrame,
@@ -555,82 +663,21 @@ def build_transition_efficiency_figure(
     if nodes.height == 0:
         return go.Figure()
 
-    node_rows = nodes.to_dicts()
-    edge_rows = edges.to_dicts()
-    objective_codes = sorted(
-        {
-            str(row.get("objective_code") or "")
-            for row in node_rows
-            if str(row.get("objective_code") or "").strip()
-        },
-        key=objective_sort_key,
-    )
-    if not objective_codes:
-        objective_codes = ["(no objective lane)"]
-    lane_pos = {code: idx for idx, code in enumerate(objective_codes)}
-    max_activity_idx = max(
-        [int(row["activity_index"]) for row in node_rows if row.get("activity_index") is not None] + [1]
-    )
-
-    node_positions: dict[str, tuple[float, float]] = {}
-    for row in node_rows:
-        node_code = str(row.get("node_code") or "")
-        objective_code = str(row.get("objective_code") or "") or objective_codes[0]
-        y_pos = float(-lane_pos.get(objective_code, len(objective_codes)))
-        if str(row.get("node_type")) == "objective":
-            x_pos = 0.0
-        else:
-            idx = row.get("activity_index")
-            x_pos = float(idx if isinstance(idx, int) and idx > 0 else 1)
-        node_positions[node_code] = (x_pos, y_pos)
+    layout = build_transition_layout(nodes)
+    objective_rows = layout["objective_rows"]
+    activity_rows = layout["activity_rows"]
+    objective_codes = layout["objective_codes"]
+    lane_pos = layout["lane_pos"]
+    max_activity_idx = layout["max_activity_idx"]
+    node_positions = layout["node_positions"]
 
     fig = go.Figure()
-    same_lane_edge_rank: dict[float, int] = {}
-    structural_legend_added = {"activation": False, "deactivation": False, "intra": False}
-
-    for edge in edge_rows:
-        from_code = str(edge.get("from_node_code") or "")
-        to_code = str(edge.get("to_node_code") or "")
-        if from_code not in node_positions or to_code not in node_positions:
-            continue
-        x0, y0 = node_positions[from_code]
-        x1, y1 = node_positions[to_code]
-        edge_type = str(edge.get("edge_type") or "activation")
-        same_lane = abs(y0 - y1) < 1e-9
-        use_curve = curve_intra_objective_edges and same_lane and abs(x1 - x0) > 0.45
-        if use_curve:
-            rank_key = round(y0, 2)
-            rank = same_lane_edge_rank.get(rank_key, 0)
-            same_lane_edge_rank[rank_key] = rank + 1
-            tier = rank // 2
-            curve_height = 0.28 + 0.06 * max(0, abs(x1 - x0) - 1) + 0.10 * tier
-            curve_sign = 1.0 if rank % 2 == 0 else -1.0
-            mx = (x0 + x1) / 2.0
-            my = (y0 + y1) / 2.0 + curve_sign * curve_height
-            points = _quadratic_curve_points(
-                (x0, y0), (mx, my), (x1, y1), steps=int(max(12, abs(x1 - x0) * 14))
-            )
-            trace_key = "intra"
-        else:
-            points = [(x0, y0), (x1, y1)]
-            trace_key = edge_type
-        line_cfg = _structural_edge_style(edge_type, same_lane)
-        show_legend = not structural_legend_added[trace_key]
-        structural_legend_added[trace_key] = True
-        fig.add_trace(
-            go.Scatter(
-                x=[point[0] for point in points],
-                y=[point[1] for point in points],
-                mode="lines",
-                line=line_cfg,
-                hoverinfo="skip",
-                name="Structural dependency",
-                showlegend=show_legend,
-            )
-        )
-
-    objective_rows = [row for row in node_rows if str(row.get("node_type")) == "objective"]
-    activity_rows = [row for row in node_rows if str(row.get("node_type")) == "activity"]
+    add_structural_dependency_traces(
+        fig,
+        edges,
+        node_positions,
+        curve_intra_objective_edges=curve_intra_objective_edges,
+    )
 
     objective_hover = (
         "<b>%{customdata[2]}</b><br>"

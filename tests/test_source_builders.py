@@ -1,10 +1,13 @@
-"""Maureen adapter regressions for the source-local runtime builder."""
+"""Source-builder regressions for source-local runtime adapters."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from visu2.source_builders import _build_maureen_catalog_and_raw
+from visu2.source_builders import (
+    _build_maureen_catalog_and_raw,
+    _build_single_module_researcher_catalog_and_raw,
+)
 
 
 def test_build_maureen_catalog_and_raw_uses_researcher_csv_and_preserves_classrooms(tmp_path: Path) -> None:
@@ -59,3 +62,56 @@ def test_build_maureen_catalog_and_raw_uses_researcher_csv_and_preserves_classro
     assert zpdes_rules["map_id_code"]["code_to_id"]["M16O1A2"] == "activity-extra"
     exercise_ids = [row["id"] for row in exercises_json["exercises"]]
     assert "22222222-2222-2222-2222-222222222222" in exercise_ids
+
+
+def test_build_single_module_researcher_catalog_and_raw_synthesizes_catalog(tmp_path: Path) -> None:
+    attempts_path = tmp_path / "mia_attempts.csv"
+    attempts_path.write_text(
+        "\n".join(
+            [
+                "UAI,classroom_id,teacher_id,user_id,playlist_or_module_id,objective_id,activity_id,exercise_id,module_short_title,module_long_title,created_at,login_time,is_initial_test,data_score,data_correct,data_nb_tries,data_test_context,data_answer,data_duration,session_duration,work_mode;",
+                "001,class-1,teacher-1,user-1,module-1,objective-1,activity-1,11111111-1111-1111-1111-111111111111,Sens des nombres,Module 1,2025-01-01 09:00:00+00:00,2025-01-01 08:59:00+00:00,False,1.0,True,1,zpdes,[1],10.0,100,zpdes;",
+                "001,class-1,teacher-1,user-1,module-1,objective-1,activity-1,11111111-1111-1111-1111-111111111111,Sens des nombres,Module 1,2025-01-01 09:01:00+00:00,2025-01-01 08:59:00+00:00,False,1.0,True,2,zpdes,[1],11.0,100,zpdes;",
+                "001,class-1,teacher-2,user-2,module-1,objective-1,activity-2,22222222-2222-2222-2222-222222222222,Sens des nombres,Module 1,2025-01-02 09:00:00+00:00,2025-01-02 08:59:00+00:00,False,0.0,False,1,adaptive-test,[0],12.0,200,adaptive-test;",
+                "001,class-2,teacher-2,user-2,module-1,objective-2,activity-3,33333333-3333-3333-3333-333333333333,Sens des nombres,Module 1,2025-01-03 09:00:00+00:00,2025-01-03 08:59:00+00:00,False,1.0,True,1,revision,[1],13.0,300,revision;",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    raw_attempts, learning_catalog, exercises_json, warnings = (
+        _build_single_module_researcher_catalog_and_raw(
+            attempts_path,
+            source_id="mia_module1",
+        )
+    )
+
+    assert raw_attempts.height == 4
+    assert set(raw_attempts["work_mode"].to_list()) == {"zpdes", "adaptive-test", "revision"}
+    assert raw_attempts["module_id"].to_list() == ["module-1", "module-1", "module-1", "module-1"]
+    repeated = raw_attempts.filter(raw_attempts["exercise_id"] == "11111111-1111-1111-1111-111111111111")
+    assert repeated["attempt_number"].to_list() == [1, 2]
+    assert raw_attempts["student_attempt_index"].to_list() == [1, 2, 1, 2]
+    assert warnings == ()
+
+    module = learning_catalog["modules"][0]
+    assert module["code"] == "M1"
+    assert module["title"]["short"] == "Sens des nombres"
+    assert len(module["objectives"]) == 2
+    assert module["objectives"][0]["code"] == "M1O01"
+    assert module["objectives"][0]["title"]["short"] == "Objective 01"
+    assert module["objectives"][0]["activities"][0]["code"] == "M1O01A01"
+    assert module["objectives"][0]["activities"][1]["code"] == "M1O01A02"
+    assert module["objectives"][1]["activities"][0]["code"] == "M1O02A01"
+    assert learning_catalog["exercise_to_hierarchy"]["33333333-3333-3333-3333-333333333333"] == {
+        "module_id": "module-1",
+        "objective_id": "objective-2",
+        "activity_id": "activity-3",
+    }
+
+    exercise_ids = [row["id"] for row in exercises_json["exercises"]]
+    assert exercise_ids == [
+        "11111111-1111-1111-1111-111111111111",
+        "22222222-2222-2222-2222-222222222222",
+        "33333333-3333-3333-3333-333333333333",
+    ]

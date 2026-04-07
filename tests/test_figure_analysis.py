@@ -8,6 +8,7 @@ from visu2.figure_analysis import (
     analyze_bottleneck_chart,
     analyze_classroom_progression_population,
     analyze_classroom_progression_sankey,
+    analyze_m1_individual_path,
     analyze_matrix_drilldown_table,
     analyze_overview_concentration,
     analyze_overview_kpis,
@@ -167,6 +168,29 @@ def test_analyze_classroom_progression_population_uses_mode_scope_frames() -> No
     assert analysis.findings[0].startswith("In Playlist")
     assert any("Fractions" in finding for finding in analysis.findings)
     assert analysis.interpretation is not None
+
+
+def test_analyze_m1_individual_path_reports_visible_progress_and_unmapped_attempts() -> None:
+    payload = {
+        "student_ids": ["u1"],
+        "frame_cutoffs": [0, 2, 4],
+        "series": {
+            "u1": {
+                "attempt_ordinal": [1, 2, 3, 4],
+                "activity_id": ["a1", "a1", "missing", "a2"],
+                "activity_label": ["A1", "A1", "Missing", "A2"],
+                "outcome": [1.0, 0.0, 1.0, 1.0],
+                "is_mapped_activity": [True, True, False, True],
+            }
+        },
+    }
+
+    analysis = analyze_m1_individual_path(payload, frame_idx=2)
+
+    assert analysis.findings
+    assert any("u1" in finding for finding in analysis.findings)
+    assert any("Mapped activity success" in finding for finding in analysis.findings)
+    assert any("outside the M1 topology" in caveat for caveat in analysis.caveats)
 
 
 def test_analyze_student_elo_population_reports_raw_vs_normalized_severity() -> None:

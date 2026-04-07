@@ -110,8 +110,8 @@ ELO_EVENT_QUERY_COLUMNS: tuple[str, ...] = (
 
 
 @st.cache_data(show_spinner=False)
-def _load_profiles(path: Path) -> pl.DataFrame:
-    return load_student_elo_profiles(path)
+def _load_profiles(path: Path, learning_catalog_path: Path) -> pl.DataFrame:
+    return load_student_elo_profiles(path, learning_catalog_path=learning_catalog_path)
 
 
 @st.cache_data(show_spinner=False)
@@ -196,6 +196,10 @@ def _parquet_columns(path: Path) -> list[str]:
     return list(pq.ParquetFile(path).schema_arrow.names)
 
 
+def _missing_profile_contract_columns(frame: pl.DataFrame, required_columns: list[str]) -> list[str]:
+    return [column for column in required_columns if column not in frame.columns]
+
+
 def _available_elo_system_configs(settings) -> dict[str, dict[str, str]]:
     """Return only the Elo systems whose local profile artifacts are present."""
     available: dict[str, dict[str, str]] = {}
@@ -231,12 +235,14 @@ div, p, label {
         required_paths=(BATCH_REPLAY_PROFILES_RELATIVE_PATH,),
     )
     current_exercise_elo_path = settings.artifacts_derived_dir / "agg_exercise_elo.parquet"
+    learning_catalog_path = settings.learning_catalog_path
     all_system_paths = {
         system_name: settings.artifacts_derived_dir / config["profiles_filename"]
         for system_name, config in ELO_SYSTEM_CONFIGS.items()
     }
 
     required = [
+        learning_catalog_path,
         current_exercise_elo_path,
         all_system_paths["Sequential Replay Elo"],
     ]
@@ -260,19 +266,25 @@ div, p, label {
 
     compatibility_checks = {
         "agg_exercise_elo": (current_exercise_elo_path, RUNTIME_CORE_COLUMNS["agg_exercise_elo"]),
-        **{
-            config["profiles_contract_key"]: (
-                all_system_paths[system_name],
-                RUNTIME_CORE_COLUMNS[config["profiles_contract_key"]],
-            )
-            for system_name, config in available_system_configs.items()
-        },
     }
     missing_contracts: list[str] = []
     for label, (path, required_columns) in compatibility_checks.items():
         missing_columns = [col for col in required_columns if col not in _parquet_columns(path)]
         if missing_columns:
             missing_contracts.append(f"- `{label}`: {', '.join(missing_columns)}")
+
+    profiles_by_system: dict[str, pl.DataFrame] = {}
+    for system_name, config in available_system_configs.items():
+        profiles = _load_profiles(all_system_paths[system_name], learning_catalog_path)
+        profiles_by_system[system_name] = profiles
+        missing_columns = _missing_profile_contract_columns(
+            profiles,
+            RUNTIME_CORE_COLUMNS[config["profiles_contract_key"]],
+        )
+        if missing_columns:
+            missing_contracts.append(
+                f"- `{config['profiles_contract_key']}`: {', '.join(missing_columns)}"
+            )
     if missing_contracts:
         st.error("Student Elo artifacts are incompatible with the current runtime contract.")
         st.markdown("\n".join(missing_contracts))
@@ -313,7 +325,7 @@ div, p, label {
         system_name: available_system_configs[system_name]
         for system_name in selected_systems
     }
-    module_profiles = _load_profiles(all_system_paths[reference_system])
+    module_profiles = profiles_by_system[reference_system]
     if module_profiles.height == 0:
         st.info(f"No {reference_system} profiles are available.")
         st.stop()

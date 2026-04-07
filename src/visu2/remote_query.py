@@ -198,6 +198,44 @@ def query_student_elo_events(
     )
 
 
+def query_student_module_attempts(
+    settings: Settings,
+    *,
+    user_ids: Sequence[str],
+    module_code: str,
+    columns: Sequence[str],
+    work_mode: str | None = None,
+    relative_path: str = "artifacts/derived/fact_attempt_core.parquet",
+) -> pl.DataFrame:
+    """Query ordered attempt rows for one or more students inside one module."""
+    normalized_ids = tuple(
+        str(user_id).strip() for user_id in user_ids if str(user_id or "").strip()
+    )
+    module_key = str(module_code or "").strip()
+    if not normalized_ids or not module_key:
+        return _empty_frame(columns)
+    filters: list[FilterClause] = [
+        ("user_id", "in", normalized_ids),
+        ("module_code", "=", module_key),
+    ]
+    mode_key = str(work_mode or "").strip()
+    if mode_key and mode_key != "all":
+        filters.append(("work_mode", "=", mode_key))
+    return query_runtime_parquet(
+        settings,
+        relative_path,
+        columns=columns,
+        filters=tuple(filters),
+        order_by=(
+            ("created_at", False),
+            ("user_id", False),
+            ("activity_id", False),
+            ("exercise_id", False),
+            ("attempt_number", False),
+        ),
+    )
+
+
 def query_student_fact_label_lookup(
     settings: Settings,
     *,
@@ -370,6 +408,7 @@ __all__ = [
     "query_fact_attempts",
     "query_fact_attempts_for_classroom",
     "query_runtime_parquet",
+    "query_student_module_attempts",
     "query_student_fact_label_lookup",
     "query_student_elo_events",
     "resolve_runtime_parquet_reference",

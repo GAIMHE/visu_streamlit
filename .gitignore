@@ -13,6 +13,7 @@ __pycache__/
 .pyre/
 .tox/
 .nox/
+.cache/
 
 # Virtual environments
 .venv/
@@ -38,6 +39,7 @@ htmlcov/
 
 # Notebooks
 .ipynb_checkpoints/
+notebooks/
 
 # IDE / editor
 .vscode/
@@ -52,6 +54,7 @@ artifacts/
 data/
 data_maureen/
 data_margot/
+data_MIA/
 
 # Local Codex assistant config
 AGENTS.md

@@ -423,7 +423,11 @@ dict[str, Any]
 
 """
     catalog_payload = load_learning_catalog(settings.learning_catalog_path)
-    zpdes_rules_payload = load_zpdes_rules(settings.build_zpdes_rules_path)
+    zpdes_rules_payload = (
+        load_zpdes_rules(settings.build_zpdes_rules_path)
+        if settings.build_zpdes_rules_path.exists()
+        else {}
+    )
     exercises_payload = load_exercises(settings.exercises_json_path)
     parquet = _parquet_profile(settings)
     catalog = _catalog_integrity(catalog_payload)

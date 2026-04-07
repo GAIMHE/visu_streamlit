@@ -189,6 +189,24 @@ FIGURE_INFO: dict[str, dict[str, tuple[str, ...]]] = {
             "If no students are found in the requested attempt range, try another target count, or clear the ID override if it does not match an eligible student.",
         ),
     },
+    "m1_individual_path_page": {
+        "What it shows": (
+            "A replayable Module 1 path for one selected student drawn on top of the fixed M1 dependency layout.",
+            "Objective squares stay static, while activity circles start grey and then update as the student's M1 attempts become visible.",
+            "The page is fixed to Module 1 and replays all work modes observed inside that module.",
+        ),
+        "Metrics": (
+            "Activity color is the cumulative success rate for that student on that activity up to the current replay frame.",
+            "Activity size grows with the cumulative number of attempts on that activity using a bounded square-root scale, so repeated activity exposure is visible without overwhelming the layout.",
+            "Only the last three distinct mapped activity-to-activity changes are shown as arrows; repeated attempts inside the same activity do not create extra arrows.",
+            "Attempts whose activity is outside the M1 topology are kept in the replay timeline but are excluded from node color/size updates and from arrow drawing.",
+        ),
+        "How to use": (
+            "Choose a target Module 1 attempt count to sample one nearby student, or type a student ID directly.",
+            "Use the replay controls to step through the student's Module 1 timeline frame by frame or autoplay it.",
+            "Read the graph as a path replay rather than a benchmark chart: grey means unseen so far, warmer colors mean weaker cumulative success, greener colors mean stronger cumulative success.",
+        ),
+    },
     "student_objective_spider": {
         "What it shows": (
             "A radar chart for one selected student inside one selected module.",

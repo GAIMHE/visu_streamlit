@@ -185,6 +185,11 @@ def code_preference_score(code: str) -> tuple[int, int, str]:
 
 def rules_id_code_frame(settings: Settings) -> pl.DataFrame:
     """Map graph IDs from rules metadata to the preferred pedagogical code."""
+    if not settings.build_zpdes_rules_path.exists():
+        return pl.DataFrame(
+            {"graph_id": [], "graph_code": []},
+            schema={"graph_id": pl.Utf8, "graph_code": pl.Utf8},
+        )
     rules = load_zpdes_rules(settings.build_zpdes_rules_path)
     maps = zpdes_code_maps(rules)
     id_to_codes = maps["id_to_codes"]
@@ -461,33 +466,48 @@ def catalog_activity_rank_frame(settings: Settings) -> pl.DataFrame:
 def catalog_code_frames(settings: Settings) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     """Return fallback code-to-id/label frames for module, objective, and activity codes."""
     catalog = load_learning_catalog(settings.learning_catalog_path)
-    rules = load_zpdes_rules(settings.build_zpdes_rules_path)
-    maps = zpdes_code_maps(rules)
-    code_to_id = maps["code_to_id"]
     index_frames = catalog_id_index_frames(catalog)
     index = index_frames.index.select(["id", "short_title", "long_title"]).unique(
         subset=["id"], keep="first"
     )
 
-    rows: list[dict[str, str | None]] = []
-    for code, identifier in code_to_id.items():
-        if not isinstance(code, str) or not code.strip():
-            continue
-        if not isinstance(identifier, str) or not identifier.strip():
-            continue
-        rows.append({"code": code, "id": identifier})
-
-    codes_df = pl.DataFrame(rows) if rows else pl.DataFrame({"code": [], "id": []})
-    if "code" in codes_df.columns:
-        codes_df = codes_df.with_columns(pl.col("code").cast(pl.Utf8), pl.col("id").cast(pl.Utf8))
-    codes_labeled = (
-        codes_df.join(index, on="id", how="left")
-        .with_columns(
-            pl.coalesce([pl.col("short_title"), pl.col("long_title"), pl.col("code")]).alias(
-                "label_fallback"
+    if not settings.build_zpdes_rules_path.exists():
+        empty = pl.DataFrame(
+            {"code": [], "id": []},
+            schema={"code": pl.Utf8, "id": pl.Utf8},
+        )
+        codes_labeled = (
+            empty.join(index, on="id", how="left")
+            .with_columns(
+                pl.coalesce([pl.col("short_title"), pl.col("long_title"), pl.col("code")]).alias(
+                    "label_fallback"
+                )
             )
         )
-    )
+    else:
+        rules = load_zpdes_rules(settings.build_zpdes_rules_path)
+        maps = zpdes_code_maps(rules)
+        code_to_id = maps["code_to_id"]
+
+        rows: list[dict[str, str | None]] = []
+        for code, identifier in code_to_id.items():
+            if not isinstance(code, str) or not code.strip():
+                continue
+            if not isinstance(identifier, str) or not identifier.strip():
+                continue
+            rows.append({"code": code, "id": identifier})
+
+        codes_df = pl.DataFrame(rows) if rows else pl.DataFrame({"code": [], "id": []})
+        if "code" in codes_df.columns:
+            codes_df = codes_df.with_columns(pl.col("code").cast(pl.Utf8), pl.col("id").cast(pl.Utf8))
+        codes_labeled = (
+            codes_df.join(index, on="id", how="left")
+            .with_columns(
+                pl.coalesce([pl.col("short_title"), pl.col("long_title"), pl.col("code")]).alias(
+                    "label_fallback"
+                )
+            )
+        )
 
     module_df = (
         codes_labeled.filter(pl.col("code").str.contains(r"^M\d+$"))

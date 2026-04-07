@@ -41,13 +41,33 @@ import polars as pl
 from visu2.loaders import catalog_to_summary_frames, load_learning_catalog
 
 
-def load_student_elo_profiles(path: Path) -> pl.DataFrame:
+def _module_lookup_from_catalog(path: Path) -> pl.DataFrame:
+    """Build a module lookup keyed by module_id from the learning catalog."""
+    catalog = load_learning_catalog(path)
+    frames = catalog_to_summary_frames(catalog)
+    return (
+        frames.modules.select(
+            [
+                "module_id",
+                "module_code",
+                pl.coalesce(["module_title_short", "module_title_long"]).alias("module_label"),
+            ]
+        )
+        .filter(pl.col("module_id").is_not_null())
+        .unique(subset=["module_id"], keep="first")
+    )
+
+
+def load_student_elo_profiles(path: Path, learning_catalog_path: Path | None = None) -> pl.DataFrame:
     """Load student elo profiles.
 
 Parameters
 ----------
 path : Path
         Input parameter used by this routine.
+learning_catalog_path : Path | None, optional
+        Optional catalog path used to backfill older profile artifacts that do
+        not yet contain `module_code` / `module_label`.
 
 Returns
 -------
@@ -55,7 +75,50 @@ pl.DataFrame
         Result produced by this routine.
 
 """
-    return pl.read_parquet(path)
+    profiles = pl.read_parquet(path)
+    if learning_catalog_path is None or profiles.height == 0:
+        return profiles
+
+    has_module_code = "module_code" in profiles.columns
+    has_module_label = "module_label" in profiles.columns
+    if has_module_code and has_module_label:
+        return profiles
+    if "module_id" not in profiles.columns:
+        return profiles
+
+    module_lookup = _module_lookup_from_catalog(learning_catalog_path).rename(
+        {
+            "module_code": "module_code_catalog",
+            "module_label": "module_label_catalog",
+        }
+    )
+    if module_lookup.height == 0:
+        return profiles
+
+    joined = profiles.join(module_lookup, on="module_id", how="left", suffix="_catalog")
+
+    if has_module_code:
+        joined = joined.with_columns(
+            pl.coalesce(["module_code", "module_code_catalog"]).alias("module_code")
+        )
+    else:
+        joined = joined.with_columns(pl.col("module_code_catalog").alias("module_code"))
+
+    if has_module_label:
+        joined = joined.with_columns(
+            pl.coalesce(["module_label", "module_label_catalog"]).alias("module_label")
+        )
+    else:
+        joined = joined.with_columns(pl.col("module_label_catalog").alias("module_label"))
+
+    drop_columns = [
+        name
+        for name in ("module_code_catalog", "module_label_catalog")
+        if name in joined.columns
+    ]
+    if drop_columns:
+        joined = joined.drop(drop_columns)
+    return joined
 
 
 def load_student_elo_events(path: Path) -> pl.LazyFrame:

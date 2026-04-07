@@ -232,6 +232,325 @@ def _next_code(base_prefix: str, used_codes: set[str]) -> str:
     return f"{base_prefix}A{next_idx}"
 
 
+def _choose_unique_value(
+    values: list[str | None],
+    *,
+    label: str,
+    default: str,
+    warnings: list[str],
+) -> str:
+    normalized = sorted({str(value).strip() for value in values if str(value or "").strip()})
+    if not normalized:
+        return default
+    if len(normalized) > 1:
+        warnings.append(
+            f"Multiple {label} values found; using the first in sorted order: {normalized[0]!r}."
+        )
+    return normalized[0]
+
+
+def _build_single_module_researcher_catalog_and_raw(
+    attempts_csv_path: Path,
+    *,
+    source_id: str,
+    module_code: str = "M1",
+) -> tuple[pl.DataFrame, dict[str, Any], dict[str, Any], tuple[str, ...]]:
+    attempts, parse_warnings = _load_maureen_researcher_attempts(attempts_csv_path)
+    if attempts.height == 0:
+        raise ValueError("Single-module researcher CSV is empty after parsing.")
+
+    warnings: list[str] = list(parse_warnings)
+    module_ids = sorted(
+        {str(value).strip() for value in attempts["playlist_or_module_id"].to_list() if str(value or "").strip()}
+    )
+    if len(module_ids) != 1:
+        raise ValueError(
+            "Single-module researcher source expects exactly one non-null playlist_or_module_id; "
+            f"got {module_ids!r}."
+        )
+    module_id = module_ids[0]
+    module_short = _choose_unique_value(
+        attempts["module_short_title"].to_list(),
+        label="module_short_title",
+        default=module_code,
+        warnings=warnings,
+    )
+    module_long = _choose_unique_value(
+        attempts["module_long_title"].to_list(),
+        label="module_long_title",
+        default=module_short,
+        warnings=warnings,
+    )
+
+    attempts = (
+        attempts.with_columns(
+            pl.lit(module_id, dtype=pl.Utf8).alias("module_id"),
+            pl.coalesce(
+                [
+                    pl.col("module_long_title"),
+                    pl.lit(module_long, dtype=pl.Utf8),
+                ]
+            ).alias("module_long_title"),
+        )
+        .sort(["user_id", "created_at", "exercise_id"])
+    )
+
+    objective_rows = (
+        attempts.select(["objective_id", "created_at"])
+        .filter(pl.col("objective_id").is_not_null())
+        .group_by("objective_id")
+        .agg(pl.col("created_at").min().alias("first_seen_utc"))
+        .sort(["first_seen_utc", "objective_id"])
+        .to_dicts()
+    )
+    if not objective_rows:
+        raise ValueError("Single-module researcher source is missing objective_id values.")
+
+    objectives_by_id: dict[str, dict[str, Any]] = {}
+    objective_order: list[str] = []
+    for idx, row in enumerate(objective_rows, start=1):
+        objective_id = str(row["objective_id"])
+        code_suffix = f"{idx:02d}"
+        objectives_by_id[objective_id] = {
+            "id": objective_id,
+            "code": f"{module_code}O{code_suffix}",
+            "short_title": f"Objective {code_suffix}",
+            "long_title": f"Synthetic objective {code_suffix}",
+            "status": "synthetic",
+            "activity_ids": [],
+        }
+        objective_order.append(objective_id)
+
+    activity_rows = (
+        attempts.select(["objective_id", "activity_id", "exercise_id", "created_at"])
+        .filter(pl.col("objective_id").is_not_null() & pl.col("activity_id").is_not_null())
+        .group_by(["objective_id", "activity_id"])
+        .agg(
+            pl.col("created_at").min().alias("first_seen_utc"),
+            pl.col("exercise_id")
+            .drop_nulls()
+            .cast(pl.Utf8)
+            .unique()
+            .sort()
+            .alias("exercise_ids"),
+        )
+        .sort(["objective_id", "first_seen_utc", "activity_id"])
+        .to_dicts()
+    )
+    if not activity_rows:
+        raise ValueError("Single-module researcher source is missing activity_id values.")
+
+    activities_by_id: dict[str, dict[str, Any]] = {}
+    activity_counts_by_objective: defaultdict[str, int] = defaultdict(int)
+    for row in activity_rows:
+        objective_id = str(row["objective_id"])
+        activity_id = str(row["activity_id"])
+        objective_payload = objectives_by_id.get(objective_id)
+        if objective_payload is None:
+            raise ValueError(f"Activity {activity_id} references unknown objective_id {objective_id}.")
+        activity_counts_by_objective[objective_id] += 1
+        suffix = f"{activity_counts_by_objective[objective_id]:02d}"
+        objective_payload["activity_ids"].append(activity_id)
+        activities_by_id[activity_id] = {
+            "id": activity_id,
+            "code": f"{objective_payload['code']}A{suffix}",
+            "short_title": f"Activity {suffix}",
+            "long_title": f"Synthetic activity {suffix}",
+            "status": "synthetic",
+            "exercise_ids": [str(exercise_id) for exercise_id in row["exercise_ids"]],
+        }
+
+    modules_payload: list[dict[str, Any]] = []
+    exercise_to_hierarchy: dict[str, dict[str, str]] = {}
+    id_label_index: dict[str, dict[str, Any]] = {
+        module_id: {
+            "type": "module",
+            "code": module_code,
+            "short_title": module_short,
+            "long_title": module_long,
+            "sources": ["mia_attempts"],
+        }
+    }
+
+    module_objectives: list[dict[str, Any]] = []
+    for objective_id in objective_order:
+        objective_payload = objectives_by_id[objective_id]
+        id_label_index[objective_id] = {
+            "type": "objective",
+            "code": objective_payload["code"],
+            "short_title": objective_payload["short_title"],
+            "long_title": objective_payload["long_title"],
+            "sources": ["mia_attempts"],
+        }
+        activity_entries: list[dict[str, Any]] = []
+        for activity_id in objective_payload["activity_ids"]:
+            activity_payload = activities_by_id[activity_id]
+            id_label_index[activity_id] = {
+                "type": "activity",
+                "code": activity_payload["code"],
+                "short_title": activity_payload["short_title"],
+                "long_title": activity_payload["long_title"],
+                "sources": ["mia_attempts"],
+            }
+            exercise_ids = list(activity_payload["exercise_ids"])
+            for exercise_id in exercise_ids:
+                if exercise_id not in id_label_index:
+                    id_label_index[exercise_id] = {
+                        "type": "exercise",
+                        "code": None,
+                        "short_title": None,
+                        "long_title": None,
+                        "sources": ["mia_attempts"],
+                    }
+                exercise_to_hierarchy[exercise_id] = {
+                    "module_id": module_id,
+                    "objective_id": objective_id,
+                    "activity_id": activity_id,
+                }
+            activity_entries.append(
+                {
+                    "id": activity_id,
+                    "code": activity_payload["code"],
+                    "status": activity_payload["status"],
+                    "title": {
+                        "short": activity_payload["short_title"],
+                        "long": activity_payload["long_title"],
+                    },
+                    "exercise_ids": exercise_ids,
+                }
+            )
+        module_objectives.append(
+            {
+                "id": objective_id,
+                "code": objective_payload["code"],
+                "status": objective_payload["status"],
+                "title": {
+                    "short": objective_payload["short_title"],
+                    "long": objective_payload["long_title"],
+                },
+                "activities": activity_entries,
+            }
+        )
+
+    modules_payload.append(
+        {
+            "id": module_id,
+            "code": module_code,
+            "status": "visible",
+            "title": {
+                "short": module_short,
+                "long": module_long,
+            },
+            "objectives": module_objectives,
+        }
+    )
+
+    learning_catalog = {
+        "meta": {
+            "generated_by": "visu2 single-module researcher adapter",
+            "source_id": source_id,
+            "build_timestamp_utc": datetime.now(UTC).isoformat(),
+            "version": "single_module_runtime_v1",
+            "source_files": [str(attempts_csv_path)],
+            "counts": {
+                "modules": len(modules_payload),
+                "objectives": len(objectives_by_id),
+                "activities": len(activities_by_id),
+                "exercises_unique": len(exercise_to_hierarchy),
+            },
+        },
+        "conflicts": {
+            "coverage": {
+                "overlapping_activity_count": 0,
+                "primary_only_activity_count": len(activities_by_id),
+                "secondary_only_activity_count": 0,
+                "overlap_membership_disagreement_count": 0,
+            },
+            "missing_references": {
+                "missing_activity_ids_in_objectives": [],
+                "missing_objective_ids_in_modules": [],
+            },
+            "source_disagreements": {
+                "activity_exercise_membership_disagreements": [],
+                "id_label_disagreements": [],
+            },
+            "secondary_mapping_candidates_for_orphans": {
+                "unique_count": 0,
+                "ambiguous_count": 0,
+            },
+        },
+        "orphans": [],
+        "id_label_index": id_label_index,
+        "modules": modules_payload,
+        "exercise_to_hierarchy": exercise_to_hierarchy,
+    }
+
+    exercises_json = {
+        "exercises": [
+            {
+                "id": exercise_id,
+                "type": None,
+                "instruction": None,
+                "activities": [mapping["activity_id"]],
+                "objectives": [mapping["objective_id"]],
+                "modules": [mapping["module_id"]],
+            }
+            for exercise_id, mapping in sorted(exercise_to_hierarchy.items())
+        ]
+    }
+
+    raw_attempts = (
+        attempts.with_columns(
+            pl.lit(None, dtype=pl.Utf8).alias("variation"),
+            pl.lit(None, dtype=pl.Float64).alias("progression_score"),
+            pl.lit(None, dtype=pl.Float64).alias("initial_test_max_success"),
+            pl.lit(None, dtype=pl.Float64).alias("initial_test_weighted_max_success"),
+            pl.lit(None, dtype=pl.Float64).alias("initial_test_success_rate"),
+            pl.lit(None, dtype=pl.Float64).alias("finished_module_mean_score"),
+            pl.lit(None, dtype=pl.Float64).alias("finished_module_graphe_coverage_rate"),
+            pl.lit(None, dtype=pl.Boolean).alias("is_gar"),
+        )
+        .sort(["user_id", "created_at", "exercise_id"])
+        .with_columns(
+            pl.col("exercise_id").cum_count().over(["user_id", "exercise_id"]).alias("attempt_number"),
+            pl.col("user_id").cum_count().over("user_id").alias("student_attempt_index"),
+        )
+        .select(
+            [
+                "user_id",
+                "variation",
+                "module_id",
+                "objective_id",
+                "activity_id",
+                "exercise_id",
+                "created_at",
+                "login_time",
+                "data_score",
+                "data_correct",
+                "work_mode",
+                "data_test_context",
+                "progression_score",
+                "initial_test_max_success",
+                "initial_test_weighted_max_success",
+                "initial_test_success_rate",
+                "finished_module_mean_score",
+                "finished_module_graphe_coverage_rate",
+                "is_gar",
+                "teacher_id",
+                "classroom_id",
+                "playlist_or_module_id",
+                "data_duration",
+                "session_duration",
+                "attempt_number",
+                "student_attempt_index",
+                "module_long_title",
+            ]
+        )
+    )
+
+    return raw_attempts, learning_catalog, exercises_json, tuple(sorted(set(warnings)))
+
+
 def _build_maureen_catalog_and_raw(
     attempts_csv_path: Path,
     module_config_csv_path: Path,
@@ -710,6 +1029,33 @@ def materialize_source_runtime_inputs(settings: Settings) -> SourceMaterializati
                 str(settings.parquet_path),
                 str(settings.learning_catalog_path),
                 str(settings.local_zpdes_rules_path),
+                str(settings.exercises_json_path),
+            ),
+            warnings=warnings,
+        )
+
+    if source.build_profile == "single_module_researcher":
+        attempts_csv_path = settings.root_dir / source.raw_inputs["attempts_csv"]
+        raw_attempts, learning_catalog, exercises_json, warnings = (
+            _build_single_module_researcher_catalog_and_raw(
+                attempts_csv_path,
+                source_id=settings.source_id,
+            )
+        )
+        raw_attempts.write_parquet(settings.parquet_path)
+        settings.learning_catalog_path.write_text(
+            json.dumps(learning_catalog, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        settings.exercises_json_path.write_text(
+            json.dumps(exercises_json, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        return SourceMaterializationReport(
+            source_id=settings.source_id,
+            input_paths=(
+                str(settings.parquet_path),
+                str(settings.learning_catalog_path),
                 str(settings.exercises_json_path),
             ),
             warnings=warnings,

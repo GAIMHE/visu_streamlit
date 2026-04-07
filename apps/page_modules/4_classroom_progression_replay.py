@@ -37,7 +37,6 @@ from datetime import date
 from pathlib import Path
 
 import polars as pl
-import pyarrow.parquet as pq
 import streamlit as st
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -54,6 +53,7 @@ from overview_shared import render_population_filters
 from plotly_config import build_plotly_chart_config
 from source_state import get_active_source_id
 
+from visu2.classroom_profile_loader import load_or_build_classroom_mode_profiles
 from visu2.classroom_progression import (
     SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID,
     VALID_MODE_SCOPES,
@@ -65,7 +65,6 @@ from visu2.classroom_progression import (
     select_classrooms_near_student_target,
 )
 from visu2.config import get_settings
-from visu2.contracts import RUNTIME_CORE_COLUMNS
 from visu2.figure_analysis import analyze_classroom_progression_population
 from visu2.remote_query import query_fact_attempts_for_classroom
 from visu2.runtime_sources import get_runtime_source
@@ -95,8 +94,9 @@ FACT_QUERY_COLUMNS: tuple[str, ...] = (
 
 
 @st.cache_data(show_spinner=False)
-def _load_profiles(profiles_path: Path) -> pl.DataFrame:
-    return pl.read_parquet(profiles_path)
+def _load_profiles(source_id: str) -> tuple[pl.DataFrame, str]:
+    settings = get_settings(source_id)
+    return load_or_build_classroom_mode_profiles(settings)
 
 
 @st.cache_data(show_spinner=False)
@@ -231,23 +231,6 @@ str
     return mode_scope
 
 
-def _parquet_columns(path: Path) -> list[str]:
-    """Parquet columns.
-
-Parameters
-----------
-path : Path
-        Input parameter used by this routine.
-
-Returns
--------
-list[str]
-        Result produced by this routine.
-
-"""
-    return list(pq.ParquetFile(path).schema_arrow.names)
-
-
 def main() -> None:
     """Main.
 
@@ -277,32 +260,16 @@ div, p, label {
         unsafe_allow_html=True,
     )
     settings = get_settings(get_active_source_id())
-    profiles_path = settings.artifacts_derived_dir / "classroom_mode_profiles.parquet"
-    required = [profiles_path]
-    missing_files = [path for path in required if not path.exists()]
-    if missing_files:
-        st.error("Missing classroom replay selector artifacts. Rebuild derived data.")
-        st.code("\n".join(str(path) for path in missing_files))
+    try:
+        profiles, profiles_source = _load_profiles(settings.source_id)
+    except (FileNotFoundError, ValueError) as exc:
+        st.error(str(exc))
         st.stop()
-
-    compatibility_checks = {
-        "classroom_mode_profiles": (
-            profiles_path,
-            RUNTIME_CORE_COLUMNS["classroom_mode_profiles"],
-        ),
-    }
-    missing_contracts: list[str] = []
-    for label, (path, required_columns) in compatibility_checks.items():
-        missing_columns = [col for col in required_columns if col not in _parquet_columns(path)]
-        if missing_columns:
-            missing_contracts.append(f"- `{label}`: {', '.join(missing_columns)}")
-    if missing_contracts:
-        st.error("Classroom replay selector artifacts are incompatible with the current runtime contract.")
-        st.markdown("\n".join(missing_contracts))
-        st.code("uv run python scripts/build_derived.py --strict-checks")
-        st.stop()
-
-    profiles = _load_profiles(profiles_path)
+    if profiles_source == "fact_fallback":
+        st.info(
+            "Selector profiles were rebuilt from `fact_attempt_core` because "
+            "`classroom_mode_profiles.parquet` was unavailable in the runtime source."
+        )
     if profiles.height == 0:
         st.info("No valid classroom rows found (excluding null and 'None').")
         st.stop()
