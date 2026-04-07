@@ -101,8 +101,6 @@ def _normalize_required_paths(required_paths: Sequence[str] | None, *, source_id
             continue
         normalized.append(path)
         seen.add(path)
-    if not normalized:
-        raise ValueError("required_paths cannot be empty.")
     return tuple(normalized)
 
 
@@ -242,6 +240,16 @@ def ensure_runtime_assets_from_hf(
         if required_paths is None
         else _normalize_required_paths(required_paths, source_id=config.source_id)
     )
+    if not expected_paths:
+        return SyncResult(
+            mode="synced",
+            repo_id=config.repo_id,
+            revision=config.revision,
+            downloaded=False,
+            files_checked=0,
+            missing_files=(),
+            message="No runtime files requested for this page bootstrap.",
+        )
     kwargs: dict[str, object] = {
         "repo_id": config.repo_id,
         "repo_type": config.repo_type,

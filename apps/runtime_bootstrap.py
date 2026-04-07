@@ -74,9 +74,9 @@ def _normalize_required_paths(
     required_paths: Sequence[str] | None,
 ) -> tuple[str, ...] | None:
     """Normalize an optional runtime path subset into a stable tuple."""
-    return tuple(
-        str(path).strip() for path in (required_paths or ()) if str(path).strip()
-    ) or None
+    if required_paths is None:
+        return None
+    return tuple(str(path).strip() for path in required_paths if str(path).strip())
 
 
 def bootstrap_runtime_assets(

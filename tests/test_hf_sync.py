@@ -173,6 +173,31 @@ def test_ensure_runtime_assets_from_hf_respects_required_paths_subset(tmp_path, 
     assert result.missing_files == ()
 
 
+def test_ensure_runtime_assets_from_hf_skips_download_for_explicit_empty_subset(
+    tmp_path, monkeypatch
+) -> None:
+    settings = _build_settings(tmp_path, source_id="main")
+    config = HFRepoConfig(
+        source_id="main",
+        repo_id="org/repo",
+        revision="v1",
+        repo_type="dataset",
+        token="token",
+        allow_patterns=DEFAULT_RUNTIME_RELATIVE_PATHS,
+    )
+
+    def fake_snapshot_download(**kwargs):  # pragma: no cover - safety
+        raise AssertionError("snapshot_download should not be called for an empty required subset.")
+
+    monkeypatch.setattr("visu2.hf_sync.snapshot_download", fake_snapshot_download)
+    result = ensure_runtime_assets_from_hf(settings, config, required_paths=())
+
+    assert result.mode == "synced"
+    assert result.downloaded is False
+    assert result.files_checked == 0
+    assert result.missing_files == ()
+
+
 def test_ensure_runtime_assets_from_hf_raises_on_missing_files(tmp_path, monkeypatch) -> None:
     settings = _build_settings(tmp_path)
     config = HFRepoConfig(
