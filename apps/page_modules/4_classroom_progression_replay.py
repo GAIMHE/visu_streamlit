@@ -51,7 +51,7 @@ from figure_analysis import render_figure_analysis
 from figure_info import render_figure_info
 from overview_shared import render_population_filters
 from plotly_config import build_plotly_chart_config
-from source_state import get_active_source_id
+from source_state import get_active_source_id, get_query_value, set_query_value
 
 from visu2.classroom_profile_loader import load_or_build_classroom_mode_profiles
 from visu2.classroom_progression import (
@@ -74,6 +74,8 @@ MODE_OPTIONS = {
     "Playlist": "playlist",
     "All modes": "all",
 }
+CLASSROOM_ID_QUERY_KEY = "classroom_id"
+MODE_SCOPE_QUERY_KEY = "mode_scope"
 HEATMAP_MASTERY_THRESHOLD = 0.75
 
 
@@ -231,6 +233,13 @@ str
     return mode_scope
 
 
+def _initial_mode_label(query_mode_scope: str | None) -> str:
+    for label, value in MODE_OPTIONS.items():
+        if value == query_mode_scope:
+            return label
+    return "ZPDES"
+
+
 def main() -> None:
     """Main.
 
@@ -278,8 +287,15 @@ div, p, label {
     render_figure_info("classroom_progression_replay_heatmap")
 
     st.sidebar.header("Scope")
-    mode_label = st.sidebar.selectbox("Work mode scope", list(MODE_OPTIONS.keys()), index=0)
+    query_mode_scope = get_query_value(MODE_SCOPE_QUERY_KEY)
+    mode_options = list(MODE_OPTIONS.keys())
+    mode_label = st.sidebar.selectbox(
+        "Work mode scope",
+        mode_options,
+        index=mode_options.index(_initial_mode_label(query_mode_scope)),
+    )
     mode_scope = MODE_OPTIONS[mode_label]
+    set_query_value(MODE_SCOPE_QUERY_KEY, mode_scope)
     if mode_scope not in VALID_MODE_SCOPES:
         st.error(f"Unsupported mode scope: {mode_scope}")
         st.stop()
@@ -336,7 +352,7 @@ div, p, label {
             )
             manual_classroom_id = st.text_input(
                 "Classroom ID override (optional)",
-                value="",
+                value=get_query_value(CLASSROOM_ID_QUERY_KEY) or "",
                 help=(
                     "If you enter a classroom ID here, the page will use that classroom directly "
                     "inside the selected work-mode scope instead of the currently selected matching classroom."
@@ -376,6 +392,12 @@ div, p, label {
                     st.stop()
                 selected_classroom_id = override_classroom_id
                 st.caption("Using the typed classroom ID override.")
+    set_query_value(
+        CLASSROOM_ID_QUERY_KEY,
+        None
+        if selected_classroom_id == SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID
+        else selected_classroom_id,
+    )
     source_first_ts = profiles.select(pl.col("first_attempt_at").min()).item()
     source_last_ts = profiles.select(pl.col("last_attempt_at").max()).item()
     if not (hasattr(source_first_ts, "date") and hasattr(source_last_ts, "date")):

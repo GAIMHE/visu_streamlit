@@ -37,7 +37,7 @@ from figure_analysis import render_figure_analysis
 from figure_info import render_figure_info
 from plotly_config import build_plotly_chart_config
 from runtime_bootstrap import bootstrap_optional_runtime_assets
-from source_state import get_active_source_id
+from source_state import get_active_source_id, get_query_value, set_query_value
 
 from visu2.config import get_settings
 from visu2.contracts import RUNTIME_CORE_COLUMNS
@@ -107,6 +107,8 @@ ELO_EVENT_QUERY_COLUMNS: tuple[str, ...] = (
     "student_elo_pre",
     "student_elo_post",
 )
+STUDENT_ID_QUERY_KEY = "student_id"
+MODULE_CODE_QUERY_KEY = "module_code"
 
 
 @st.cache_data(show_spinner=False)
@@ -208,6 +210,11 @@ def _available_elo_system_configs(settings) -> dict[str, dict[str, str]]:
         if profiles_path.exists():
             available[system_name] = config
     return available
+
+
+def _preferred_option_index(options: list[str], preferred: str | None) -> int:
+    """Return the preferred option index when present, else zero."""
+    return options.index(preferred) if preferred in options else 0
 
 
 def main() -> None:
@@ -345,6 +352,8 @@ div, p, label {
     st.caption(
         f"Replay-eligible students range from **{min_attempt_count}** to **{max_attempt_count}** total attempts across modules."
     )
+    query_student_id = get_query_value(STUDENT_ID_QUERY_KEY) or ""
+    query_module_code = get_query_value(MODULE_CODE_QUERY_KEY)
     target_attempts = int(
         st.number_input(
             "Target attempt count",
@@ -356,7 +365,7 @@ div, p, label {
     )
     manual_student_id = st.text_input(
         "Student ID override (optional)",
-        value="",
+        value=query_student_id,
         help="If you enter a replay-eligible student ID here, the page will use that student directly instead of the sampled attempt-range selection.",
     ).strip()
 
@@ -398,6 +407,7 @@ div, p, label {
             st.stop()
 
     selected_student_id = normalized_students[0]
+    set_query_value(STUDENT_ID_QUERY_KEY, selected_student_id)
     selected_student_summary_rows = (
         eligible_students.filter(pl.col("user_id") == selected_student_id).to_dicts() or []
     )
@@ -418,7 +428,7 @@ div, p, label {
     selected_module_code = st.selectbox(
         "Module",
         options=module_codes,
-        index=0,
+        index=_preferred_option_index(module_codes, query_module_code),
         format_func=lambda code: next(
             (
                 f"{row.get('module_label') or code} ({code}) | "
@@ -431,6 +441,7 @@ div, p, label {
         ),
         help="Choose one of the modules available for the selected student. The replay and Elo values are module-local.",
     )
+    set_query_value(MODULE_CODE_QUERY_KEY, selected_module_code)
     selected_module_profile = (
         student_modules.filter(pl.col("module_code") == selected_module_code).to_dicts() or []
     )
