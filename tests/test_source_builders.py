@@ -8,6 +8,7 @@ from pathlib import Path
 from visu2.source_builders import (
     _build_maureen_catalog_and_raw,
     _build_single_module_researcher_catalog_and_raw,
+    _build_single_module_researcher_zpdes_rules,
 )
 
 
@@ -214,3 +215,127 @@ def test_build_single_module_researcher_catalog_and_raw_prefers_config_labels(tm
     assert module["objectives"][1]["activities"][0]["code"] == "M101O2A1"
     assert learning_catalog["id_label_index"]["objective-1"]["short_title"] == "Positionner des nombres entiers"
     assert exercises_json["exercises"][0]["objectives"] == ["objective-1"]
+
+
+def test_build_single_module_researcher_zpdes_rules_uses_module_config_graph(tmp_path: Path) -> None:
+    learning_catalog = {
+        "meta": {},
+        "conflicts": {},
+        "orphans": [],
+        "exercise_to_hierarchy": {},
+        "id_label_index": {
+            "module-101": {"type": "module", "code": "M101", "short_title": "Module M101", "long_title": "Module M101", "sources": []},
+            "objective-1": {"type": "objective", "code": "M101O1", "short_title": "Objective 1", "long_title": "Objective 1", "sources": []},
+            "objective-2": {"type": "objective", "code": "M101O2", "short_title": "Objective 2", "long_title": "Objective 2", "sources": []},
+            "activity-1": {"type": "activity", "code": "M101O1A1", "short_title": "A1", "long_title": "A1", "sources": []},
+            "activity-2": {"type": "activity", "code": "M101O1A2", "short_title": "A2", "long_title": "A2", "sources": []},
+            "activity-3": {"type": "activity", "code": "M101O2A1", "short_title": "B1", "long_title": "B1", "sources": []},
+        },
+        "modules": [
+            {
+                "id": "module-101",
+                "code": "M101",
+                "title": {"short": "Module M101", "long": "Module M101"},
+                "objectives": [
+                    {
+                        "id": "objective-1",
+                        "code": "M101O1",
+                        "title": {"short": "Objective 1", "long": "Objective 1"},
+                        "activities": [
+                            {
+                                "id": "activity-1",
+                                "code": "M101O1A1",
+                                "title": {"short": "A1", "long": "A1"},
+                                "exercise_ids": [],
+                            },
+                            {
+                                "id": "activity-2",
+                                "code": "M101O1A2",
+                                "title": {"short": "A2", "long": "A2"},
+                                "exercise_ids": [],
+                            },
+                        ],
+                    },
+                    {
+                        "id": "objective-2",
+                        "code": "M101O2",
+                        "title": {"short": "Objective 2", "long": "Objective 2"},
+                        "activities": [
+                            {
+                                "id": "activity-3",
+                                "code": "M101O2A1",
+                                "title": {"short": "B1", "long": "B1"},
+                                "exercise_ids": [],
+                            }
+                        ],
+                    },
+                ],
+            }
+        ],
+    }
+    config_path = tmp_path / "config_mia.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "config": {
+                    "module": {},
+                    "objective": {},
+                    "activity": {},
+                    "ai": {
+                        "moduleConfig": {
+                            "module-101": {
+                                "module-101": {
+                                    "subgroups": [["objective-1", "objective-2"]],
+                                    "init_ssb": [[0]],
+                                    "requirements": [
+                                        {
+                                            "objective-2": {
+                                                "objective-1": {"sr": [0.75], "lvl": [1]}
+                                            }
+                                        }
+                                    ],
+                                },
+                                "objective-1": {
+                                    "subgroups": [["activity-1", "activity-2"]],
+                                    "init_ssb": [[0]],
+                                    "requirements": [
+                                        {
+                                            "activity-2": {
+                                                "objective-1": {"sr": [0.75], "lvl": [0]}
+                                            }
+                                        }
+                                    ],
+                                },
+                                "objective-2": {
+                                    "subgroups": [["activity-3"]],
+                                    "init_ssb": [[0]],
+                                    "requirements": [{}],
+                                },
+                            }
+                        }
+                    },
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    zpdes_rules, warnings = _build_single_module_researcher_zpdes_rules(
+        source_id="mia_module1",
+        module_id="module-101",
+        learning_catalog=learning_catalog,
+        config_json_path=config_path,
+    )
+
+    assert warnings == ()
+    assert zpdes_rules["module_rules"][0]["module_code"] == "M101"
+    topology = zpdes_rules["dependency_topology"]["M101"]
+    node_codes = {row["node_code"] for row in topology["nodes"]}
+    assert {"M101O1", "M101O1A1", "M101O1A2", "M101O2", "M101O2A1"} <= node_codes
+    init_open = {row["node_code"] for row in topology["nodes"] if row["init_open"]}
+    assert "M101O1" in init_open
+    assert "M101O1A1" in init_open
+    edges = {(row["from_node_code"], row["to_node_code"]) for row in topology["edges"]}
+    assert ("M101O1A1", "M101O1A2") in edges
+    assert ("M101O1A2", "M101O2") in edges

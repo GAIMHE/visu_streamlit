@@ -13,7 +13,10 @@ MAIN_RUNTIME_DATA_RELATIVE_PATHS: tuple[str, ...] = (
 )
 
 MAUREEN_RUNTIME_DATA_RELATIVE_PATHS: tuple[str, ...] = COMMON_RUNTIME_DATA_RELATIVE_PATHS
-MIA_RUNTIME_DATA_RELATIVE_PATHS: tuple[str, ...] = COMMON_RUNTIME_DATA_RELATIVE_PATHS
+MIA_RUNTIME_DATA_RELATIVE_PATHS: tuple[str, ...] = (
+    *COMMON_RUNTIME_DATA_RELATIVE_PATHS,
+    "data/zpdes_rules.json",
+)
 
 COMMON_LOCAL_BUILD_DATA_RELATIVE_PATHS: tuple[str, ...] = (
     "data/student_interaction.parquet",
@@ -79,8 +82,15 @@ MAUREEN_REQUIRED_RUNTIME_DERIVED_TABLES: tuple[str, ...] = tuple(
     for table_name in MAUREEN_RUNTIME_DERIVED_TABLES
     if table_name not in {"student_elo_events_batch_replay", "student_elo_profiles_batch_replay"}
 )
-MIA_RUNTIME_DERIVED_TABLES: tuple[str, ...] = MAUREEN_RUNTIME_DERIVED_TABLES
-MIA_REQUIRED_RUNTIME_DERIVED_TABLES: tuple[str, ...] = MAUREEN_REQUIRED_RUNTIME_DERIVED_TABLES
+MIA_RUNTIME_DERIVED_TABLES: tuple[str, ...] = (
+    *MAUREEN_RUNTIME_DERIVED_TABLES,
+    "zpdes_exercise_progression_events",
+)
+MIA_REQUIRED_RUNTIME_DERIVED_TABLES: tuple[str, ...] = tuple(
+    table_name
+    for table_name in MIA_RUNTIME_DERIVED_TABLES
+    if table_name not in {"student_elo_events_batch_replay", "student_elo_profiles_batch_replay"}
+)
 
 COMMON_LEGACY_DERIVED_TABLES: tuple[str, ...] = (
     "hierarchy_context_lookup",
@@ -277,7 +287,7 @@ RUNTIME_SOURCES: dict[str, RuntimeSourceSpec] = {
         label="MIA Module 1",
         description=(
             "Single-module remediation dataset adapted from a researcher export, "
-            "with a config-enriched catalog and the reduced page surface used for partial sources."
+            "with a config-enriched catalog, inferred ZPDES topology, and a mostly reduced page surface."
         ),
         runtime_root_relative=Path("artifacts") / "sources" / "mia_module1",
         local_root_relative=Path("artifacts") / "local" / "mia_module1",
@@ -292,6 +302,7 @@ RUNTIME_SOURCES: dict[str, RuntimeSourceSpec] = {
             "overview",
             "bottlenecks",
             "matrix",
+            "zpdes_transition_efficiency",
             "student_elo",
             "classroom_replay",
             "classroom_sankey",
@@ -303,6 +314,7 @@ RUNTIME_SOURCES: dict[str, RuntimeSourceSpec] = {
                 CAPABILITY_HAS_EXERCISE_METADATA,
                 CAPABILITY_HAS_EXACT_MIN_STUDENT_ATTEMPT_FILTER,
                 CAPABILITY_HAS_CLASSROOM_ALL_DATA_OPTION,
+                CAPABILITY_HAS_ZPDES_TOPOLOGY,
             }
         ),
         remote_config_key="mia_module1",

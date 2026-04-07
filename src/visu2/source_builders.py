@@ -260,33 +260,58 @@ def _json_title_pair(payload: dict[str, Any] | None) -> tuple[str | None, str | 
     return short_title, long_title
 
 
-def _load_single_module_researcher_config_metadata(
+def _load_single_module_researcher_config_payload(
     config_json_path: Path | None,
     *,
-    module_id: str,
-) -> tuple[dict[str, Any] | None, dict[str, dict[str, Any]], dict[str, dict[str, Any]], tuple[str, ...]]:
+    required: bool = False,
+) -> tuple[dict[str, Any] | None, tuple[str, ...]]:
     if config_json_path is None:
-        return None, {}, {}, ()
+        if required:
+            raise ValueError("Single-module researcher topology requires a config_json_path.")
+        return None, ()
     if not config_json_path.exists():
-        return None, {}, {}, (f"MIA config file not found at {config_json_path}; using synthetic labels.",)
+        if required:
+            raise ValueError(f"MIA config file not found at {config_json_path}.")
+        return None, (f"MIA config file not found at {config_json_path}; using synthetic labels.",)
 
     try:
         payload = json.loads(config_json_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as err:
-        return None, {}, {}, (
+        if required:
+            raise ValueError(f"Failed to parse MIA config JSON at {config_json_path}: {err}.") from err
+        return None, (
             f"Failed to parse MIA config JSON at {config_json_path}: {err}. Using synthetic labels.",
         )
 
     config = payload.get("config")
     if not isinstance(config, dict):
-        return None, {}, {}, (
+        if required:
+            raise ValueError(
+                f"MIA config JSON at {config_json_path} is missing a top-level 'config' object."
+            )
+        return None, (
             f"MIA config JSON at {config_json_path} is missing a top-level 'config' object; using synthetic labels.",
         )
+    return config, ()
+
+
+def _load_single_module_researcher_config_metadata(
+    config_json_path: Path | None,
+    *,
+    module_id: str,
+) -> tuple[dict[str, Any] | None, dict[str, dict[str, Any]], dict[str, dict[str, Any]], tuple[str, ...]]:
+    config, warnings = _load_single_module_researcher_config_payload(config_json_path)
+    if config is None:
+        return None, {}, {}, warnings
 
     module_entries = config.get("module")
     objective_entries = config.get("objective")
     activity_entries = config.get("activity")
-    if not isinstance(module_entries, dict) or not isinstance(objective_entries, dict) or not isinstance(activity_entries, dict):
+    if (
+        not isinstance(module_entries, dict)
+        or not isinstance(objective_entries, dict)
+        or not isinstance(activity_entries, dict)
+    ):
         return None, {}, {}, (
             f"MIA config JSON at {config_json_path} is missing one of module/objective/activity maps; using synthetic labels.",
         )
@@ -345,6 +370,394 @@ def _load_single_module_researcher_config_metadata(
         }
 
     return module_metadata, objective_metadata_by_id, activity_metadata_by_id, ()
+
+
+def _index_list(value: object) -> list[int]:
+    if isinstance(value, list) and len(value) == 1 and isinstance(value[0], list):
+        value = value[0]
+    if not isinstance(value, list):
+        return []
+    out: list[int] = []
+    for item in value:
+        try:
+            out.append(int(item))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _ordered_ids_from_subgroup(
+    payload: dict[str, Any] | None,
+    fallback_ids: list[str],
+) -> list[str]:
+    if not isinstance(payload, dict):
+        return fallback_ids
+    subgroups = payload.get("subgroups")
+    if isinstance(subgroups, list) and subgroups and isinstance(subgroups[0], list):
+        raw_ids = [str(item).strip() for item in subgroups[0] if str(item or "").strip()]
+        filtered = [item for item in raw_ids if item in set(fallback_ids)]
+        if filtered:
+            return filtered
+    return fallback_ids
+
+
+def _build_single_module_researcher_zpdes_rules(
+    *,
+    source_id: str,
+    module_id: str,
+    learning_catalog: dict[str, Any],
+    config_json_path: Path,
+) -> tuple[dict[str, Any], tuple[str, ...]]:
+    config, _warnings = _load_single_module_researcher_config_payload(config_json_path, required=True)
+    assert config is not None  # guarded by required=True
+
+    ai = config.get("ai")
+    module_config = ai.get("moduleConfig") if isinstance(ai, dict) else None
+    if not isinstance(module_config, dict):
+        raise ValueError(
+            f"MIA config JSON at {config_json_path} is missing config.ai.moduleConfig."
+        )
+    module_rules_payload = module_config.get(module_id)
+    if not isinstance(module_rules_payload, dict):
+        raise ValueError(
+            f"MIA config JSON at {config_json_path} is missing config.ai.moduleConfig[{module_id!r}]."
+        )
+
+    catalog_module = next(
+        (
+            module
+            for module in learning_catalog.get("modules", [])
+            if isinstance(module, dict) and _clean_text(module.get("id")) == module_id
+        ),
+        None,
+    )
+    if not isinstance(catalog_module, dict):
+        raise ValueError(f"learning_catalog does not contain module_id {module_id!r}.")
+
+    module_code = _clean_text(catalog_module.get("code"))
+    if module_code is None:
+        raise ValueError(f"learning_catalog module {module_id!r} is missing a code.")
+
+    objective_by_id: dict[str, dict[str, Any]] = {}
+    activity_by_id: dict[str, dict[str, Any]] = {}
+    activity_order_by_objective: dict[str, list[str]] = {}
+    objective_order_fallback: list[str] = []
+    for objective in catalog_module.get("objectives", []):
+        if not isinstance(objective, dict):
+            continue
+        objective_id = _clean_text(objective.get("id"))
+        if objective_id is None:
+            continue
+        objective_by_id[objective_id] = objective
+        objective_order_fallback.append(objective_id)
+        fallback_activity_ids: list[str] = []
+        for activity in objective.get("activities", []):
+            if not isinstance(activity, dict):
+                continue
+            activity_id = _clean_text(activity.get("id"))
+            if activity_id is None:
+                continue
+            activity_by_id[activity_id] = activity
+            fallback_activity_ids.append(activity_id)
+        activity_order_by_objective[objective_id] = fallback_activity_ids
+
+    module_level_payload = module_rules_payload.get(module_id)
+    if not isinstance(module_level_payload, dict):
+        raise ValueError(
+            f"MIA config JSON at {config_json_path} is missing the module-level entry for {module_id!r}."
+        )
+
+    objective_order_ids = _ordered_ids_from_subgroup(module_level_payload, objective_order_fallback)
+    objective_order_codes = [
+        str(objective_by_id[objective_id]["code"])
+        for objective_id in objective_order_ids
+        if objective_id in objective_by_id
+    ]
+    initial_objective_indexes = set(_index_list(module_level_payload.get("init_ssb")))
+    initial_objective_codes = {
+        objective_order_codes[idx]
+        for idx in initial_objective_indexes
+        if 0 <= idx < len(objective_order_codes)
+    }
+
+    nodes: list[dict[str, object]] = []
+    code_to_id: dict[str, str] = {}
+    id_to_codes: defaultdict[str, list[str]] = defaultdict(list)
+
+    def _register_code(identifier: str | None, code: str | None) -> None:
+        if not identifier or not code:
+            return
+        code_to_id[code] = identifier
+        id_to_codes[identifier].append(code)
+
+    def _label(payload: dict[str, Any], fallback: str) -> str:
+        title = payload.get("title")
+        if isinstance(title, dict):
+            short = _clean_text(title.get("short"))
+            long = _clean_text(title.get("long"))
+            if short:
+                return short
+            if long:
+                return long
+        return fallback
+
+    _register_code(module_id, module_code)
+    objective_activity_codes: dict[str, list[str]] = {}
+    objective_rules_summary: list[dict[str, Any]] = []
+
+    for objective_id in objective_order_ids:
+        objective = objective_by_id.get(objective_id)
+        if not isinstance(objective, dict):
+            continue
+        objective_code = str(objective.get("code") or "").strip()
+        if not objective_code:
+            continue
+        objective_label = _label(objective, objective_code)
+        objective_init = objective_code in initial_objective_codes
+        _register_code(objective_id, objective_code)
+        nodes.append(
+            {
+                "module_code": module_code,
+                "node_id": objective_id,
+                "node_code": objective_code,
+                "node_type": "objective",
+                "label": objective_label,
+                "objective_code": objective_code,
+                "activity_index": None,
+                "init_open": objective_init,
+                "source_primary": "mia_config",
+                "source_enrichment": "catalog",
+                "is_ghost": False,
+            }
+        )
+
+        objective_config = module_rules_payload.get(objective_id)
+        fallback_activity_ids = activity_order_by_objective.get(objective_id, [])
+        ordered_activity_ids = _ordered_ids_from_subgroup(objective_config, fallback_activity_ids)
+        ordered_activity_codes: list[str] = []
+        initial_activity_indexes = set(_index_list(objective_config.get("init_ssb")) if isinstance(objective_config, dict) else [])
+        initial_activity_codes: set[str] = set()
+        for idx, activity_id in enumerate(ordered_activity_ids):
+            activity = activity_by_id.get(activity_id)
+            if not isinstance(activity, dict):
+                continue
+            activity_code = str(activity.get("code") or "").strip()
+            if not activity_code:
+                continue
+            ordered_activity_codes.append(activity_code)
+            if idx in initial_activity_indexes:
+                initial_activity_codes.add(activity_code)
+            _register_code(activity_id, activity_code)
+            nodes.append(
+                {
+                    "module_code": module_code,
+                    "node_id": activity_id,
+                    "node_code": activity_code,
+                    "node_type": "activity",
+                    "label": _label(activity, activity_code),
+                    "objective_code": objective_code,
+                    "activity_index": idx + 1,
+                    "init_open": objective_init and activity_code in initial_activity_codes,
+                    "source_primary": "mia_config",
+                    "source_enrichment": "catalog",
+                    "is_ghost": False,
+                }
+            )
+        objective_activity_codes[objective_id] = ordered_activity_codes
+        objective_rules_summary.append(
+            {
+                "objective_id": objective_id,
+                "objective_code": objective_code,
+                "ordered_activity_codes": ordered_activity_codes,
+                "initial_open_activity_codes": [
+                    code for code in ordered_activity_codes if code in initial_activity_codes
+                ],
+            }
+        )
+
+    edges: list[dict[str, object]] = []
+    edge_seen: set[tuple[str, str, str]] = set()
+
+    def _ordered_activity_codes_for_objective(objective_id: str) -> list[str]:
+        return list(objective_activity_codes.get(objective_id, []))
+
+    def _source_activity_code(objective_id: str, level: int | None) -> str | None:
+        ordered_codes = _ordered_activity_codes_for_objective(objective_id)
+        if level is None or level < 0 or level >= len(ordered_codes):
+            return None
+        return ordered_codes[level]
+
+    def _add_edge(
+        *,
+        edge_type: str,
+        from_code: str | None,
+        to_code: str | None,
+        threshold_value: float | None,
+        enrich_lvl: int | None,
+        enrich_sr: float | None,
+        rule_text: str,
+    ) -> None:
+        src = _clean_text(from_code)
+        dst = _clean_text(to_code)
+        if src is None or dst is None:
+            return
+        dedup = (edge_type, src, dst)
+        if dedup in edge_seen:
+            return
+        edge_seen.add(dedup)
+        edges.append(
+            {
+                "module_code": module_code,
+                "edge_id": f"{module_code}:{edge_type}:{src}->{dst}:{len(edges) + 1}",
+                "edge_type": edge_type,
+                "from_node_code": src,
+                "to_node_code": dst,
+                "threshold_type": "success_rate" if threshold_value is not None else "unknown",
+                "threshold_value": threshold_value,
+                "rule_text": rule_text,
+                "source_primary": "mia_config",
+                "source_enrichment": "moduleConfig",
+                "enrich_lvl": enrich_lvl,
+                "enrich_sr": enrich_sr,
+            }
+        )
+
+    module_requirements = module_level_payload.get("requirements")
+    module_requirements = (
+        module_requirements[0]
+        if isinstance(module_requirements, list) and module_requirements and isinstance(module_requirements[0], dict)
+        else {}
+    )
+    for target_objective_id in objective_order_ids:
+        prereq_map = module_requirements.get(target_objective_id)
+        if not isinstance(prereq_map, dict):
+            continue
+        target_objective = objective_by_id.get(target_objective_id)
+        target_code = _clean_text(target_objective.get("code")) if isinstance(target_objective, dict) else None
+        for prerequisite_objective_id in objective_order_ids:
+            condition = prereq_map.get(prerequisite_objective_id)
+            if not isinstance(condition, dict):
+                continue
+            sr = (
+                float(condition["sr"][0])
+                if isinstance(condition.get("sr"), list) and condition["sr"]
+                else None
+            )
+            level = (
+                int(condition["lvl"][0])
+                if isinstance(condition.get("lvl"), list) and condition["lvl"]
+                else None
+            )
+            prerequisite_objective = objective_by_id.get(prerequisite_objective_id)
+            fallback_code = (
+                _clean_text(prerequisite_objective.get("code"))
+                if isinstance(prerequisite_objective, dict)
+                else None
+            )
+            source_code = _source_activity_code(prerequisite_objective_id, level) or fallback_code
+            _add_edge(
+                edge_type="activation",
+                from_code=source_code,
+                to_code=target_code,
+                threshold_value=sr,
+                enrich_lvl=level,
+                enrich_sr=sr,
+                rule_text="moduleConfig.requirements",
+            )
+
+    for objective_id in objective_order_ids:
+        objective_config = module_rules_payload.get(objective_id)
+        if not isinstance(objective_config, dict):
+            continue
+        objective_requirements = objective_config.get("requirements")
+        objective_requirements = (
+            objective_requirements[0]
+            if isinstance(objective_requirements, list)
+            and objective_requirements
+            and isinstance(objective_requirements[0], dict)
+            else {}
+        )
+        for target_activity_id, prereq_map in objective_requirements.items():
+            if not isinstance(prereq_map, dict):
+                continue
+            target_activity = activity_by_id.get(target_activity_id)
+            target_code = _clean_text(target_activity.get("code")) if isinstance(target_activity, dict) else None
+            for source_objective_id, condition in prereq_map.items():
+                if not isinstance(condition, dict):
+                    continue
+                sr = (
+                    float(condition["sr"][0])
+                    if isinstance(condition.get("sr"), list) and condition["sr"]
+                    else None
+                )
+                level = (
+                    int(condition["lvl"][0])
+                    if isinstance(condition.get("lvl"), list) and condition["lvl"]
+                    else None
+                )
+                fallback_objective = objective_by_id.get(source_objective_id)
+                fallback_code = (
+                    _clean_text(fallback_objective.get("code"))
+                    if isinstance(fallback_objective, dict)
+                    else None
+                )
+                source_code = _source_activity_code(source_objective_id, level) or fallback_code
+                _add_edge(
+                    edge_type="activation",
+                    from_code=source_code,
+                    to_code=target_code,
+                    threshold_value=sr,
+                    enrich_lvl=level,
+                    enrich_sr=sr,
+                    rule_text="moduleConfig.objective_requirements",
+                )
+
+    return (
+        {
+            "meta": {
+                "generated_by": "visu2 single-module researcher adapter",
+                "source_id": source_id,
+                "build_timestamp_utc": datetime.now(UTC).isoformat(),
+                "version": "single_module_zpdes_runtime_v1",
+                "source_files": [str(config_json_path)],
+                "module_id": module_id,
+                "module_code": module_code,
+            },
+            "module_rules": [
+                {
+                    "module_id": module_id,
+                    "module_code": module_code,
+                    "dependency_topology": "config_ai_moduleConfig",
+                    "initial_open_objective_codes": sorted(initial_objective_codes),
+                    "objective_rules": objective_rules_summary,
+                    "node_rules": [],
+                }
+            ],
+            "map_id_code": {
+                "code_to_id": code_to_id,
+                "id_to_codes": dict(id_to_codes),
+            },
+            "links_to_catalog": {
+                "rule_module_ids": [module_id],
+                "module_ids_linked": [module_id],
+                "objective_ids_linked": objective_order_ids,
+                "activity_ids_linked": sorted(activity_by_id),
+            },
+            "unresolved_links": {
+                "rule_ids_missing_in_catalog": [],
+                "catalog_module_ids_missing_in_rules": [],
+                "codes_with_multiple_ids": {},
+                "ids_with_multiple_codes": {},
+            },
+            "dependency_topology": {
+                module_code: {
+                    "nodes": nodes,
+                    "edges": edges,
+                }
+            },
+        },
+        (),
+    )
 
 
 def _build_single_module_researcher_catalog_and_raw(
@@ -1228,6 +1641,11 @@ def materialize_source_runtime_inputs(settings: Settings) -> SourceMaterializati
                 config_json_path=config_json_path,
             )
         )
+        input_paths = [
+            str(settings.parquet_path),
+            str(settings.learning_catalog_path),
+            str(settings.exercises_json_path),
+        ]
         raw_attempts.write_parquet(settings.parquet_path)
         settings.learning_catalog_path.write_text(
             json.dumps(learning_catalog, indent=2, ensure_ascii=False),
@@ -1237,13 +1655,22 @@ def materialize_source_runtime_inputs(settings: Settings) -> SourceMaterializati
             json.dumps(exercises_json, indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
+        if config_json_path is not None:
+            zpdes_rules, zpdes_warnings = _build_single_module_researcher_zpdes_rules(
+                source_id=settings.source_id,
+                module_id=str(learning_catalog["modules"][0]["id"]),
+                learning_catalog=learning_catalog,
+                config_json_path=config_json_path,
+            )
+            warnings = tuple(sorted(set((*warnings, *zpdes_warnings))))
+            settings.zpdes_rules_path.write_text(
+                json.dumps(zpdes_rules, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            input_paths.append(str(settings.zpdes_rules_path))
         return SourceMaterializationReport(
             source_id=settings.source_id,
-            input_paths=(
-                str(settings.parquet_path),
-                str(settings.learning_catalog_path),
-                str(settings.exercises_json_path),
-            ),
+            input_paths=tuple(input_paths),
             warnings=warnings,
         )
 

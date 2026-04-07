@@ -57,7 +57,7 @@ def test_runtime_relative_paths_are_source_scoped() -> None:
     mia_paths = runtime_relative_paths_for_source("mia_module1")
     assert "artifacts/derived/zpdes_exercise_progression_events.parquet" in main_paths
     assert "artifacts/derived/zpdes_exercise_progression_events.parquet" not in maureen_paths
-    assert "artifacts/derived/zpdes_exercise_progression_events.parquet" not in mia_paths
+    assert "artifacts/derived/zpdes_exercise_progression_events.parquet" in mia_paths
     assert "artifacts/derived/student_elo_events.parquet" in maureen_paths
     assert "artifacts/derived/student_elo_events.parquet" in mia_paths
     assert "artifacts/derived/student_elo_events_batch_replay.parquet" not in main_paths
@@ -67,7 +67,7 @@ def test_runtime_relative_paths_are_source_scoped() -> None:
     assert "data/exercises.json" not in main_paths
     assert "artifacts/reports/derived_manifest.json" not in main_paths
     assert "artifacts/derived/classroom_activity_summary_by_mode.parquet" not in maureen_paths
-    assert "data/zpdes_rules.json" not in mia_paths
+    assert "data/zpdes_rules.json" in mia_paths
 
 
 def test_local_build_relative_paths_are_separate_from_runtime() -> None:
@@ -109,7 +109,9 @@ def test_visible_pages_hide_unsupported_maureen_views() -> None:
     assert "classroom_replay" in maureen_pages
     assert "zpdes_transition_efficiency" not in maureen_pages
     assert "m1_individual_path" not in maureen_pages
-    assert mia_pages == maureen_pages
+    assert "zpdes_transition_efficiency" in mia_pages
+    assert "m1_individual_path" not in mia_pages
+    assert mia_pages == (maureen_pages | {"zpdes_transition_efficiency"})
 
 
 def test_exact_min_student_attempt_filter_is_enabled_for_partial_sources_only() -> None:
