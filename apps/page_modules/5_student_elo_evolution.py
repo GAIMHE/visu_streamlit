@@ -440,7 +440,10 @@ div, p, label {
     selected_module_entry = selected_module_profile[0]
     selected_module_entries_by_system: dict[str, dict[str, object]] = {}
     for system_name in selected_systems:
-        system_profiles = _load_profiles(all_system_paths[system_name])
+        system_profiles = _load_profiles(
+            all_system_paths[system_name],
+            learning_catalog_path,
+        )
         rows = (
             modules_for_student(
                 system_profiles.filter(pl.col("eligible_for_replay")),
