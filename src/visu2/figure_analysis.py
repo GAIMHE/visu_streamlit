@@ -234,23 +234,19 @@ def analyze_overview_kpis(
     attempts: int,
     unique_students: int,
     unique_exercises: int,
+    mean_distinct_exercises_per_student: float | None = None,
     retry_attempt_rate: float | None = None,
     retry_after_success_share: float | None = None,
     retry_after_failure_share: float | None = None,
 ) -> FigureAnalysis:
     if attempts <= 0 or unique_students <= 0 or unique_exercises <= 0:
         return _insufficient()
-    attempts_per_student = attempts / unique_students
-    attempts_per_exercise = attempts / unique_exercises
-    student_exercise_ratio = unique_students / unique_exercises if unique_exercises > 0 else None
-    findings = [
-        f"The current slice averages {_format_num(attempts_per_student)} attempts per student.",
-        f"It averages {_format_num(attempts_per_exercise)} attempts per exercise.",
-        f"There are {_format_num(student_exercise_ratio)} students per visible exercise in this slice.",
-    ]
-    findings.append(
-        f"The slice spans {_format_num(unique_exercises / unique_students)} exercises per student on average."
-    )
+    findings: list[str] = []
+    if mean_distinct_exercises_per_student is not None:
+        findings.append(
+            "On average, each student attempts "
+            f"{_format_num(mean_distinct_exercises_per_student)} distinct exercises in this slice."
+        )
     if retry_attempt_rate is not None:
         findings.append(
             "Across the full source dataset, "

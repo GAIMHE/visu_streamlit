@@ -434,6 +434,19 @@ dict[str, str] | None
     return None
 
 
+def _rename_drilldown_display_columns(frame: pl.DataFrame, *, metric: str) -> pl.DataFrame:
+    """Apply display-only drilldown labels without changing the underlying schema."""
+    if metric == "activity_mean_exercise_elo":
+        return frame
+    return frame.rename(
+        {
+            src: dst
+            for src, dst in {"median_duration": "median_duration (ms)"}.items()
+            if src in frame.columns
+        }
+    )
+
+
 def main() -> None:
     """Main.
 
@@ -1143,6 +1156,9 @@ div, p, label {
                 "repeat_attempt_rate",
                 "median_duration",
             ]
+        )
+        drilldown_display = _rename_drilldown_display_columns(
+            drilldown_display, metric=metric
         )
     drilldown_table_event = st.dataframe(
         drilldown_display.to_pandas(),

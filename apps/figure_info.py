@@ -95,7 +95,8 @@ FIGURE_INFO: dict[str, dict[str, tuple[str, ...]]] = {
             "It focuses on cross-objective transitions, so it highlights movement between different parts of the module rather than short local loops inside the same objective.",
         ),
         "Metrics": (
-            "Transition count is the number of times students were observed moving from one activity to the next.",
+            "The default bar length shows the share of attempts this transition represents inside the source objective.",
+            "Transition count is still available in hover as the raw number of observed moves from one activity to the next.",
             "Successful destination attempts counts how many of those transitions were followed by a correct attempt on the destination activity.",
         ),
     },

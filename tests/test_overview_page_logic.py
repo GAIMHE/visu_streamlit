@@ -76,6 +76,7 @@ def test_build_overview_kpi_analysis_tolerates_legacy_signature(
         attempts=10,
         unique_students=2,
         unique_exercises=3,
+        mean_distinct_exercises_per_student=1.5,
     )
 
     assert result == "ok"

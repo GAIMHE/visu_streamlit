@@ -6,6 +6,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
+import pandas as pd
 import plotly.express as px
 import polars as pl
 import streamlit as st
@@ -128,6 +129,56 @@ def _top_transition_edges_from_frame(
         .sort("transition_count", descending=True)
         .head(max(1, int(top_n)))
     )
+
+
+def _annotate_transition_edges_with_source_objective_share(
+    transition_edges: pd.DataFrame,
+    *,
+    activity_frame: pl.DataFrame,
+    start_date: date,
+    end_date: date,
+    module_code: str | None,
+    objective_id: str | None,
+    canonical_modules: tuple[str, ...],
+) -> pd.DataFrame:
+    """Attach source-objective attempt totals and shares to transition rows."""
+    if transition_edges.empty:
+        return transition_edges
+
+    source_scope = apply_bottleneck_filters(
+        frame=activity_frame,
+        start_date=start_date,
+        end_date=end_date,
+        module_code=module_code,
+        objective_id=objective_id,
+        activity_id=None,
+        level="Objective",
+        canonical_modules=canonical_modules,
+    )
+    if source_scope.height == 0:
+        out = transition_edges.copy()
+        out["source_objective_attempts"] = None
+        out["source_objective_attempt_share"] = None
+        return out
+
+    activity_lookup = (
+        source_scope.select(["activity_id", "objective_id", "objective_label"])
+        .filter(pl.col("activity_id").is_not_null() & pl.col("objective_id").is_not_null())
+        .unique(subset=["activity_id"], keep="first")
+    )
+    objective_totals = (
+        source_scope.select(["objective_id", "attempts"])
+        .filter(pl.col("objective_id").is_not_null())
+        .group_by("objective_id")
+        .agg(pl.sum("attempts").alias("source_objective_attempts"))
+    )
+    lookup = activity_lookup.join(objective_totals, on="objective_id", how="left")
+    merged = transition_edges.merge(lookup.to_pandas(), how="left", left_on="from_activity_id", right_on="activity_id")
+    merged = merged.drop(columns=["activity_id"], errors="ignore")
+    merged["source_objective_attempt_share"] = (
+        merged["transition_count"] / merged["source_objective_attempts"]
+    ).where(merged["source_objective_attempts"].fillna(0) > 0)
+    return merged
 
 
 def _source_module_scope(activity: pl.DataFrame) -> tuple[str, ...]:
@@ -358,6 +409,15 @@ def main() -> None:
         st.info("No cross-objective transition rows after filters.")
         render_figure_analysis(analyze_transition_chart(None))
         return
+    transition_edges = _annotate_transition_edges_with_source_objective_share(
+        transition_edges,
+        activity_frame=exact_activity_source,
+        start_date=filters.start_date,
+        end_date=filters.end_date,
+        module_code=filters.module_code,
+        objective_id=filters.objective_id,
+        canonical_modules=source_module_scope,
+    )
 
     transition_edges["from_display_raw"] = [
         label_or_id(src_label, src_id)
@@ -417,28 +477,42 @@ def main() -> None:
             strict=False,
         )
     ]
-    transition_edges["count_text"] = transition_edges["transition_count"].map(
-        lambda value: f"{int(value):,}"
-    )
+    transition_edges["share_text"] = [
+        ""
+        if pd.isna(share)
+        else f"{float(share):.1%}"
+        for share in transition_edges["source_objective_attempt_share"]
+    ]
+    transition_edges["source_objective_share_text"] = [
+        ""
+        if pd.isna(share) or pd.isna(total)
+        else f"{float(share):.1%} of {int(total):,} attempts in the source objective"
+        for share, total in zip(
+            transition_edges["source_objective_attempt_share"],
+            transition_edges["source_objective_attempts"],
+            strict=False,
+        )
+    ]
     edge_rows = len(transition_edges.index)
     edge_height = max(420, 30 * edge_rows)
     fig_edges = px.bar(
-        transition_edges.sort_values("transition_count", ascending=True),
-        x="transition_count",
+        transition_edges.sort_values("source_objective_attempt_share", ascending=True),
+        x="source_objective_attempt_share",
         y="edge",
         orientation="h",
         color="success_conditioned_count",
         color_continuous_scale="Viridis",
-        text="count_text",
+        text="share_text",
         custom_data=[
             "from_hover",
             "to_hover",
             "transition_count",
             "success_conditioned_count",
+            "source_objective_share_text",
         ],
-        title="Top cross-objective activity transitions by count",
+        title="Top cross-objective activity transitions by share of source objective attempts",
         labels={
-            "transition_count": "Transition count",
+            "source_objective_attempt_share": "Share of source objective attempts",
             "edge": "Activity path",
             "success_conditioned_count": "Successful destination attempts (count)",
         },
@@ -448,6 +522,7 @@ def main() -> None:
         hovertemplate=(
             "<b>From</b>: %{customdata[0]}<br>"
             "<b>To</b>: %{customdata[1]}<br>"
+            "Share of source objective attempts: %{customdata[4]}<br>"
             "Transitions: %{customdata[2]:,}<br>"
             "Successful destination attempts: %{customdata[3]:,}<extra></extra>"
         ),
@@ -458,7 +533,7 @@ def main() -> None:
         font={"size": 13},
         coloraxis_colorbar={"title": "Successful destination attempts (count)"},
     )
-    fig_edges.update_xaxes(showgrid=True, gridcolor="rgba(23,34,27,0.14)")
+    fig_edges.update_xaxes(showgrid=True, gridcolor="rgba(23,34,27,0.14)", tickformat=".0%")
     fig_edges.update_yaxes(showgrid=False)
     st.plotly_chart(
         fig_edges,

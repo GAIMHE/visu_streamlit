@@ -30,6 +30,15 @@ WORK_MODE_HOVER_LABELS = {
     "zpdes": "ZPDES mode",
 }
 
+STRUCTURAL_ARROW_HEAD_OFFSET = 0.08
+STRUCTURAL_ARROW_LENGTH = 0.12
+
+STRUCTURAL_EDGE_LEGEND_LABELS = {
+    "intra_unlock": "Intra-objective unlocking",
+    "inter_unlock": "Inter-objective unlocking",
+    "deactivation": "Deactivation",
+}
+
 PROGRESSION_EVENT_COLUMNS = [
     "created_at",
     "date_utc",
@@ -217,6 +226,206 @@ def _quadratic_curve_points(
     return out
 
 
+def _point_on_polyline_from_end(
+    points: list[tuple[float, float]],
+    distance: float,
+) -> tuple[float, float] | None:
+    """Return a point located ``distance`` units back from the polyline end."""
+    if len(points) < 2:
+        return None
+    remaining = max(0.0, float(distance))
+    for idx in range(len(points) - 1, 0, -1):
+        x1, y1 = points[idx]
+        x0, y0 = points[idx - 1]
+        dx = x0 - x1
+        dy = y0 - y1
+        segment_length = math.hypot(dx, dy)
+        if segment_length <= 1e-9:
+            continue
+        if remaining <= segment_length:
+            ratio = remaining / segment_length
+            return (x1 + dx * ratio, y1 + dy * ratio)
+        remaining -= segment_length
+    return points[0]
+
+
+def _structural_arrow_points(
+    points: list[tuple[float, float]],
+    *,
+    head_offset: float = STRUCTURAL_ARROW_HEAD_OFFSET,
+    arrow_length: float = STRUCTURAL_ARROW_LENGTH,
+) -> tuple[float, float, float, float] | None:
+    """Return tail/head coordinates for an arrow aligned to a polyline end."""
+    head = _point_on_polyline_from_end(points, head_offset)
+    tail = _point_on_polyline_from_end(points, head_offset + arrow_length)
+    if head is None or tail is None:
+        return None
+    if math.hypot(head[0] - tail[0], head[1] - tail[1]) <= 1e-6:
+        return None
+    return (tail[0], tail[1], head[0], head[1])
+
+
+def _polyline_prefix_until_distance_from_end(
+    points: list[tuple[float, float]],
+    distance: float,
+) -> list[tuple[float, float]]:
+    """Return the polyline prefix that stops ``distance`` units before the end."""
+    if len(points) < 2:
+        return list(points)
+    remaining = max(0.0, float(distance))
+    for idx in range(len(points) - 1, 0, -1):
+        x1, y1 = points[idx]
+        x0, y0 = points[idx - 1]
+        dx = x0 - x1
+        dy = y0 - y1
+        segment_length = math.hypot(dx, dy)
+        if segment_length <= 1e-9:
+            continue
+        if remaining <= segment_length:
+            ratio = remaining / segment_length
+            cut_point = (x1 + dx * ratio, y1 + dy * ratio)
+            return [*points[:idx], cut_point]
+        remaining -= segment_length
+    return [points[0]]
+
+
+def _structural_trace_key(edge_type: str, same_lane: bool) -> str:
+    """Return the semantic legend group for a structural edge."""
+    if edge_type == "deactivation":
+        return "deactivation"
+    return "intra_unlock" if same_lane else "inter_unlock"
+
+
+def _related_node_codes_for_focus(
+    edges: pl.DataFrame,
+    focused_node_code: str | None,
+    *,
+    node_rows: list[dict[str, object]] | None = None,
+    ancestor_root_codes: set[str] | None = None,
+) -> set[str] | None:
+    """Return the focused node, all ancestors, and only its direct children."""
+    focus = str(focused_node_code or "").strip()
+    if not focus:
+        return None
+    outgoing: dict[str, set[str]] = {}
+    incoming: dict[str, set[str]] = {}
+    for row in edges.select(["from_node_code", "to_node_code"]).to_dicts():
+        src = str(row.get("from_node_code") or "").strip()
+        dst = str(row.get("to_node_code") or "").strip()
+        if not src or not dst:
+            continue
+        outgoing.setdefault(src, set()).add(dst)
+        incoming.setdefault(dst, set()).add(src)
+    row_by_code = (
+        {str(row.get("node_code") or "").strip(): row for row in node_rows}
+        if node_rows is not None
+        else {}
+    )
+
+    ancestor_roots = {focus}
+    if ancestor_root_codes is not None:
+        ancestor_roots |= {str(code).strip() for code in ancestor_root_codes if str(code).strip()}
+
+    ancestors = set(ancestor_roots)
+    stack = list(ancestor_roots)
+    while stack:
+        current = stack.pop()
+        row = row_by_code.get(current)
+        if row is not None and str(row.get("node_type") or "") == "activity":
+            objective_code = str(row.get("objective_code") or "").strip()
+            if objective_code and objective_code not in ancestors:
+                ancestors.add(objective_code)
+                stack.append(objective_code)
+        for parent in incoming.get(current, set()):
+            if parent not in ancestors:
+                ancestors.add(parent)
+                stack.append(parent)
+
+    direct_children = set(outgoing.get(focus, set()))
+    return ancestors | direct_children
+
+
+def _highlighted_edge_pairs_for_focus(
+    edges: pl.DataFrame,
+    focused_node_code: str | None,
+    *,
+    node_rows: list[dict[str, object]] | None = None,
+    ancestor_root_codes: set[str] | None = None,
+) -> set[tuple[str, str]] | None:
+    """Return highlighted edges for focus: recursive prerequisites + direct outgoing edges."""
+    focus = str(focused_node_code or "").strip()
+    if not focus:
+        return None
+    outgoing: dict[str, set[str]] = {}
+    incoming: dict[str, set[str]] = {}
+    for row in edges.select(["from_node_code", "to_node_code"]).to_dicts():
+        src = str(row.get("from_node_code") or "").strip()
+        dst = str(row.get("to_node_code") or "").strip()
+        if not src or not dst:
+            continue
+        outgoing.setdefault(src, set()).add(dst)
+        incoming.setdefault(dst, set()).add(src)
+    row_by_code = (
+        {str(row.get("node_code") or "").strip(): row for row in node_rows}
+        if node_rows is not None
+        else {}
+    )
+
+    ancestor_roots = {focus}
+    if ancestor_root_codes is not None:
+        ancestor_roots |= {str(code).strip() for code in ancestor_root_codes if str(code).strip()}
+
+    highlighted_edges: set[tuple[str, str]] = set()
+    visited = set(ancestor_roots)
+    stack = list(ancestor_roots)
+    while stack:
+        current = stack.pop()
+        row = row_by_code.get(current)
+        if row is not None and str(row.get("node_type") or "") == "activity":
+            objective_code = str(row.get("objective_code") or "").strip()
+            if objective_code and objective_code not in visited:
+                visited.add(objective_code)
+                stack.append(objective_code)
+        for parent in incoming.get(current, set()):
+            highlighted_edges.add((parent, current))
+            if parent not in visited:
+                visited.add(parent)
+                stack.append(parent)
+
+    for child in outgoing.get(focus, set()):
+        highlighted_edges.add((focus, child))
+
+    return highlighted_edges
+
+
+def _focus_ancestor_root_codes(
+    node_rows: list[dict[str, object]],
+    focused_node_code: str | None,
+) -> set[str] | None:
+    """Return ancestor-walk roots for a focused node, including its objective when needed."""
+    focus = str(focused_node_code or "").strip()
+    if not focus:
+        return None
+    row_by_code = {str(row.get("node_code") or "").strip(): row for row in node_rows}
+    focus_row = row_by_code.get(focus)
+    if focus_row is None:
+        return {focus}
+    roots = {focus}
+    if str(focus_row.get("node_type") or "") == "activity":
+        objective_code = str(focus_row.get("objective_code") or "").strip()
+        if objective_code:
+            roots.add(objective_code)
+    return roots
+
+
+def _dimmed_structural_edge_style(base_style: dict[str, object]) -> dict[str, object]:
+    """Return a dimmed version of a structural edge style for de-emphasis."""
+    style = dict(base_style)
+    style["color"] = "rgba(165, 171, 184, 0.35)"
+    style["width"] = max(1.0, float(base_style.get("width", 2.0)) - 0.6)
+    return style
+
+
 def build_transition_layout(
     nodes: pl.DataFrame,
 ) -> dict[str, object]:
@@ -277,11 +486,13 @@ def add_structural_dependency_traces(
     node_positions: dict[str, tuple[float, float]],
     *,
     curve_intra_objective_edges: bool,
+    show_direction_arrows: bool = False,
+    highlighted_edge_pairs: set[tuple[str, str]] | None = None,
 ) -> None:
     """Add the shared structural dependency background to an existing figure."""
     edge_rows = edges.to_dicts()
-    same_lane_edge_rank: dict[float, int] = {}
-    structural_legend_added = {"activation": False, "deactivation": False, "intra": False}
+    same_lane_edge_rank: dict[tuple[float, bool], int] = {}
+    structural_legend_added = {key: False for key in STRUCTURAL_EDGE_LEGEND_LABELS}
 
     for edge in edge_rows:
         from_code = str(edge.get("from_node_code") or "")
@@ -293,8 +504,10 @@ def add_structural_dependency_traces(
         edge_type = str(edge.get("edge_type") or "activation")
         same_lane = abs(y0 - y1) < 1e-9
         use_curve = curve_intra_objective_edges and same_lane and abs(x1 - x0) > 0.45
+        trace_key = _structural_trace_key(edge_type, same_lane)
+        is_related = highlighted_edge_pairs is None or (from_code, to_code) in highlighted_edge_pairs
         if use_curve:
-            rank_key = round(y0, 2)
+            rank_key = (round(y0, 2), is_related)
             rank = same_lane_edge_rank.get(rank_key, 0)
             same_lane_edge_rank[rank_key] = rank + 1
             tier = rank // 2
@@ -305,23 +518,50 @@ def add_structural_dependency_traces(
             points = _quadratic_curve_points(
                 (x0, y0), (mx, my), (x1, y1), steps=int(max(12, abs(x1 - x0) * 14))
             )
-            trace_key = "intra"
         else:
             points = [(x0, y0), (x1, y1)]
-            trace_key = edge_type
         line_cfg = _structural_edge_style(edge_type, same_lane)
+        if not is_related:
+            line_cfg = _dimmed_structural_edge_style(line_cfg)
+        arrow_points = _structural_arrow_points(points) if show_direction_arrows else None
+        line_points = (
+            _polyline_prefix_until_distance_from_end(
+                points, distance=STRUCTURAL_ARROW_HEAD_OFFSET + STRUCTURAL_ARROW_LENGTH
+            )
+            if arrow_points is not None
+            else points
+        )
         show_legend = not structural_legend_added[trace_key]
         structural_legend_added[trace_key] = True
         fig.add_trace(
             go.Scatter(
-                x=[point[0] for point in points],
-                y=[point[1] for point in points],
+                x=[point[0] for point in line_points],
+                y=[point[1] for point in line_points],
                 mode="lines",
                 line=line_cfg,
                 hoverinfo="skip",
-                name="Structural dependency",
+                name=STRUCTURAL_EDGE_LEGEND_LABELS[trace_key],
                 showlegend=show_legend,
             )
+        )
+        if arrow_points is None:
+            continue
+        tail_x, tail_y, head_x, head_y = arrow_points
+        fig.add_annotation(
+            x=head_x,
+            y=head_y,
+            ax=tail_x,
+            ay=tail_y,
+            xref="x",
+            yref="y",
+            axref="x",
+            ayref="y",
+            text="",
+            showarrow=True,
+            arrowhead=3,
+            arrowsize=0.95,
+            arrowwidth=max(1.8, float(line_cfg.get("width", 2.0))),
+            arrowcolor=str(line_cfg.get("color", "#3f5aa8")),
         )
 
 
@@ -658,6 +898,7 @@ def build_transition_efficiency_figure(
     later_attempt_threshold: int,
     show_ids: bool,
     curve_intra_objective_edges: bool,
+    focused_node_code: str | None = None,
 ) -> go.Figure:
     """Build the static ZPDES transition-efficiency graph."""
     if nodes.height == 0:
@@ -670,6 +911,31 @@ def build_transition_efficiency_figure(
     lane_pos = layout["lane_pos"]
     max_activity_idx = layout["max_activity_idx"]
     node_positions = layout["node_positions"]
+    ancestor_root_codes = _focus_ancestor_root_codes(layout["node_rows"], focused_node_code)
+    related_node_codes = _related_node_codes_for_focus(
+        edges,
+        focused_node_code,
+        node_rows=layout["node_rows"],
+        ancestor_root_codes=ancestor_root_codes,
+    )
+    highlighted_edge_pairs = _highlighted_edge_pairs_for_focus(
+        edges,
+        focused_node_code,
+        node_rows=layout["node_rows"],
+        ancestor_root_codes=ancestor_root_codes,
+    )
+    if related_node_codes is not None and focused_node_code not in node_positions:
+        related_node_codes = None
+        highlighted_edge_pairs = None
+    related_objective_codes = (
+        {
+            str(row.get("objective_code") or "")
+            for row in layout["node_rows"]
+            if str(row.get("node_code") or "") in related_node_codes
+        }
+        if related_node_codes is not None
+        else None
+    )
 
     fig = go.Figure()
     add_structural_dependency_traces(
@@ -677,7 +943,30 @@ def build_transition_efficiency_figure(
         edges,
         node_positions,
         curve_intra_objective_edges=curve_intra_objective_edges,
+        show_direction_arrows=True,
+        highlighted_edge_pairs=highlighted_edge_pairs,
     )
+
+    def _is_related(row: dict[str, object]) -> bool:
+        if related_node_codes is None:
+            return True
+        node_code = str(row.get("node_code") or "")
+        if node_code in related_node_codes:
+            return True
+        if str(row.get("node_type") or "") == "objective":
+            return str(row.get("objective_code") or "") in (related_objective_codes or set())
+        return False
+
+    focused_code = str(focused_node_code or "").strip()
+    focused_objective_rows = [
+        row for row in objective_rows if str(row.get("node_code") or "") == focused_code
+    ]
+    active_objective_rows = [
+        row
+        for row in objective_rows
+        if _is_related(row) and str(row.get("node_code") or "") != focused_code
+    ]
+    inactive_objective_rows = [row for row in objective_rows if not _is_related(row)]
 
     objective_hover = (
         "<b>%{customdata[2]}</b><br>"
@@ -685,28 +974,35 @@ def build_transition_efficiency_figure(
         + ("Code: %{customdata[0]}<br>" if show_ids else "")
         + "<extra></extra>"
     )
-    fig.add_trace(
-        go.Scatter(
-            x=[node_positions[str(row.get("node_code"))][0] for row in objective_rows],
-            y=[node_positions[str(row.get("node_code"))][1] for row in objective_rows],
-            mode="markers+text",
-            text=[truncate_text(row.get("label"), 36) for row in objective_rows],
-            textposition="top center",
-            textfont={"size": 11, "color": "rgba(35,40,50,0.95)"},
-            customdata=[
-                [str(row.get("node_code") or ""), str(row.get("node_type") or ""), str(row.get("label") or "")]
-                for row in objective_rows
-            ],
-            hovertemplate=objective_hover,
-            showlegend=False,
-            marker={
-                "size": 18,
-                "symbol": "square",
-                "color": "#5b6f8e",
-                "line": {"width": 1.4, "color": "#1b1d22"},
-            },
+    for rows, marker_color, text_color, size, line_width in [
+        (inactive_objective_rows, "rgba(185, 190, 198, 0.55)", "rgba(124,130,142,0.82)", 18, 1.0),
+        (active_objective_rows, "#5b6f8e", "rgba(35,40,50,0.95)", 18, 1.4),
+        (focused_objective_rows, "#384c71", "rgba(24,28,35,0.98)", 21, 2.1),
+    ]:
+        if not rows:
+            continue
+        fig.add_trace(
+            go.Scatter(
+                x=[node_positions[str(row.get("node_code"))][0] for row in rows],
+                y=[node_positions[str(row.get("node_code"))][1] for row in rows],
+                mode="markers+text",
+                text=[truncate_text(row.get("label"), 36) for row in rows],
+                textposition="top center",
+                textfont={"size": 11, "color": text_color},
+                customdata=[
+                    [str(row.get("node_code") or ""), str(row.get("node_type") or ""), str(row.get("label") or "")]
+                    for row in rows
+                ],
+                hovertemplate=objective_hover,
+                showlegend=False,
+                marker={
+                    "size": size,
+                    "symbol": "square",
+                    "color": marker_color,
+                    "line": {"width": line_width, "color": "#1b1d22"},
+                },
+            )
         )
-    )
 
     metric_values = [
         float(row.get("transition_metric_value"))
@@ -761,63 +1057,136 @@ def build_transition_efficiency_figure(
         ],
         "colorscale": colorscale,
         "showscale": True,
-        "colorbar": {"title": metric_label},
+        "colorbar": {"title": metric_label, "x": 1.04, "y": 0.5, "len": 0.78, "thickness": 16},
     }
     if cmin is not None and cmax is not None:
         activity_marker["cmin"] = cmin
         activity_marker["cmax"] = cmax
 
-    fig.add_trace(
-        go.Scatter(
-            x=[node_positions[str(row.get("node_code"))][0] for row in activity_rows],
-            y=[node_positions[str(row.get("node_code"))][1] for row in activity_rows],
-            mode="markers",
-            customdata=[
-                [
-                    str(row.get("node_code") or ""),
-                    str(row.get("node_type") or ""),
-                    str(row.get("objective_code") or ""),
-                    str(row.get("label") or ""),
-                    str(row.get("node_id") or ""),
-                    str(row.get("objective_code") or ""),
-                    format_metric_value(metric, row.get("transition_metric_value")),
-                    format_rate(row.get("adaptive_test_first_attempt_success_rate")),
-                    format_int(row.get("adaptive_test_first_attempt_event_count")),
-                    format_rate(row.get("initial_test_first_attempt_success_rate")),
-                    format_int(row.get("initial_test_first_attempt_event_count")),
-                    format_rate(row.get("playlist_first_attempt_success_rate")),
-                    format_int(row.get("playlist_first_attempt_event_count")),
-                    format_rate(row.get("zpdes_first_attempt_success_rate")),
-                    format_int(row.get("zpdes_first_attempt_event_count")),
-                    format_rate(row.get("before_success_rate")),
-                    format_int(row.get("before_event_count")),
-                    format_int(row.get("before_unique_students")),
-                    format_int(row.get("before_previous_attempts")),
-                    format_rate(row.get("after_success_rate")),
-                    format_int(row.get("after_event_count")),
-                    format_int(row.get("after_unique_students")),
-                    format_int(row.get("after_previous_attempts")),
-                    format_rate(row.get("in_activity_success_rate")),
-                    format_int(row.get("in_activity_event_count")),
-                    format_int(row.get("in_activity_unique_students")),
-                    format_int(row.get("in_activity_previous_attempts")),
-                ]
-                for row in activity_rows
-            ],
-            hovertemplate=activity_hover,
-            showlegend=False,
-            marker=activity_marker,
+    def _activity_customdata(row: dict[str, object]) -> list[str]:
+        return [
+            str(row.get("node_code") or ""),
+            str(row.get("node_type") or ""),
+            str(row.get("objective_code") or ""),
+            str(row.get("label") or ""),
+            str(row.get("node_id") or ""),
+            str(row.get("objective_code") or ""),
+            format_metric_value(metric, row.get("transition_metric_value")),
+            format_rate(row.get("adaptive_test_first_attempt_success_rate")),
+            format_int(row.get("adaptive_test_first_attempt_event_count")),
+            format_rate(row.get("initial_test_first_attempt_success_rate")),
+            format_int(row.get("initial_test_first_attempt_event_count")),
+            format_rate(row.get("playlist_first_attempt_success_rate")),
+            format_int(row.get("playlist_first_attempt_event_count")),
+            format_rate(row.get("zpdes_first_attempt_success_rate")),
+            format_int(row.get("zpdes_first_attempt_event_count")),
+            format_rate(row.get("before_success_rate")),
+            format_int(row.get("before_event_count")),
+            format_int(row.get("before_unique_students")),
+            format_int(row.get("before_previous_attempts")),
+            format_rate(row.get("after_success_rate")),
+            format_int(row.get("after_event_count")),
+            format_int(row.get("after_unique_students")),
+            format_int(row.get("after_previous_attempts")),
+            format_rate(row.get("in_activity_success_rate")),
+            format_int(row.get("in_activity_event_count")),
+            format_int(row.get("in_activity_unique_students")),
+            format_int(row.get("in_activity_previous_attempts")),
+        ]
+
+    focused_activity_rows = [row for row in activity_rows if str(row.get("node_code") or "") == focused_code]
+    active_activity_rows = [
+        row for row in activity_rows if _is_related(row) and str(row.get("node_code") or "") != focused_code
+    ]
+    inactive_activity_rows = [row for row in activity_rows if not _is_related(row)]
+
+    if inactive_activity_rows:
+        fig.add_trace(
+            go.Scatter(
+                x=[node_positions[str(row.get("node_code"))][0] for row in inactive_activity_rows],
+                y=[node_positions[str(row.get("node_code"))][1] for row in inactive_activity_rows],
+                mode="markers",
+                customdata=[_activity_customdata(row) for row in inactive_activity_rows],
+                hovertemplate=activity_hover,
+                showlegend=False,
+                marker={
+                    "size": 14,
+                    "symbol": ["diamond-open" if bool(row.get("is_ghost")) else "circle" for row in inactive_activity_rows],
+                    "line": {"width": 1.1, "color": "rgba(95, 101, 112, 0.70)"},
+                    "color": "rgba(194, 199, 208, 0.58)",
+                },
+            )
         )
-    )
+
+    if active_activity_rows:
+        active_marker = dict(activity_marker)
+        active_marker["showscale"] = not focused_activity_rows
+        active_marker["symbol"] = [
+            "diamond-open" if bool(row.get("is_ghost")) else "circle" for row in active_activity_rows
+        ]
+        active_marker["color"] = [
+            float(row.get("transition_metric_value"))
+            if row.get("transition_metric_value") is not None and not _is_missing(row.get("transition_metric_value"))
+            else float("nan")
+            for row in active_activity_rows
+        ]
+        fig.add_trace(
+            go.Scatter(
+                x=[node_positions[str(row.get("node_code"))][0] for row in active_activity_rows],
+                y=[node_positions[str(row.get("node_code"))][1] for row in active_activity_rows],
+                mode="markers",
+                customdata=[_activity_customdata(row) for row in active_activity_rows],
+                hovertemplate=activity_hover,
+                showlegend=False,
+                marker=active_marker,
+            )
+        )
+
+    if focused_activity_rows:
+        focused_marker = dict(activity_marker)
+        focused_marker["showscale"] = True
+        focused_marker["size"] = 18
+        focused_marker["line"] = {"width": 2.5, "color": "#11151d"}
+        focused_marker["symbol"] = [
+            "diamond-open" if bool(row.get("is_ghost")) else "circle" for row in focused_activity_rows
+        ]
+        focused_marker["color"] = [
+            float(row.get("transition_metric_value"))
+            if row.get("transition_metric_value") is not None and not _is_missing(row.get("transition_metric_value"))
+            else float("nan")
+            for row in focused_activity_rows
+        ]
+        fig.add_trace(
+            go.Scatter(
+                x=[node_positions[str(row.get("node_code"))][0] for row in focused_activity_rows],
+                y=[node_positions[str(row.get("node_code"))][1] for row in focused_activity_rows],
+                mode="markers",
+                customdata=[_activity_customdata(row) for row in focused_activity_rows],
+                hovertemplate=activity_hover,
+                showlegend=False,
+                marker=focused_marker,
+            )
+        )
 
     fig.update_layout(
         height=max(520, 80 * len(objective_codes) + 140),
-        margin={"l": 130, "r": 50, "t": 30, "b": 60},
+        margin={"l": 130, "r": 115, "t": 88, "b": 60},
         xaxis_title="Activity position within objective lane",
         yaxis_title="Objective lanes",
+        clickmode="event+select",
         dragmode=False,
         plot_bgcolor="rgba(255,255,255,0.65)",
         paper_bgcolor="rgba(0,0,0,0)",
+        legend={
+            "orientation": "h",
+            "x": 0.0,
+            "y": 1.08,
+            "xanchor": "left",
+            "yanchor": "bottom",
+            "bgcolor": "rgba(255,255,255,0.88)",
+            "bordercolor": "rgba(42,48,58,0.16)",
+            "borderwidth": 1,
+        },
     )
     fig.update_xaxes(
         showgrid=True,

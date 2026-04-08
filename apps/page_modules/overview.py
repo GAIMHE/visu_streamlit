@@ -184,12 +184,14 @@ def _build_overview_kpi_analysis(
     attempts: int,
     unique_students: int,
     unique_exercises: int,
+    mean_distinct_exercises_per_student: float | None = None,
 ):
     """Call KPI analysis with retry metrics only when the loaded function supports them."""
     base_kwargs = {
         "attempts": attempts,
         "unique_students": unique_students,
         "unique_exercises": unique_exercises,
+        "mean_distinct_exercises_per_student": mean_distinct_exercises_per_student,
     }
     retry_kwargs = SOURCE_RETRY_SUMMARY_BY_ID.get(source_id, {})
     try:
@@ -199,10 +201,13 @@ def _build_overview_kpi_analysis(
     if signature is None:
         return analyze_overview_kpis(**base_kwargs)
     accepted = set(signature.parameters)
+    compatible_base_kwargs = {
+        key: value for key, value in base_kwargs.items() if key in accepted
+    }
     compatible_retry_kwargs = {
         key: value for key, value in retry_kwargs.items() if key in accepted
     }
-    return analyze_overview_kpis(**base_kwargs, **compatible_retry_kwargs)
+    return analyze_overview_kpis(**compatible_base_kwargs, **compatible_retry_kwargs)
 
 
 def main() -> None:
@@ -252,6 +257,11 @@ def main() -> None:
         pl.col("exercise_id").drop_nulls().n_unique().alias("unique_exercises"),
     )
     kpi = collect_lazy(kpi).to_dicts()[0]
+    mean_distinct_exercises_per_student = collect_lazy(
+        fact_query.group_by("user_id")
+        .agg(pl.col("exercise_id").drop_nulls().n_unique().cast(pl.Float64).alias("student_distinct_exercises"))
+        .select(pl.col("student_distinct_exercises").mean().alias("mean_distinct_exercises_per_student"))
+    ).to_dicts()[0]["mean_distinct_exercises_per_student"]
 
     st.title("Learning Analytics Overview")
 
@@ -274,6 +284,11 @@ def main() -> None:
             attempts=int(kpi["attempts"]),
             unique_students=int(kpi["unique_students"]),
             unique_exercises=int(kpi["unique_exercises"]),
+            mean_distinct_exercises_per_student=(
+                float(mean_distinct_exercises_per_student)
+                if mean_distinct_exercises_per_student is not None
+                else None
+            ),
         )
     )
 

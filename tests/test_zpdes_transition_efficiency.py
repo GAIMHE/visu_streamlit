@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from datetime import date
 from pathlib import Path
 
@@ -11,6 +12,9 @@ import polars as pl
 from visu2.config import Settings
 from visu2.derive import build_zpdes_exercise_progression_events_from_fact
 from visu2.zpdes_transition_efficiency import (
+    _focus_ancestor_root_codes,
+    _highlighted_edge_pairs_for_focus,
+    _related_node_codes_for_focus,
     attach_progression_cohort_metrics_to_nodes,
     attach_transition_metric_to_nodes,
     build_transition_efficiency_figure,
@@ -641,3 +645,304 @@ def test_build_transition_efficiency_figure_stays_structural_only(tmp_path: Path
     )
     assert figure.data
     assert all(trace.name != "Observed incoming transition" for trace in figure.data)
+    annotations = list(figure.layout.annotations or [])
+    assert len(annotations) == _edges().height
+    assert all(annotation.showarrow for annotation in annotations)
+    structural_traces = list(figure.data[: _edges().height])
+    for trace, annotation in zip(structural_traces, annotations, strict=True):
+        assert math.isclose(trace.x[-1], annotation.ax, rel_tol=0.0, abs_tol=1e-9)
+        assert math.isclose(trace.y[-1], annotation.ay, rel_tol=0.0, abs_tol=1e-9)
+        assert math.hypot(annotation.x - annotation.ax, annotation.y - annotation.ay) < 0.25
+
+
+def test_related_node_codes_for_focus_collects_ancestors_and_direct_children() -> None:
+    """Focused nodes should keep prerequisites plus only immediate downstream unlocks."""
+    related = _related_node_codes_for_focus(_edges(), "M1O2A1")
+    assert related == {"M1O1A1", "M1O1A2", "M1O2A1", "M1O3A1"}
+
+
+def test_related_node_codes_for_focus_excludes_indirect_descendants() -> None:
+    """Focus should not keep downstream nodes beyond the first unlocked step."""
+    edges = pl.DataFrame(
+        {
+            "from_node_code": ["M1O1A1", "M1O1A2", "M1O2A1", "M1O3A1"],
+            "to_node_code": ["M1O1A2", "M1O2A1", "M1O3A1", "M1O4A1"],
+        }
+    )
+    related = _related_node_codes_for_focus(edges, "M1O2A1")
+    assert related == {"M1O1A1", "M1O1A2", "M1O2A1", "M1O3A1"}
+
+
+def test_highlighted_edge_pairs_for_focus_keep_ancestor_chain_and_direct_children() -> None:
+    """Focused edges should keep prerequisites and only the immediate outgoing unlocks."""
+    edges = pl.DataFrame(
+        {
+            "from_node_code": ["M1O1A1", "M1O1A2", "M1O2A1", "M1O3A1"],
+            "to_node_code": ["M1O1A2", "M1O2A1", "M1O3A1", "M1O4A1"],
+        }
+    )
+    highlighted = _highlighted_edge_pairs_for_focus(edges, "M1O2A1")
+    assert highlighted == {
+        ("M1O1A1", "M1O1A2"),
+        ("M1O1A2", "M1O2A1"),
+        ("M1O2A1", "M1O3A1"),
+    }
+
+
+def test_focus_ancestor_root_codes_include_parent_objective_for_activity() -> None:
+    """Activity focus should also walk ancestors from its objective node."""
+    roots = _focus_ancestor_root_codes(_nodes().to_dicts(), "M1O2A1")
+    assert roots == {"M1O2A1", "M1O2"}
+
+
+def test_related_node_codes_for_focus_include_objective_prerequisites_for_activity() -> None:
+    """Activity focus should include prerequisites that target the activity's objective."""
+    nodes = pl.DataFrame(
+        {
+            "node_code": ["M1O1", "M1O1A1", "M1O1A2", "M1O2", "M1O2A1", "M1O2A2"],
+            "node_type": ["objective", "activity", "activity", "objective", "activity", "activity"],
+            "objective_code": ["M1O1", "M1O1", "M1O1", "M1O2", "M1O2", "M1O2"],
+        }
+    )
+    edges = pl.DataFrame(
+        {
+            "from_node_code": ["M1O1A1", "M1O1A2", "M1O2A1"],
+            "to_node_code": ["M1O1A2", "M1O2", "M1O2A2"],
+        }
+    )
+    roots = _focus_ancestor_root_codes(nodes.to_dicts(), "M1O2A2")
+    related = _related_node_codes_for_focus(edges, "M1O2A2", ancestor_root_codes=roots)
+    highlighted = _highlighted_edge_pairs_for_focus(edges, "M1O2A2", ancestor_root_codes=roots)
+    assert related == {"M1O1A1", "M1O1A2", "M1O2", "M1O2A1", "M1O2A2"}
+    assert highlighted == {
+        ("M1O1A1", "M1O1A2"),
+        ("M1O1A2", "M1O2"),
+        ("M1O2A1", "M1O2A2"),
+    }
+
+
+def test_related_node_codes_for_focus_keep_only_t_plus_one_downstream() -> None:
+    """Focus should keep all upstream prerequisites but only the first downstream step."""
+    nodes = pl.DataFrame(
+        {
+            "node_code": [
+                "M1O3",
+                "M1O3A1",
+                "M1O3A2",
+                "M1O5",
+                "M1O5A1",
+                "M1O5A2",
+                "M1O5A3",
+                "M1O6",
+                "M1O6A1",
+                "M1O6A2",
+            ],
+            "node_type": [
+                "objective",
+                "activity",
+                "activity",
+                "objective",
+                "activity",
+                "activity",
+                "activity",
+                "objective",
+                "activity",
+                "activity",
+            ],
+            "objective_code": [
+                "M1O3",
+                "M1O3",
+                "M1O3",
+                "M1O5",
+                "M1O5",
+                "M1O5",
+                "M1O5",
+                "M1O6",
+                "M1O6",
+                "M1O6",
+            ],
+        }
+    )
+    edges = pl.DataFrame(
+        {
+            "from_node_code": ["M1O3A1", "M1O3A2", "M1O5A1", "M1O5A2", "M1O5A3", "M1O6A1"],
+            "to_node_code": ["M1O3A2", "M1O5", "M1O5A2", "M1O5A3", "M1O6A1", "M1O6A2"],
+        }
+    )
+    roots = _focus_ancestor_root_codes(nodes.to_dicts(), "M1O5A3")
+    related = _related_node_codes_for_focus(edges, "M1O5A3", ancestor_root_codes=roots)
+    highlighted = _highlighted_edge_pairs_for_focus(edges, "M1O5A3", ancestor_root_codes=roots)
+    assert related == {
+        "M1O3A1",
+        "M1O3A2",
+        "M1O5",
+        "M1O5A1",
+        "M1O5A2",
+        "M1O5A3",
+        "M1O6A1",
+    }
+    assert "M1O6A2" not in related
+    assert highlighted == {
+        ("M1O3A1", "M1O3A2"),
+        ("M1O3A2", "M1O5"),
+        ("M1O5A1", "M1O5A2"),
+        ("M1O5A2", "M1O5A3"),
+        ("M1O5A3", "M1O6A1"),
+    }
+
+
+def test_related_node_codes_for_focus_climb_via_ancestor_activity_objective() -> None:
+    """If an ancestor activity unlocks an objective, keep that objective's own prerequisites too."""
+    nodes = pl.DataFrame(
+        {
+            "node_code": ["M31O1", "M31O1A3", "M31O4", "M31O4A3", "M31O6", "M31O6A3"],
+            "node_type": ["objective", "activity", "objective", "activity", "objective", "activity"],
+            "objective_code": ["M31O1", "M31O1", "M31O4", "M31O4", "M31O6", "M31O6"],
+        }
+    )
+    edges = pl.DataFrame(
+        {
+            "from_node_code": ["M31O1A3", "M31O4A3"],
+            "to_node_code": ["M31O4", "M31O6"],
+        }
+    )
+    roots = _focus_ancestor_root_codes(nodes.to_dicts(), "M31O6A3")
+    related = _related_node_codes_for_focus(
+        edges,
+        "M31O6A3",
+        node_rows=nodes.to_dicts(),
+        ancestor_root_codes=roots,
+    )
+    highlighted = _highlighted_edge_pairs_for_focus(
+        edges,
+        "M31O6A3",
+        node_rows=nodes.to_dicts(),
+        ancestor_root_codes=roots,
+    )
+    assert related == {"M31O1", "M31O1A3", "M31O4", "M31O4A3", "M31O6", "M31O6A3"}
+    assert highlighted == {
+        ("M31O1A3", "M31O4"),
+        ("M31O4A3", "M31O6"),
+    }
+
+
+def test_build_transition_efficiency_figure_uses_semantic_legend_labels() -> None:
+    """Structural edge legend labels should reflect their semantics."""
+    nodes = _nodes()
+    edges = pl.DataFrame(
+        {
+            "module_code": ["M1", "M1", "M1"],
+            "edge_id": ["e1", "e2", "e3"],
+            "edge_type": ["activation", "activation", "deactivation"],
+            "from_node_code": ["M1O1A1", "M1O1A2", "M1O2A1"],
+            "to_node_code": ["M1O1A2", "M1O2A1", "M1O3A1"],
+            "threshold_type": ["success_rate", "success_rate", "success_rate"],
+            "threshold_value": [0.75, 0.75, 0.75],
+            "rule_text": ["r1", "r2", "r3"],
+            "source_primary": ["rules", "rules", "rules"],
+            "source_enrichment": ["rules", "rules", "rules"],
+            "enrich_lvl": [None, None, None],
+            "enrich_sr": [None, None, None],
+        }
+    )
+    figure = build_transition_efficiency_figure(
+        nodes=nodes,
+        edges=edges,
+        metric="first_attempt_success_rate",
+        metric_label="First-attempt success",
+        later_attempt_threshold=1,
+        show_ids=False,
+        curve_intra_objective_edges=True,
+    )
+    legend_names = {trace.name for trace in figure.data if bool(trace.showlegend)}
+    assert "Intra-objective unlocking" in legend_names
+    assert "Inter-objective unlocking" in legend_names
+    assert "Deactivation" in legend_names
+
+
+def test_build_transition_efficiency_figure_renders_single_metric_colorbar() -> None:
+    """Splitting activity nodes by focus should still render one color scale."""
+    figure = build_transition_efficiency_figure(
+        nodes=_nodes(),
+        edges=_edges(),
+        metric="first_attempt_success_rate",
+        metric_label="First-attempt success",
+        later_attempt_threshold=1,
+        show_ids=False,
+        curve_intra_objective_edges=True,
+        focused_node_code="M1O2A1",
+    )
+    traces_with_scale = [trace for trace in figure.data if getattr(trace.marker, "showscale", False)]
+    assert len(traces_with_scale) == 1
+    assert traces_with_scale[0].marker.colorbar.x > 1.0
+    assert figure.layout.legend.orientation == "h"
+    assert figure.layout.legend.y > 1.0
+
+
+def test_build_transition_efficiency_figure_dims_unrelated_structural_edges_on_focus() -> None:
+    """Focused nodes should grey out structural edges outside their dependency chain."""
+    nodes = pl.DataFrame(
+        {
+            "module_code": ["M1"] * 10,
+            "node_id": ["o1", "a1", "a2", "o2", "a3", "o3", "a4", "o4", "a5", "a6"],
+            "node_code": [
+                "M1O1",
+                "M1O1A1",
+                "M1O1A2",
+                "M1O2",
+                "M1O2A1",
+                "M1O3",
+                "M1O3A1",
+                "M1O4",
+                "M1O4A1",
+                "M1O4A2",
+            ],
+            "node_type": [
+                "objective",
+                "activity",
+                "activity",
+                "objective",
+                "activity",
+                "objective",
+                "activity",
+                "objective",
+                "activity",
+                "activity",
+            ],
+            "label": ["Objective 1", "A1", "A2", "Objective 2", "A3", "Objective 3", "A4", "Objective 4", "A5", "A6"],
+            "objective_code": ["M1O1", "M1O1", "M1O1", "M1O2", "M1O2", "M1O3", "M1O3", "M1O4", "M1O4", "M1O4"],
+            "activity_index": [None, 1, 2, None, 1, None, 1, None, 1, 2],
+            "init_open": [True, True, False, False, False, False, False, True, True, False],
+            "source_primary": ["catalog"] * 10,
+            "source_enrichment": ["rules"] * 10,
+            "is_ghost": [False] * 10,
+        }
+    )
+    edges = pl.DataFrame(
+        {
+            "module_code": ["M1", "M1", "M1", "M1"],
+            "edge_id": ["e1", "e2", "e3", "e4"],
+            "edge_type": ["activation", "activation", "activation", "activation"],
+            "from_node_code": ["M1O1A1", "M1O1A2", "M1O2A1", "M1O4A1"],
+            "to_node_code": ["M1O1A2", "M1O2A1", "M1O3A1", "M1O4A2"],
+            "threshold_type": ["success_rate"] * 4,
+            "threshold_value": [0.75] * 4,
+            "rule_text": ["r1", "r2", "r3", "r4"],
+            "source_primary": ["rules"] * 4,
+            "source_enrichment": ["rules"] * 4,
+            "enrich_lvl": [None] * 4,
+            "enrich_sr": [None] * 4,
+        }
+    )
+    figure = build_transition_efficiency_figure(
+        nodes=nodes,
+        edges=edges,
+        metric="first_attempt_success_rate",
+        metric_label="First-attempt success",
+        later_attempt_threshold=1,
+        show_ids=False,
+        curve_intra_objective_edges=True,
+        focused_node_code="M1O2A1",
+    )
+    arrow_colors = {annotation.arrowcolor for annotation in figure.layout.annotations or []}
+    assert "rgba(165, 171, 184, 0.35)" in arrow_colors

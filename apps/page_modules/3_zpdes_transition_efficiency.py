@@ -49,15 +49,41 @@ def _parquet_columns(path: Path) -> list[str]:
 
 
 @st.cache_data(show_spinner=False)
-def _load_activity_daily(path: Path) -> pl.DataFrame:
-    """Load activity-daily aggregates."""
-    return pl.read_parquet(path)
+def _load_activity_daily_summary(path: Path) -> dict[str, object]:
+    """Load only the summary needed from activity-daily aggregates."""
+    summary_row = (
+        pl.scan_parquet(path)
+        .select(
+            [
+                pl.col("date_utc").min().alias("min_date"),
+                pl.col("date_utc").max().alias("max_date"),
+            ]
+        )
+        .collect()
+        .to_dicts()[0]
+    )
+    module_codes = (
+        pl.scan_parquet(path)
+        .select(pl.col("module_code").drop_nulls().unique().sort())
+        .collect()["module_code"]
+        .to_list()
+    )
+    return {
+        "min_date": summary_row.get("min_date"),
+        "max_date": summary_row.get("max_date"),
+        "module_codes": [str(code) for code in module_codes if str(code or "").strip()],
+    }
 
 
 @st.cache_data(show_spinner=False)
-def _load_activity_elo(path: Path) -> pl.DataFrame:
-    """Load activity-level Elo aggregates."""
-    return pl.read_parquet(path)
+def _load_activity_elo_for_module(path: Path, module_code: str) -> pl.DataFrame:
+    """Load only the selected module slice from activity-level Elo aggregates."""
+    return (
+        pl.scan_parquet(path)
+        .filter(pl.col("module_code") == module_code)
+        .select(["module_code", "activity_id", "activity_mean_exercise_elo"])
+        .collect()
+    )
 
 
 @st.cache_data(show_spinner=False)
@@ -80,6 +106,7 @@ def _load_zpdes_population_summary(
     work_mode: str,
     later_attempt_threshold: int,
     *,
+    module_code: str | None = None,
     start_date: date | None = None,
     end_date: date | None = None,
     user_ids: tuple[str, ...] | None = None,
@@ -117,6 +144,8 @@ def _load_zpdes_population_summary(
         )
         .filter(pl.col("work_mode") == work_mode)
     )
+    if module_code:
+        query = query.filter(pl.col("module_code") == module_code)
     if start_date is not None and end_date is not None:
         query = query.filter(
             (pl.col("date_utc") >= pl.lit(start_date)) & (pl.col("date_utc") <= pl.lit(end_date))
@@ -216,6 +245,26 @@ def _load_zpdes_population_summary(
     )
 
 
+def _extract_selected_node_code(event: object) -> str | None:
+    """Extract a selected node code from a Plotly point-selection event."""
+    if not isinstance(event, dict):
+        return None
+    selection = event.get("selection")
+    if not isinstance(selection, dict):
+        return None
+    points = selection.get("points")
+    if not isinstance(points, list) or not points:
+        return None
+    first_point = points[0]
+    if not isinstance(first_point, dict):
+        return None
+    customdata = first_point.get("customdata")
+    if isinstance(customdata, (list, tuple)) and customdata:
+        node_code = str(customdata[0] or "").strip()
+        return node_code or None
+    return None
+
+
 def main() -> None:
     """Render the transition-efficiency page."""
     st.markdown(
@@ -277,12 +326,11 @@ div, p, label {
         st.code("uv run python scripts/build_derived.py --strict-checks")
         st.stop()
 
-    activity = _load_activity_daily(activity_path)
-    activity_elo = _load_activity_elo(activity_elo_path)
+    activity_summary = _load_activity_daily_summary(activity_path)
 
     observed_modules = {
         str(code)
-        for code in activity.select(pl.col("module_code").drop_nulls().unique())["module_code"].to_list()
+        for code in activity_summary["module_codes"]
         if str(code).strip()
     }
     module_codes = list_supported_module_codes_from_metadata(
@@ -305,8 +353,8 @@ div, p, label {
     )
     render_figure_info("zpdes_transition_efficiency_graph")
 
-    min_date = activity["date_utc"].min()
-    max_date = activity["date_utc"].max()
+    min_date = activity_summary["min_date"]
+    max_date = activity_summary["max_date"]
     population_filters = render_population_filters(
         source_id=settings.source_id,
         min_date=min_date,
@@ -329,6 +377,7 @@ div, p, label {
         )
     )
     show_ids = bool(st.sidebar.checkbox("Show IDs in hover", value=False))
+    activity_elo = _load_activity_elo_for_module(activity_elo_path, selected_module)
 
     all_nodes, all_edges, warnings = _load_dependency_tables(
         selected_module,
@@ -424,6 +473,25 @@ div, p, label {
         st.info("No nodes remain after the current objective filter.")
         st.stop()
 
+    context_key = "zpdes_transition_efficiency_selection_context"
+    selected_node_key = "zpdes_transition_efficiency_selected_node"
+    current_context = {
+        "module_code": selected_module,
+        "start_date": str(start_date),
+        "end_date": str(end_date),
+        "metric": metric,
+        "later_attempt_threshold": later_attempt_threshold,
+        "selected_objectives": tuple(selected_objectives),
+        "min_student_attempts": population_filters.min_student_attempts,
+    }
+    if st.session_state.get(context_key) != current_context:
+        st.session_state[context_key] = current_context
+        st.session_state.pop(selected_node_key, None)
+    focused_node_code = st.session_state.get(selected_node_key)
+    if isinstance(focused_node_code, str) and focused_node_code not in valid_codes:
+        st.session_state.pop(selected_node_key, None)
+        focused_node_code = None
+
     figure = build_transition_efficiency_figure(
         nodes=filtered_nodes,
         edges=filtered_edges,
@@ -432,19 +500,36 @@ div, p, label {
         later_attempt_threshold=later_attempt_threshold,
         show_ids=show_ids,
         curve_intra_objective_edges=True,
+        focused_node_code=focused_node_code if isinstance(focused_node_code, str) else None,
     )
-    st.plotly_chart(
+    event = st.plotly_chart(
         figure,
         width="stretch",
         key="zpdes_transition_efficiency_graph",
+        on_select="rerun",
+        selection_mode=("points",),
         config=build_plotly_chart_config(
             modebar_buttons_to_remove=["select2d", "lasso2d"]
         ),
     )
+    selected_from_event = _extract_selected_node_code(event)
+    if selected_from_event is not None and selected_from_event != st.session_state.get(selected_node_key):
+        st.session_state[selected_node_key] = selected_from_event
+        st.rerun()
+    if selected_from_event is not None:
+        focused_node_code = selected_from_event
+
+    if isinstance(focused_node_code, str) and focused_node_code.strip():
+        info_col, button_col = st.columns([4, 1])
+        info_col.caption(f"Focused node: `{focused_node_code}`")
+        if button_col.button("Clear focus", key="clear_zpdes_transition_focus"):
+            st.session_state.pop(selected_node_key, None)
+            st.rerun()
     population_summary = _load_zpdes_population_summary(
         arrival_path,
         selected_work_mode,
         later_attempt_threshold,
+        module_code=selected_module,
         start_date=start_date,
         end_date=end_date,
         user_ids=eligible_user_ids,

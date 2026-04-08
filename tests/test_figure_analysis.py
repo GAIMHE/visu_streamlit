@@ -290,10 +290,16 @@ def test_analyze_overview_kpis_can_include_source_retry_summary() -> None:
         attempts=1000,
         unique_students=100,
         unique_exercises=50,
+        mean_distinct_exercises_per_student=8.4,
         retry_attempt_rate=0.131,
         retry_after_success_share=0.67,
         retry_after_failure_share=0.33,
     )
+    assert any("8.4 distinct exercises" in finding for finding in analysis.findings)
+    assert not any("The slice spans" in finding for finding in analysis.findings)
+    assert not any("attempts per student" in finding for finding in analysis.findings)
+    assert not any("attempts per exercise" in finding for finding in analysis.findings)
+    assert not any("students per visible exercise" in finding for finding in analysis.findings)
     assert any("13.1%" in finding for finding in analysis.findings)
     assert any("67.0%" in finding and "33.0%" in finding for finding in analysis.findings)
 
