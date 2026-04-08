@@ -56,6 +56,10 @@ from visu2.student_elo import (
     select_students_near_attempt_target,
     summarize_student_module_profiles,
 )
+from visu2.student_picker_state import (
+    initialize_student_picker_state,
+    preferred_target_attempts,
+)
 
 CURRENT_EVENTS_RELATIVE_PATH = "artifacts/derived/student_elo_events.parquet"
 BATCH_REPLAY_EVENTS_RELATIVE_PATH = "artifacts/derived/student_elo_events_batch_replay.parquet"
@@ -217,6 +221,11 @@ def _preferred_option_index(options: list[str], preferred: str | None) -> int:
     return options.index(preferred) if preferred in options else 0
 
 
+def _clear_student_picker_keys(*keys: str) -> None:
+    for key in keys:
+        st.session_state.pop(key, None)
+
+
 def main() -> None:
     st.markdown(
         """
@@ -354,18 +363,40 @@ div, p, label {
     )
     query_student_id = get_query_value(STUDENT_ID_QUERY_KEY) or ""
     query_module_code = get_query_value(MODULE_CODE_QUERY_KEY)
+    picker_context_key = "student_elo_picker_context"
+    target_attempts_key = "student_elo_target_attempts"
+    manual_student_key = "student_elo_manual_student_id"
+    preferred_student_key = "student_elo_preferred_student_id"
+    initialize_student_picker_state(
+        st.session_state,
+        context_key=picker_context_key,
+        current_context=(settings.source_id, reference_system, *selected_systems),
+        target_key=target_attempts_key,
+        manual_key=manual_student_key,
+        preferred_key=preferred_student_key,
+        default_target=preferred_target_attempts(
+            eligible_students,
+            query_student_id,
+            median_attempt_count,
+        ),
+        preferred_student_id=query_student_id,
+        min_attempts=min_attempt_count,
+        max_attempts=max_attempt_count,
+    )
     target_attempts = int(
         st.number_input(
             "Target attempt count",
             min_value=max(1, min_attempt_count),
             max_value=max(1, max_attempt_count),
-            value=min(max(1, median_attempt_count), max(1, max_attempt_count)),
+            key=target_attempts_key,
             step=10,
+            on_change=_clear_student_picker_keys,
+            args=(manual_student_key, preferred_student_key),
         )
     )
     manual_student_id = st.text_input(
         "Student ID override (optional)",
-        value=query_student_id,
+        key=manual_student_key,
         help="If you enter a replay-eligible student ID here, the page will use that student directly instead of the sampled attempt-range selection.",
     ).strip()
 
