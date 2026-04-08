@@ -53,6 +53,11 @@ from overview_shared import render_population_filters
 from plotly_config import build_plotly_chart_config
 from source_state import get_active_source_id, get_query_value, set_query_value
 
+from visu2.classroom_picker_state import (
+    initialize_classroom_picker_state,
+    preferred_classroom_option_index,
+    preferred_target_students,
+)
 from visu2.classroom_profile_loader import load_or_build_classroom_mode_profiles
 from visu2.classroom_progression import (
     SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID,
@@ -240,6 +245,11 @@ def _initial_mode_label(query_mode_scope: str | None) -> str:
     return "ZPDES"
 
 
+def _clear_picker_keys(*keys: str) -> None:
+    for key in keys:
+        st.session_state.pop(key, None)
+
+
 def main() -> None:
     """Main.
 
@@ -326,6 +336,7 @@ div, p, label {
         st.caption(
             f"Classrooms in this scope range from **{min_students}** to **{max_students}** students."
         )
+        query_classroom_id = get_query_value(CLASSROOM_ID_QUERY_KEY)
         population_scope = "Specific classroom"
         if allow_all_data:
             population_scope = st.radio(
@@ -341,18 +352,46 @@ div, p, label {
             )
         else:
             default_target = int(scoped_profiles["students"].median() or min_students or 1)
+            picker_context_key = "classroom_replay_picker_context"
+            target_students_key = "classroom_replay_target_students"
+            manual_classroom_key = "classroom_replay_manual_classroom_id"
+            matching_classrooms_key = "classroom_replay_matching_classroom"
+            preferred_classroom_key = "classroom_replay_preferred_classroom_id"
+            initialize_classroom_picker_state(
+                st.session_state,
+                context_key=picker_context_key,
+                current_context=(settings.source_id, mode_scope),
+                target_key=target_students_key,
+                manual_key=manual_classroom_key,
+                selectbox_key=matching_classrooms_key,
+                preferred_key=preferred_classroom_key,
+                default_target=preferred_target_students(
+                    scoped_profiles,
+                    query_classroom_id,
+                    default_target,
+                ),
+                preferred_classroom_id=query_classroom_id,
+                min_students=min_students,
+                max_students=max_students,
+            )
             target_students = int(
                 st.number_input(
                     "Target classroom size (students)",
                     min_value=max(1, min_students),
                     max_value=max(1, max_students),
-                    value=min(max(1, default_target), max(1, max_students)),
+                    key=target_students_key,
                     step=1,
+                    on_change=_clear_picker_keys,
+                    args=(
+                        manual_classroom_key,
+                        matching_classrooms_key,
+                        preferred_classroom_key,
+                    ),
                 )
             )
             manual_classroom_id = st.text_input(
                 "Classroom ID override (optional)",
-                value=get_query_value(CLASSROOM_ID_QUERY_KEY) or "",
+                key=manual_classroom_key,
                 help=(
                     "If you enter a classroom ID here, the page will use that classroom directly "
                     "inside the selected work-mode scope instead of the currently selected matching classroom."
@@ -377,7 +416,17 @@ div, p, label {
             rows = matching_profiles.to_dicts()
             option_map = {_format_classroom_option(row): str(row.get("classroom_id")) for row in rows}
             option_keys = list(option_map.keys())
-            selected_option = st.selectbox("Matching classrooms", option_keys, index=0)
+            selected_option = st.selectbox(
+                "Matching classrooms",
+                option_keys,
+                index=preferred_classroom_option_index(
+                    option_map,
+                    str(st.session_state.get(preferred_classroom_key) or ""),
+                ),
+                key=matching_classrooms_key,
+                on_change=_clear_picker_keys,
+                args=(manual_classroom_key,),
+            )
             selected_classroom_id = option_map[selected_option]
             if manual_classroom_id:
                 override_classroom_id = select_classroom_by_id(profiles, mode_scope, manual_classroom_id)
