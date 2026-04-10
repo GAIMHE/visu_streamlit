@@ -35,6 +35,39 @@ class CohortFilterResult:
     baseline_attempts: int
 
 
+def _empty_user_paths_frame() -> pl.DataFrame:
+    return pl.DataFrame(
+        {
+            "user_id": [],
+            "cleaned_schema": [],
+            "transition_count": [],
+            "retained_attempts": [],
+            "retained_distinct_exercises": [],
+        },
+        schema={
+            "user_id": pl.Utf8,
+            "cleaned_schema": pl.Utf8,
+            "transition_count": pl.Int64,
+            "retained_attempts": pl.Int64,
+            "retained_distinct_exercises": pl.Int64,
+        },
+    )
+
+
+def _normalize_optional_string(column: str) -> pl.Expr:
+    stripped = (
+        pl.when(pl.col(column).is_not_null())
+        .then(pl.col(column).cast(pl.Utf8).str.strip_chars())
+        .otherwise(pl.lit(None, dtype=pl.Utf8))
+    )
+    return (
+        pl.when(stripped.is_null() | (stripped == ""))
+        .then(pl.lit(None, dtype=pl.Utf8))
+        .otherwise(stripped)
+        .alias(column)
+    )
+
+
 def normalize_attempt_rows(frame: pl.DataFrame) -> pl.DataFrame:
     """Return a sorted attempt slice with the minimum fields required by the viewer."""
     required_columns = {
@@ -71,14 +104,8 @@ def normalize_attempt_rows(frame: pl.DataFrame) -> pl.DataFrame:
         .with_columns(
             pl.col("user_id").str.strip_chars().alias("user_id"),
             pl.col("work_mode").str.strip_chars().alias("work_mode"),
-            pl.when(pl.col("module_code").is_not_null())
-            .then(pl.col("module_code").str.strip_chars())
-            .otherwise(pl.lit(None, dtype=pl.Utf8))
-            .alias("module_code"),
-            pl.when(pl.col("exercise_id").is_not_null())
-            .then(pl.col("exercise_id").str.strip_chars())
-            .otherwise(pl.lit(None, dtype=pl.Utf8))
-            .alias("exercise_id"),
+            _normalize_optional_string("module_code"),
+            _normalize_optional_string("exercise_id"),
             pl.col("attempt_number").fill_null(0).alias("attempt_number"),
         )
         .sort(["user_id", "created_at", "module_code", "exercise_id", "attempt_number"])
@@ -91,103 +118,95 @@ def normalize_attempt_rows(frame: pl.DataFrame) -> pl.DataFrame:
     return normalized
 
 
-def _segment_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    segments: list[dict[str, Any]] = []
-    for row in rows:
-        mode = str(row["work_mode"] or "").strip()
-        if not mode:
-            continue
-        if segments and segments[-1]["work_mode"] == mode:
-            segments[-1]["rows"].append(row)
-            exercise_id = row.get("exercise_id")
-            if exercise_id:
-                segments[-1]["exercise_ids"].add(exercise_id)
-            continue
-        exercise_ids: set[str] = set()
-        exercise_id = row.get("exercise_id")
-        if exercise_id:
-            exercise_ids.add(exercise_id)
-        segments.append({"work_mode": mode, "rows": [row], "exercise_ids": exercise_ids})
-    return segments
-
-
-def _clean_user_rows(
-    rows: list[dict[str, Any]],
-    *,
-    min_placement_attempts: int,
-) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
-    raw_segments = _segment_rows(rows)
-    kept_segments: list[dict[str, Any]] = []
-    index = 0
-    threshold = max(1, int(min_placement_attempts))
-
-    while index < len(raw_segments):
-        segment = raw_segments[index]
-        is_short_placement = (
-            segment["work_mode"] in PLACEMENT_WORK_MODES
-            and len(segment["rows"]) < threshold
+def _annotate_segments(frame: pl.DataFrame) -> pl.DataFrame:
+    if frame.height == 0:
+        return frame.with_columns(pl.lit(0, dtype=pl.Int64).alias("segment_index"))
+    return (
+        frame.sort(["user_id", "created_at", "module_code", "exercise_id", "attempt_number"])
+        .with_columns(
+            (
+                pl.col("user_id").ne(pl.col("user_id").shift(1)).fill_null(True)
+                | pl.col("work_mode").ne(pl.col("work_mode").shift(1)).fill_null(True)
+            ).alias("_segment_start")
         )
-        if is_short_placement:
-            index += 2
-            continue
-        kept_segments.append(segment)
-        index += 1
-
-    retained_rows = [row.copy() for segment in kept_segments for row in segment["rows"]]
-    if not retained_rows:
-        return [], None
-
-    cleaned_modes: list[str] = []
-    for row in retained_rows:
-        mode = str(row["work_mode"] or "").strip()
-        if not cleaned_modes or cleaned_modes[-1] != mode:
-            cleaned_modes.append(mode)
-
-    cleaned_schema = " -> ".join(cleaned_modes)
-    transition_count = max(0, len(cleaned_modes) - 1)
-    distinct_exercises = len(
-        {
-            str(row["exercise_id"]).strip()
-            for row in retained_rows
-            if row.get("exercise_id") is not None and str(row["exercise_id"]).strip()
-        }
+        .with_columns(
+            pl.col("_segment_start")
+            .cast(pl.Int64)
+            .cum_sum()
+            .over("user_id")
+            .alias("segment_index")
+        )
+        .drop("_segment_start")
     )
 
-    for row in retained_rows:
-        row["cleaned_schema"] = cleaned_schema
-        row["transition_count"] = transition_count
 
-    user_summary = {
-        "user_id": retained_rows[0]["user_id"],
-        "cleaned_schema": cleaned_schema,
-        "transition_count": transition_count,
-        "retained_attempts": len(retained_rows),
-        "retained_distinct_exercises": distinct_exercises,
-    }
-    return retained_rows, user_summary
+def _build_segment_summary(frame: pl.DataFrame) -> pl.DataFrame:
+    if frame.height == 0:
+        return pl.DataFrame(
+            {
+                "user_id": [],
+                "segment_index": [],
+                "segment_work_mode": [],
+                "segment_attempts": [],
+                "segment_module_codes": [],
+            },
+            schema={
+                "user_id": pl.Utf8,
+                "segment_index": pl.Int64,
+                "segment_work_mode": pl.Utf8,
+                "segment_attempts": pl.Int64,
+                "segment_module_codes": pl.List(pl.Utf8),
+            },
+        )
+    annotated = _annotate_segments(frame)
+    return (
+        annotated.group_by(["user_id", "segment_index"], maintain_order=True)
+        .agg(
+            pl.first("work_mode").alias("segment_work_mode"),
+            pl.len().alias("segment_attempts"),
+            pl.col("module_code").drop_nulls().unique().sort().alias("segment_module_codes"),
+        )
+        .sort(["user_id", "segment_index"])
+    )
 
 
-def _has_repeated_module_after_same_placement(rows: list[dict[str, Any]]) -> bool:
-    """Return whether the same placement mode leads back to the same ZPDES module more than once."""
-    segments = _segment_rows(rows)
-    seen_pairs: set[tuple[str, str]] = set()
-    for index in range(len(segments) - 1):
-        placement_segment = segments[index]
-        zpdes_segment = segments[index + 1]
-        placement_mode = placement_segment["work_mode"]
-        if placement_mode not in PLACEMENT_WORK_MODES or zpdes_segment["work_mode"] != "zpdes":
-            continue
-        module_codes = {
-            str(row["module_code"]).strip()
-            for row in zpdes_segment["rows"]
-            if row.get("module_code") is not None and str(row["module_code"]).strip()
-        }
-        for module_code in module_codes:
-            pair = (placement_mode, module_code)
-            if pair in seen_pairs:
-                return True
-            seen_pairs.add(pair)
-    return False
+def _build_user_paths_from_rows(frame: pl.DataFrame) -> pl.DataFrame:
+    if frame.height == 0:
+        return _empty_user_paths_frame()
+
+    segment_summary = _build_segment_summary(frame)
+    schema_summary = (
+        segment_summary.group_by("user_id", maintain_order=True)
+        .agg(pl.col("segment_work_mode").alias("cleaned_modes"))
+        .with_columns(
+            pl.col("cleaned_modes").list.join(" -> ").alias("cleaned_schema"),
+            (
+                pl.when(pl.col("cleaned_modes").list.len() > 0)
+                .then(pl.col("cleaned_modes").list.len() - 1)
+                .otherwise(pl.lit(0))
+            )
+            .cast(pl.Int64)
+            .alias("transition_count"),
+        )
+        .drop("cleaned_modes")
+    )
+    history_summary = frame.group_by("user_id", maintain_order=True).agg(
+        pl.len().alias("retained_attempts"),
+        pl.col("exercise_id").drop_nulls().n_unique().alias("retained_distinct_exercises"),
+    )
+    return (
+        schema_summary.join(history_summary, on="user_id", how="inner")
+        .select(
+            [
+                "user_id",
+                "cleaned_schema",
+                "transition_count",
+                "retained_attempts",
+                "retained_distinct_exercises",
+            ]
+        )
+        .sort(["transition_count", "cleaned_schema", "user_id"])
+    )
 
 
 def apply_module_keep_filter(frame: pl.DataFrame, selected_modules: tuple[str, ...]) -> pl.DataFrame:
@@ -240,63 +259,57 @@ def apply_placement_cleanup(
             pl.lit(None, dtype=pl.Utf8).alias("cleaned_schema"),
             pl.lit(0, dtype=pl.Int64).alias("transition_count"),
         ).head(0)
-        return empty_rows, pl.DataFrame(
-            {
-                "user_id": [],
-                "cleaned_schema": [],
-                "transition_count": [],
-                "retained_attempts": [],
-                "retained_distinct_exercises": [],
-            },
-            schema={
-                "user_id": pl.Utf8,
-                "cleaned_schema": pl.Utf8,
-                "transition_count": pl.Int64,
-                "retained_attempts": pl.Int64,
-                "retained_distinct_exercises": pl.Int64,
-            },
-        )
+        return empty_rows, _empty_user_paths_frame()
 
-    retained_row_records: list[dict[str, Any]] = []
-    user_summary_records: list[dict[str, Any]] = []
+    threshold = max(1, int(min_placement_attempts))
+    segment_summary = _build_segment_summary(frame)
+    short_placements = segment_summary.filter(
+        pl.col("segment_work_mode").is_in(sorted(PLACEMENT_WORK_MODES))
+        & (pl.col("segment_attempts") < threshold)
+    ).select(["user_id", "segment_index"])
 
-    current_user: str | None = None
-    current_rows: list[dict[str, Any]] = []
-
-    def flush_user() -> None:
-        if not current_rows:
-            return
-        retained_rows, user_summary = _clean_user_rows(
-            current_rows,
-            min_placement_attempts=min_placement_attempts,
-        )
-        if retained_rows:
-            retained_row_records.extend(retained_rows)
-        if user_summary is not None:
-            user_summary_records.append(user_summary)
-
-    for row in frame.iter_rows(named=True):
-        user_id = str(row["user_id"])
-        if current_user is None:
-            current_user = user_id
-        if user_id != current_user:
-            flush_user()
-            current_user = user_id
-            current_rows = []
-        current_rows.append(row)
-    flush_user()
-
-    if retained_row_records:
-        retained_rows = pl.DataFrame(retained_row_records).sort(
-            ["user_id", "created_at", "module_code", "exercise_id", "attempt_number"]
-        )
-    else:
+    if short_placements.height == 0:
         retained_rows = frame.with_columns(
             pl.lit(None, dtype=pl.Utf8).alias("cleaned_schema"),
             pl.lit(0, dtype=pl.Int64).alias("transition_count"),
         ).head(0)
+        user_paths = _build_user_paths_from_rows(frame)
+        if user_paths.height == 0:
+            return retained_rows, user_paths
+        retained_rows = frame.join(
+            user_paths.select(["user_id", "cleaned_schema", "transition_count"]),
+            on="user_id",
+            how="left",
+        )
+        return retained_rows, user_paths
 
-    user_paths = pl.DataFrame(user_summary_records).sort(["transition_count", "cleaned_schema", "user_id"])
+    segments_to_drop = pl.concat(
+        [
+            short_placements,
+            short_placements.with_columns((pl.col("segment_index") + 1).alias("segment_index")),
+        ],
+        how="vertical_relaxed",
+    ).unique()
+
+    retained_rows = (
+        _annotate_segments(frame)
+        .join(segments_to_drop, on=["user_id", "segment_index"], how="anti")
+        .drop("segment_index")
+        .sort(["user_id", "created_at", "module_code", "exercise_id", "attempt_number"])
+    )
+    if retained_rows.height == 0:
+        empty_rows = frame.with_columns(
+            pl.lit(None, dtype=pl.Utf8).alias("cleaned_schema"),
+            pl.lit(0, dtype=pl.Int64).alias("transition_count"),
+        ).head(0)
+        return empty_rows, _empty_user_paths_frame()
+
+    user_paths = _build_user_paths_from_rows(retained_rows)
+    retained_rows = retained_rows.join(
+        user_paths.select(["user_id", "cleaned_schema", "transition_count"]),
+        on="user_id",
+        how="left",
+    )
     return retained_rows, user_paths
 
 
@@ -309,33 +322,38 @@ def apply_same_placement_module_repeat_filter(
     """Drop students who revisit the same module after the same placement mode."""
     if not enabled or rows.height == 0 or user_paths.height == 0:
         return rows, user_paths
-
-    kept_user_ids: list[str] = []
-    current_user: str | None = None
-    current_rows: list[dict[str, Any]] = []
-
-    def flush_user() -> None:
-        if not current_rows:
-            return
-        if not _has_repeated_module_after_same_placement(current_rows):
-            kept_user_ids.append(str(current_rows[0]["user_id"]))
-
-    for row in rows.iter_rows(named=True):
-        user_id = str(row["user_id"])
-        if current_user is None:
-            current_user = user_id
-        if user_id != current_user:
-            flush_user()
-            current_user = user_id
-            current_rows = []
-        current_rows.append(row)
-    flush_user()
-
-    if not kept_user_ids:
-        return rows.head(0), user_paths.head(0)
-    eligible_users = pl.DataFrame({"user_id": kept_user_ids}, schema={"user_id": pl.Utf8})
-    return rows.join(eligible_users, on="user_id", how="semi"), user_paths.join(
-        eligible_users, on="user_id", how="semi"
+    segment_summary = (
+        _build_segment_summary(rows)
+        .with_columns(
+            pl.col("segment_work_mode").shift(-1).over("user_id").alias("next_work_mode"),
+            pl.col("segment_module_codes").shift(-1).over("user_id").alias("next_module_codes"),
+        )
+        .sort(["user_id", "segment_index"])
+    )
+    placement_pairs = (
+        segment_summary.filter(
+            pl.col("segment_work_mode").is_in(sorted(PLACEMENT_WORK_MODES))
+            & (pl.col("next_work_mode") == "zpdes")
+        )
+        .select(
+            "user_id",
+            pl.col("segment_work_mode").alias("placement_mode"),
+            pl.col("next_module_codes").alias("module_code"),
+        )
+        .explode("module_code")
+        .drop_nulls("module_code")
+    )
+    offending_users = (
+        placement_pairs.group_by(["user_id", "placement_mode", "module_code"])
+        .agg(pl.len().alias("occurrences"))
+        .filter(pl.col("occurrences") > 1)
+        .select("user_id")
+        .unique()
+    )
+    if offending_users.height == 0:
+        return rows, user_paths
+    return rows.join(offending_users, on="user_id", how="anti"), user_paths.join(
+        offending_users, on="user_id", how="anti"
     )
 
 
