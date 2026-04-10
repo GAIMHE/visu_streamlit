@@ -39,6 +39,16 @@ PAGE_SPECS: tuple[PageSpec, ...] = (
         ),
     ),
     PageSpec(
+        page_id="cohort_filter_viewer",
+        label="Cohort Filter Viewer",
+        icon=":bar_chart:",
+        module_path="page_modules.9_cohort_filter_viewer",
+        bootstrap_runtime_paths=(
+            "data/learning_catalog.json",
+            "artifacts/derived/fact_attempt_core.parquet",
+        ),
+    ),
+    PageSpec(
         page_id="bottlenecks",
         label="Bottlenecks and Transitions",
         icon=":twisted_rightwards_arrows:",

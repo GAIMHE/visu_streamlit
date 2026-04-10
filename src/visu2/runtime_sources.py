@@ -130,6 +130,7 @@ MIA_LEGACY_CLEANUP_RELATIVE_PATHS: tuple[str, ...] = COMMON_LEGACY_CLEANUP_RELAT
 ALL_PAGE_IDS: frozenset[str] = frozenset(
     {
         "overview",
+        "cohort_filter_viewer",
         "bottlenecks",
         "matrix",
         "zpdes_transition_efficiency",
@@ -251,6 +252,7 @@ RUNTIME_SOURCES: dict[str, RuntimeSourceSpec] = {
         },
         supported_pages=(
             "overview",
+            "cohort_filter_viewer",
             "bottlenecks",
             "matrix",
             "student_elo",
@@ -300,6 +302,7 @@ RUNTIME_SOURCES: dict[str, RuntimeSourceSpec] = {
         },
         supported_pages=(
             "overview",
+            "cohort_filter_viewer",
             "bottlenecks",
             "matrix",
             "zpdes_transition_efficiency",

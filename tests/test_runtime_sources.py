@@ -97,18 +97,21 @@ def test_visible_pages_hide_unsupported_maureen_views() -> None:
     main_pages = {page.page_id for page in visible_pages_for_source(get_runtime_source("main"))}
     maureen_pages = {page.page_id for page in visible_pages_for_source(get_runtime_source("maureen_m16fr"))}
     mia_pages = {page.page_id for page in visible_pages_for_source(get_runtime_source("mia_module1"))}
+    assert "cohort_filter_viewer" in main_pages
     assert {
         "classroom_replay",
         "classroom_sankey",
         "zpdes_transition_efficiency",
         "m1_individual_path",
     }.issubset(main_pages)
+    assert "cohort_filter_viewer" in maureen_pages
     assert "student_objective_spider" in maureen_pages
     assert "student_elo" in maureen_pages
     assert "classroom_sankey" in maureen_pages
     assert "classroom_replay" in maureen_pages
     assert "zpdes_transition_efficiency" not in maureen_pages
     assert "m1_individual_path" not in maureen_pages
+    assert "cohort_filter_viewer" in mia_pages
     assert "zpdes_transition_efficiency" in mia_pages
     assert "m1_individual_path" not in mia_pages
     assert mia_pages == (maureen_pages | {"zpdes_transition_efficiency"})

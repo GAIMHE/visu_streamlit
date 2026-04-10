@@ -64,6 +64,16 @@ def test_classroom_pages_bootstrap_only_selector_artifacts() -> None:
     assert sankey.remote_query_paths == ("artifacts/derived/fact_attempt_core.parquet",)
 
 
+def test_cohort_filter_viewer_bootstraps_fact_and_catalog_only() -> None:
+    page = PAGE_SPEC_BY_ID["cohort_filter_viewer"]
+
+    assert page.bootstrap_runtime_paths == (
+        "data/learning_catalog.json",
+        "artifacts/derived/fact_attempt_core.parquet",
+    )
+    assert page.remote_query_paths == ()
+
+
 def test_default_page_id_for_source_uses_first_visible_page() -> None:
     assert default_page_id_for_source(get_runtime_source("main")) == "overview"
     assert default_page_id_for_source(get_runtime_source("maureen_m16fr")) == "overview"
