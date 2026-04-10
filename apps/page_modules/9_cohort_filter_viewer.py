@@ -55,6 +55,7 @@ RETRY_FILTER_MAX_KEY = "cohort_filter_viewer_max_retries"
 RETRY_FILTER_MODE_KEY = "cohort_filter_viewer_retry_filter_mode"
 REPEAT_MODULE_FILTER_KEY = "cohort_filter_viewer_repeat_module_filter"
 SCHEMA_MIN_STUDENTS_KEY = "cohort_filter_viewer_schema_min_students"
+APPLIED_FILTERS_KEY_PREFIX = "cohort_filter_viewer_applied_filters"
 
 
 @st.cache_data(show_spinner=False)
@@ -74,10 +75,16 @@ def _load_cohort_attempt_rows(
     return collect_lazy(query)
 
 
+def _applied_filters_state_key(source_id: str) -> str:
+    return f"{APPLIED_FILTERS_KEY_PREFIX}::{source_id}"
+
+
 @st.cache_data(show_spinner=False)
 def _compute_cohort_result(
-    attempt_rows: pl.DataFrame,
+    fact_path_str: str,
     *,
+    start_date_iso: str,
+    end_date_iso: str,
     selected_modules: tuple[str, ...],
     max_retries: int,
     retry_filter_mode: str,
@@ -89,6 +96,11 @@ def _compute_cohort_result(
     min_students_per_schema: int,
     selected_schemas: tuple[str, ...],
 ) -> CohortFilterResult:
+    attempt_rows = _load_cohort_attempt_rows(
+        Path(fact_path_str),
+        start_date_iso=start_date_iso,
+        end_date_iso=end_date_iso,
+    )
     return filter_cohort_view(
         attempt_rows,
         selected_modules=selected_modules,
@@ -101,6 +113,55 @@ def _compute_cohort_result(
         selected_transition_counts=selected_transition_counts,
         min_students_per_schema=min_students_per_schema,
         selected_schemas=selected_schemas,
+    )
+
+
+def _build_filter_payload(
+    *,
+    start_date: date,
+    end_date: date,
+    selected_modules: tuple[str, ...],
+    max_retries: int,
+    retry_filter_mode: str,
+    min_placement_attempts: int,
+    reject_same_placement_module_repeat: bool,
+    min_history: int,
+    history_basis: str,
+    selected_transition_counts: tuple[int, ...],
+    min_students_per_schema: int,
+    selected_schemas: tuple[str, ...],
+) -> dict[str, object]:
+    return {
+        "start_date_iso": start_date.isoformat(),
+        "end_date_iso": end_date.isoformat(),
+        "selected_modules": selected_modules,
+        "max_retries": max_retries,
+        "retry_filter_mode": retry_filter_mode,
+        "min_placement_attempts": min_placement_attempts,
+        "reject_same_placement_module_repeat": reject_same_placement_module_repeat,
+        "min_history": min_history,
+        "history_basis": history_basis,
+        "selected_transition_counts": selected_transition_counts,
+        "min_students_per_schema": min_students_per_schema,
+        "selected_schemas": selected_schemas,
+    }
+
+
+def _compute_from_payload(fact_path: Path, payload: dict[str, object]) -> CohortFilterResult:
+    return _compute_cohort_result(
+        str(fact_path),
+        start_date_iso=str(payload["start_date_iso"]),
+        end_date_iso=str(payload["end_date_iso"]),
+        selected_modules=tuple(str(value) for value in payload["selected_modules"]),
+        max_retries=int(payload["max_retries"]),
+        retry_filter_mode=str(payload["retry_filter_mode"]),
+        min_placement_attempts=int(payload["min_placement_attempts"]),
+        reject_same_placement_module_repeat=bool(payload["reject_same_placement_module_repeat"]),
+        min_history=int(payload["min_history"]),
+        history_basis=str(payload["history_basis"]),
+        selected_transition_counts=tuple(int(value) for value in payload["selected_transition_counts"]),
+        min_students_per_schema=int(payload["min_students_per_schema"]),
+        selected_schemas=tuple(str(value) for value in payload["selected_schemas"]),
     )
 
 
@@ -359,10 +420,43 @@ def main() -> None:
     if SCHEMA_MIN_STUDENTS_KEY not in st.session_state:
         st.session_state[SCHEMA_MIN_STUDENTS_KEY] = 1
 
+    applied_filters_key = _applied_filters_state_key(source_id)
+    if applied_filters_key not in st.session_state:
+        st.session_state[applied_filters_key] = _build_filter_payload(
+            start_date=default_start_date,
+            end_date=default_end_date,
+            selected_modules=tuple(module_options),
+            max_retries=-1,
+            retry_filter_mode=RETRY_FILTER_MODE_OPTIONS["Remove offending exercises only"],
+            min_placement_attempts=int(st.session_state[PLACEMENT_THRESHOLD_KEY]),
+            reject_same_placement_module_repeat=bool(st.session_state[REPEAT_MODULE_FILTER_KEY]),
+            min_history=int(st.session_state[HISTORY_THRESHOLD_KEY]),
+            history_basis=HISTORY_BASIS_OPTIONS[str(st.session_state[HISTORY_BASIS_KEY])],
+            selected_transition_counts=tuple(),
+            min_students_per_schema=int(st.session_state[SCHEMA_MIN_STUDENTS_KEY]),
+            selected_schemas=tuple(),
+        )
+
+    applied_payload = dict(st.session_state[applied_filters_key])
+    applied_result = _compute_from_payload(fact_path, applied_payload)
+    transition_options = (
+        applied_result.transition_options.get_column("transition_count").to_list()
+        if applied_result.transition_options.height
+        else []
+    )
+    schema_options = (
+        applied_result.schema_options.get_column("cleaned_schema").to_list()
+        if applied_result.schema_options.height
+        else []
+    )
+
     with st.sidebar.form(key=f"{source_id}_cohort_filter_form", clear_on_submit=False):
         date_value = st.date_input(
             "Date range (UTC)",
-            value=(default_start_date, default_end_date),
+            value=(
+                date.fromisoformat(str(applied_payload["start_date_iso"])),
+                date.fromisoformat(str(applied_payload["end_date_iso"])),
+            ),
             min_value=dimension_domain.min_date,
             max_value=dimension_domain.max_date,
             key=f"{source_id}_cohort_filter_date_range",
@@ -460,35 +554,6 @@ def main() -> None:
                 help="Remove cleaned schemas represented by fewer than this many students before exact schema selection.",
             )
         )
-
-        attempt_rows = _load_cohort_attempt_rows(
-            fact_path,
-            start_date_iso=start_date.isoformat(),
-            end_date_iso=end_date.isoformat(),
-        )
-
-        current_transition_counts = tuple(st.session_state.get(TRANSITION_SELECTION_KEY, []))
-        current_schemas = tuple(st.session_state.get(SCHEMA_SELECTION_KEY, []))
-
-        result = _compute_cohort_result(
-            attempt_rows,
-            selected_modules=selected_modules,
-            max_retries=effective_max_retries,
-            retry_filter_mode=RETRY_FILTER_MODE_OPTIONS[retry_filter_mode_label],
-            min_placement_attempts=min_placement_attempts,
-            reject_same_placement_module_repeat=reject_same_placement_module_repeat,
-            min_history=min_history,
-            history_basis=HISTORY_BASIS_OPTIONS[history_basis_label],
-            selected_transition_counts=tuple(int(value) for value in current_transition_counts),
-            min_students_per_schema=min_students_per_schema,
-            selected_schemas=tuple(str(value) for value in current_schemas),
-        )
-
-        transition_options = (
-            result.transition_options.get_column("transition_count").to_list()
-            if result.transition_options.height
-            else []
-        )
         _sync_multiselect_state(TRANSITION_SELECTION_KEY, transition_options, default_all=False)
         selected_transition_counts = tuple(
             int(value)
@@ -501,26 +566,6 @@ def main() -> None:
                     "Options refresh when you click Process cohort."
                 ),
             )
-        )
-
-        result = _compute_cohort_result(
-            attempt_rows,
-            selected_modules=selected_modules,
-            max_retries=effective_max_retries,
-            retry_filter_mode=RETRY_FILTER_MODE_OPTIONS[retry_filter_mode_label],
-            min_placement_attempts=min_placement_attempts,
-            reject_same_placement_module_repeat=reject_same_placement_module_repeat,
-            min_history=min_history,
-            history_basis=HISTORY_BASIS_OPTIONS[history_basis_label],
-            selected_transition_counts=selected_transition_counts,
-            min_students_per_schema=min_students_per_schema,
-            selected_schemas=(),
-        )
-
-        schema_options = (
-            result.schema_options.get_column("cleaned_schema").to_list()
-            if result.schema_options.height
-            else []
         )
         _sync_multiselect_state(SCHEMA_SELECTION_KEY, schema_options, default_all=False)
         selected_schemas = tuple(
@@ -538,26 +583,32 @@ def main() -> None:
 
         process_filters = st.form_submit_button("Process cohort", type="primary")
 
-    if attempt_rows.height == 0:
+    if process_filters:
+        applied_payload = _build_filter_payload(
+            start_date=start_date,
+            end_date=end_date,
+            selected_modules=selected_modules,
+            max_retries=effective_max_retries,
+            retry_filter_mode=RETRY_FILTER_MODE_OPTIONS[retry_filter_mode_label],
+            min_placement_attempts=min_placement_attempts,
+            reject_same_placement_module_repeat=reject_same_placement_module_repeat,
+            min_history=min_history,
+            history_basis=HISTORY_BASIS_OPTIONS[history_basis_label],
+            selected_transition_counts=selected_transition_counts,
+            min_students_per_schema=min_students_per_schema,
+            selected_schemas=selected_schemas,
+        )
+        st.session_state[applied_filters_key] = applied_payload
+        set_filter_date_range(source_id, start_date=start_date, end_date=end_date)
+        st.rerun()
+
+    final_result = applied_result
+    if process_filters:
+        final_result = _compute_from_payload(fact_path, applied_payload)
+
+    if final_result.baseline_attempts == 0:
         st.info("No attempts are available for the selected date range.")
         return
-
-    if process_filters:
-        set_filter_date_range(source_id, start_date=start_date, end_date=end_date)
-
-    final_result = _compute_cohort_result(
-        attempt_rows,
-        selected_modules=selected_modules,
-        max_retries=effective_max_retries,
-        retry_filter_mode=RETRY_FILTER_MODE_OPTIONS[retry_filter_mode_label],
-        min_placement_attempts=min_placement_attempts,
-        reject_same_placement_module_repeat=reject_same_placement_module_repeat,
-        min_history=min_history,
-        history_basis=HISTORY_BASIS_OPTIONS[history_basis_label],
-        selected_transition_counts=selected_transition_counts,
-        min_students_per_schema=min_students_per_schema,
-        selected_schemas=selected_schemas,
-    )
 
     st.title("Cohort Filter Viewer")
     st.caption(
