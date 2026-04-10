@@ -550,32 +550,61 @@ def main() -> None:
                 help="Remove cleaned schemas represented by fewer than this many students before exact schema selection.",
             )
         )
-        _sync_multiselect_state(TRANSITION_SELECTION_KEY, transition_options, default_all=False)
-        selected_transition_counts = tuple(
-            int(value)
-            for value in st.multiselect(
-                "Transition counts",
-                options=transition_options,
-                key=TRANSITION_SELECTION_KEY,
-                help=(
-                    "Leave empty to keep all transition counts after cleanup and history filtering. "
-                    "Options refresh when you click Process cohort."
-                ),
+        if transition_options:
+            _sync_multiselect_state(TRANSITION_SELECTION_KEY, transition_options, default_all=False)
+            selected_transition_counts = tuple(
+                int(value)
+                for value in st.multiselect(
+                    "Transition counts",
+                    options=transition_options,
+                    key=TRANSITION_SELECTION_KEY,
+                    help=(
+                        "Leave empty to keep all transition counts after cleanup and history filtering. "
+                        "Options refresh when you click Process cohort."
+                    ),
+                )
             )
-        )
-        _sync_multiselect_state(SCHEMA_SELECTION_KEY, schema_options, default_all=False)
-        selected_schemas = tuple(
-            str(value)
-            for value in st.multiselect(
-                "Exact schemas",
-                options=schema_options,
-                key=SCHEMA_SELECTION_KEY,
-                help=(
-                    "Leave empty to keep all schemas after the transition-count and schema-size filters. "
-                    "Options refresh when you click Process cohort."
-                ),
+        else:
+            selected_transition_counts = tuple(
+                int(value)
+                for value in (
+                    st.session_state.get(TRANSITION_SELECTION_KEY)
+                    or (applied_payload.get("selected_transition_counts", ()) if isinstance(applied_payload, dict) else ())
+                )
             )
-        )
+            st.markdown("**Transition counts**")
+            if applied_result is None:
+                st.caption("Available after the first processed cohort.")
+            else:
+                st.caption("No transition-count options are available for the current processed cohort.")
+
+        if schema_options:
+            _sync_multiselect_state(SCHEMA_SELECTION_KEY, schema_options, default_all=False)
+            selected_schemas = tuple(
+                str(value)
+                for value in st.multiselect(
+                    "Exact schemas",
+                    options=schema_options,
+                    key=SCHEMA_SELECTION_KEY,
+                    help=(
+                        "Leave empty to keep all schemas after the transition-count and schema-size filters. "
+                        "Options refresh when you click Process cohort."
+                    ),
+                )
+            )
+        else:
+            selected_schemas = tuple(
+                str(value)
+                for value in (
+                    st.session_state.get(SCHEMA_SELECTION_KEY)
+                    or (applied_payload.get("selected_schemas", ()) if isinstance(applied_payload, dict) else ())
+                )
+            )
+            st.markdown("**Exact schemas**")
+            if applied_result is None:
+                st.caption("Available after the first processed cohort.")
+            else:
+                st.caption("No schema options are available for the current processed cohort.")
 
         process_filters = st.form_submit_button("Process cohort", type="primary")
 
