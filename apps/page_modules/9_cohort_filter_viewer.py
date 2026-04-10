@@ -470,7 +470,10 @@ def main() -> None:
                 "Modules to keep",
                 options=module_options,
                 key=MODULE_SELECTION_KEY,
-                help="Keep only attempts from these modules before path analysis.",
+                help=(
+                    "Only keep attempts from these modules. "
+                    "The work-mode path is then rebuilt from that reduced slice."
+                ),
             )
         )
 
@@ -481,13 +484,20 @@ def main() -> None:
                 max_value=1_000_000,
                 step=1,
                 key=HISTORY_THRESHOLD_KEY,
-                help="Applied after module scoping and placement cleanup.",
+                help=(
+                    "Minimum history required for each student after the earlier filters. "
+                    "What counts as 'history' depends on the option just below."
+                ),
             )
         )
         history_basis_label = st.selectbox(
             "History basis",
             options=list(HISTORY_BASIS_OPTIONS.keys()),
             key=HISTORY_BASIS_KEY,
+            help=(
+                "`Raw attempts` counts every try, including retries. "
+                "`Distinct exercises` counts different exercises only once per student."
+            ),
         )
         min_placement_attempts = int(
             st.number_input(
@@ -497,7 +507,8 @@ def main() -> None:
                 step=1,
                 key=PLACEMENT_THRESHOLD_KEY,
                 help=(
-                    "Placement segments below this threshold are removed together with the immediately following segment."
+                    "Placement means an `initial-test` or `adaptive-test` block. "
+                    "If such a block has fewer attempts than this threshold, we remove that block and the ZPDES block that comes right after it."
                 ),
             )
         )
@@ -506,7 +517,8 @@ def main() -> None:
                 "Enable max retries filter",
                 key=RETRY_FILTER_ENABLED_KEY,
                 help=(
-                    "Cap retries per student and exercise inside the selected date range and module slice."
+                    "A retry means an extra try on the same exercise after the first try. "
+                    "Turn this on if you want to remove extreme repeat behavior."
                 ),
             )
         )
@@ -517,7 +529,10 @@ def main() -> None:
                 max_value=1_000_000,
                 step=1,
                 key=RETRY_FILTER_MAX_KEY,
-                help="Used only when `Enable max retries filter` is checked.",
+                help=(
+                    "Maximum number of retries allowed on one exercise for one student. "
+                    "Example: `0` means keep only first tries, `3` means first try plus up to 3 retries."
+                ),
             )
         )
         retry_filter_mode_label = st.selectbox(
@@ -525,8 +540,8 @@ def main() -> None:
             options=list(RETRY_FILTER_MODE_OPTIONS.keys()),
             key=RETRY_FILTER_MODE_KEY,
             help=(
-                "Used only when `Enable max retries filter` is checked. "
-                "Either drop the whole student when one exercise exceeds the cap, or remove only the offending student-exercise rows."
+                "If a student goes above the retry limit, either remove the whole student from the cohort "
+                "or remove only that over-repeated exercise."
             ),
         )
         effective_max_retries = max_retries if retry_filter_enabled else -1
@@ -535,8 +550,9 @@ def main() -> None:
                 "Reject same placement -> same module loops",
                 key=REPEAT_MODULE_FILTER_KEY,
                 help=(
-                    "Drop students who return to the same module after the same placement mode, such as "
-                    "`initial-test -> zpdes(M1) -> initial-test -> zpdes(M1)`."
+                    "Remove students who come back to the same module after the same placement type. "
+                    "Example removed: `initial-test -> zpdes(M1) -> initial-test -> zpdes(M1)`. "
+                    "Example kept: `initial-test -> zpdes(M1) -> adaptive-test -> zpdes(M1)`."
                 ),
             )
         )
@@ -547,7 +563,10 @@ def main() -> None:
                 max_value=1_000_000,
                 step=1,
                 key=SCHEMA_MIN_STUDENTS_KEY,
-                help="Remove cleaned schemas represented by fewer than this many students before exact schema selection.",
+                help=(
+                    "Remove path patterns that are represented by fewer than this many students "
+                    "before you choose exact schemas below."
+                ),
             )
         )
         if transition_options:
@@ -559,8 +578,9 @@ def main() -> None:
                     options=transition_options,
                     key=TRANSITION_SELECTION_KEY,
                     help=(
-                        "Leave empty to keep all transition counts after cleanup and history filtering. "
-                        "Options refresh when you click Process cohort."
+                        "Number of changes in work mode after cleanup. "
+                        "Example: `initial-test -> zpdes` has 1 transition. "
+                        "Leave empty to keep all values. Options refresh when you click Process cohort."
                     ),
                 )
             )
@@ -574,7 +594,7 @@ def main() -> None:
             )
             st.markdown("**Transition counts**")
             if applied_result is None:
-                st.caption("Available after the first processed cohort.")
+                st.caption("Available after the first processed cohort. Example: `initial-test -> zpdes` gives 1 transition.")
             else:
                 st.caption("No transition-count options are available for the current processed cohort.")
 
@@ -587,8 +607,9 @@ def main() -> None:
                     options=schema_options,
                     key=SCHEMA_SELECTION_KEY,
                     help=(
-                        "Leave empty to keep all schemas after the transition-count and schema-size filters. "
-                        "Options refresh when you click Process cohort."
+                        "Exact cleaned work-mode path after the earlier filters. "
+                        "Example: `initial-test -> zpdes -> adaptive-test -> zpdes`. "
+                        "Leave empty to keep all schemas. Options refresh when you click Process cohort."
                     ),
                 )
             )
@@ -602,7 +623,7 @@ def main() -> None:
             )
             st.markdown("**Exact schemas**")
             if applied_result is None:
-                st.caption("Available after the first processed cohort.")
+                st.caption("Available after the first processed cohort. These are the exact work-mode paths that remain after cleanup.")
             else:
                 st.caption("No schema options are available for the current processed cohort.")
 
