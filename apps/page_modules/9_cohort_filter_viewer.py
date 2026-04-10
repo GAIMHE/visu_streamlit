@@ -625,7 +625,7 @@ def main() -> None:
     stage_module_attempts = final_result.stage_module_attempts
 
     st.subheader("Funnel")
-    st.dataframe(_format_stage_table(stage_summary), use_container_width=True, hide_index=True)
+    st.dataframe(_format_stage_table(stage_summary), width="stretch", hide_index=True)
 
     chart_config = build_plotly_chart_config(modebar_buttons_to_remove=["lasso2d", "select2d"])
     students_chart, attempts_chart = st.columns(2)
@@ -637,7 +637,7 @@ def main() -> None:
                 title="Students retained across stages",
                 yaxis_title="Students",
             ),
-            use_container_width=True,
+            width="stretch",
             config=chart_config,
         )
     with attempts_chart:
@@ -648,13 +648,13 @@ def main() -> None:
                 title="Attempts retained across stages",
                 yaxis_title="Attempts",
             ),
-            use_container_width=True,
+            width="stretch",
             config=chart_config,
         )
 
     st.plotly_chart(
         _build_stage_module_figure(stage_module_attempts),
-        use_container_width=True,
+        width="stretch",
         config=chart_config,
     )
 
@@ -693,10 +693,10 @@ def main() -> None:
 
     st.plotly_chart(
         _build_final_module_figure(final_module_summary),
-        use_container_width=True,
+        width="stretch",
         config=chart_config,
     )
-    st.dataframe(_format_schema_table(final_schema_summary), use_container_width=True, hide_index=True)
+    st.dataframe(_format_schema_table(final_schema_summary), width="stretch", hide_index=True)
 
 
 if __name__ == "__main__":
