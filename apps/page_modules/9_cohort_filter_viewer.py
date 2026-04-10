@@ -37,9 +37,8 @@ from visu2.cohort_filter_viewer import (
     HISTORY_BASIS_OPTIONS,
     RETRY_FILTER_MODE_OPTIONS,
     CohortFilterResult,
-    build_final_module_summary,
     build_schema_summary_vs_baseline,
-    filter_cohort_view,
+    compute_cohort_view_from_parquet,
 )
 from visu2.config import get_settings
 
@@ -96,13 +95,10 @@ def _compute_cohort_result(
     min_students_per_schema: int,
     selected_schemas: tuple[str, ...],
 ) -> CohortFilterResult:
-    attempt_rows = _load_cohort_attempt_rows(
-        Path(fact_path_str),
+    return compute_cohort_view_from_parquet(
+        fact_path_str,
         start_date_iso=start_date_iso,
         end_date_iso=end_date_iso,
-    )
-    return filter_cohort_view(
-        attempt_rows,
         selected_modules=selected_modules,
         max_retries=max_retries,
         retry_filter_mode=retry_filter_mode,
@@ -659,21 +655,20 @@ def main() -> None:
     )
 
     st.subheader("Final Slice")
-    final_rows = final_result.final_rows
     final_user_paths = final_result.final_user_paths
 
-    if final_rows.height == 0 or final_user_paths.height == 0:
+    if final_result.final_attempts == 0 or final_user_paths.height == 0:
         st.info("No students remain after the current cohort filters. Try relaxing the module, placement, history, transition, or schema constraints.")
         return
 
-    final_module_summary = build_final_module_summary(final_rows)
+    final_module_summary = final_result.final_module_summary
     final_schema_summary = build_schema_summary_vs_baseline(
         final_user_paths,
         baseline_students=final_result.baseline_students,
         baseline_attempts=final_result.baseline_attempts,
     )
     final_students = int(final_user_paths.height)
-    final_attempts = int(final_rows.height)
+    final_attempts = int(final_result.final_attempts)
     final_mean_attempts = final_attempts / final_students if final_students else 0.0
     final_median_attempts = float(final_user_paths.get_column("retained_attempts").median()) if final_students else 0.0
     represented_modules = int(final_module_summary.height)

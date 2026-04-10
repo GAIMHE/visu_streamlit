@@ -31,8 +31,17 @@ class CohortFilterResult:
     schema_options: pl.DataFrame
     final_rows: pl.DataFrame
     final_user_paths: pl.DataFrame
+    final_module_summary: pl.DataFrame
+    final_attempts: int
     baseline_students: int
     baseline_attempts: int
+
+
+def _collect_lazy(lf: pl.LazyFrame) -> pl.DataFrame:
+    try:
+        return lf.collect(engine="streaming")
+    except TypeError:
+        return lf.collect()
 
 
 def _empty_user_paths_frame() -> pl.DataFrame:
@@ -65,6 +74,23 @@ def _normalize_optional_string(column: str) -> pl.Expr:
         .then(pl.lit(None, dtype=pl.Utf8))
         .otherwise(stripped)
         .alias(column)
+    )
+
+
+def _empty_stage_module_attempts_frame() -> pl.DataFrame:
+    return pl.DataFrame(
+        {
+            "stage_key": [],
+            "stage_label": [],
+            "module_code": [],
+            "attempts": [],
+        },
+        schema={
+            "stage_key": pl.Utf8,
+            "stage_label": pl.Utf8,
+            "module_code": pl.Utf8,
+            "attempts": pl.Int64,
+        },
     )
 
 
@@ -206,6 +232,281 @@ def _build_user_paths_from_rows(frame: pl.DataFrame) -> pl.DataFrame:
             ]
         )
         .sort(["transition_count", "cleaned_schema", "user_id"])
+    )
+
+
+def _normalize_attempt_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
+    return (
+        lf.select(
+            [
+                pl.col("user_id").cast(pl.Utf8),
+                pl.col("created_at").cast(pl.Datetime(time_unit="us")),
+                pl.col("work_mode").cast(pl.Utf8),
+                pl.col("module_code").cast(pl.Utf8),
+                pl.col("exercise_id").cast(pl.Utf8),
+                pl.col("attempt_number").cast(pl.Int64),
+            ]
+        )
+        .filter(
+            pl.col("user_id").is_not_null()
+            & (pl.col("user_id").str.strip_chars() != "")
+            & pl.col("created_at").is_not_null()
+            & pl.col("work_mode").is_not_null()
+            & (pl.col("work_mode").str.strip_chars() != "")
+        )
+        .with_columns(
+            pl.col("user_id").str.strip_chars().alias("user_id"),
+            pl.col("work_mode").str.strip_chars().alias("work_mode"),
+            _normalize_optional_string("module_code"),
+            _normalize_optional_string("exercise_id"),
+            pl.col("attempt_number").fill_null(0).alias("attempt_number"),
+        )
+    )
+
+
+def _annotate_segments_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
+    return (
+        lf.sort(["user_id", "created_at", "module_code", "exercise_id", "attempt_number"])
+        .with_columns(
+            (
+                pl.col("user_id").ne(pl.col("user_id").shift(1)).fill_null(True)
+                | pl.col("work_mode").ne(pl.col("work_mode").shift(1)).fill_null(True)
+            ).alias("_segment_start")
+        )
+        .with_columns(
+            pl.col("_segment_start")
+            .cast(pl.Int64)
+            .cum_sum()
+            .over("user_id")
+            .alias("segment_index")
+        )
+        .drop("_segment_start")
+    )
+
+
+def _build_stage_record_from_values(
+    *,
+    stage_key: str,
+    stage_label: str,
+    students: int,
+    attempts: int,
+    module_codes: list[str],
+    baseline_students: int,
+    baseline_attempts: int,
+) -> dict[str, Any]:
+    return {
+        "stage_key": stage_key,
+        "stage_label": stage_label,
+        "students": students,
+        "attempts": attempts,
+        "mean_attempts_per_student": float(attempts / students) if students else 0.0,
+        "represented_modules": len(module_codes),
+        "module_codes": ", ".join(module_codes),
+        "student_share_vs_baseline": (students / baseline_students) if baseline_students else 0.0,
+        "attempt_share_vs_baseline": (attempts / baseline_attempts) if baseline_attempts else 0.0,
+    }
+
+
+def _build_stage_module_attempts_from_aggregated(
+    frame: pl.DataFrame,
+    *,
+    stage_key: str,
+    stage_label: str,
+) -> pl.DataFrame:
+    if frame.height == 0:
+        return _empty_stage_module_attempts_frame()
+    return (
+        frame.with_columns(
+            pl.lit(stage_key).alias("stage_key"),
+            pl.lit(stage_label).alias("stage_label"),
+        )
+        .select(["stage_key", "stage_label", "module_code", "attempts"])
+        .sort(["stage_label", "attempts", "module_code"], descending=[False, True, False])
+    )
+
+
+def _collect_stage_metrics_from_lazy(lf: pl.LazyFrame) -> tuple[dict[str, int], pl.DataFrame, list[str]]:
+    summary = _collect_lazy(
+        lf.select(
+            pl.col("user_id").n_unique().alias("students"),
+            pl.len().alias("attempts"),
+        )
+    )
+    students = int(summary.get_column("students").item()) if summary.height else 0
+    attempts = int(summary.get_column("attempts").item()) if summary.height else 0
+    module_attempts = _collect_lazy(
+        lf.with_columns(_module_display_expr())
+        .group_by("module_display")
+        .agg(pl.len().alias("attempts"))
+        .rename({"module_display": "module_code"})
+        .sort(["attempts", "module_code"], descending=[True, False])
+    )
+    module_codes = (
+        module_attempts.get_column("module_code").to_list() if module_attempts.height else []
+    )
+    return {"students": students, "attempts": attempts}, module_attempts, module_codes
+
+
+def _collect_segment_tables(lf: pl.LazyFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
+    segmented = _annotate_segments_lazy(lf)
+    segment_summary = _collect_lazy(
+        segmented.group_by(["user_id", "segment_index"], maintain_order=True)
+        .agg(
+            pl.first("work_mode").alias("segment_work_mode"),
+            pl.len().alias("segment_attempts"),
+        )
+        .sort(["user_id", "segment_index"])
+    )
+    segment_module_attempts = _collect_lazy(
+        segmented.group_by(["user_id", "segment_index", "module_code"], maintain_order=True)
+        .agg(pl.len().alias("attempts"))
+        .sort(["user_id", "segment_index", "module_code"])
+    )
+    return segment_summary, segment_module_attempts
+
+
+def _build_stage_summary_from_segments(
+    segment_summary: pl.DataFrame,
+    segment_module_attempts: pl.DataFrame,
+    *,
+    stage_key: str,
+    stage_label: str,
+    baseline_students: int,
+    baseline_attempts: int,
+) -> dict[str, Any]:
+    students = int(segment_summary.select(pl.col("user_id").n_unique()).item()) if segment_summary.height else 0
+    attempts = int(segment_summary.get_column("segment_attempts").sum()) if segment_summary.height else 0
+    module_codes = []
+    if segment_module_attempts.height:
+        module_codes = (
+            segment_module_attempts.with_columns(_module_display_expr())
+            .select("module_display")
+            .unique()
+            .sort("module_display")
+            .get_column("module_display")
+            .to_list()
+        )
+    return _build_stage_record_from_values(
+        stage_key=stage_key,
+        stage_label=stage_label,
+        students=students,
+        attempts=attempts,
+        module_codes=module_codes,
+        baseline_students=baseline_students,
+        baseline_attempts=baseline_attempts,
+    )
+
+
+def _build_stage_module_attempts_from_segments(
+    segment_module_attempts: pl.DataFrame,
+    *,
+    stage_key: str,
+    stage_label: str,
+) -> pl.DataFrame:
+    if segment_module_attempts.height == 0:
+        return _empty_stage_module_attempts_frame()
+    aggregated = (
+        segment_module_attempts.with_columns(_module_display_expr())
+        .group_by("module_display")
+        .agg(pl.sum("attempts").alias("attempts"))
+        .rename({"module_display": "module_code"})
+        .sort(["attempts", "module_code"], descending=[True, False])
+    )
+    return _build_stage_module_attempts_from_aggregated(
+        aggregated,
+        stage_key=stage_key,
+        stage_label=stage_label,
+    )
+
+
+def _build_user_paths_from_segments(
+    segment_summary: pl.DataFrame,
+    *,
+    distinct_exercise_counts: pl.DataFrame | None = None,
+) -> pl.DataFrame:
+    if segment_summary.height == 0:
+        return _empty_user_paths_frame()
+    base = (
+        segment_summary.group_by("user_id", maintain_order=True)
+        .agg(
+            pl.col("segment_work_mode").alias("cleaned_modes"),
+            pl.sum("segment_attempts").alias("retained_attempts"),
+        )
+        .with_columns(
+            pl.col("cleaned_modes").list.join(" -> ").alias("cleaned_schema"),
+            (
+                pl.when(pl.col("cleaned_modes").list.len() > 0)
+                .then(pl.col("cleaned_modes").list.len() - 1)
+                .otherwise(pl.lit(0))
+            )
+            .cast(pl.Int64)
+            .alias("transition_count"),
+        )
+        .drop("cleaned_modes")
+    )
+    if distinct_exercise_counts is None:
+        base = base.with_columns(
+            pl.lit(0, dtype=pl.Int64).alias("retained_distinct_exercises")
+        )
+    else:
+        base = base.join(distinct_exercise_counts, on="user_id", how="left").with_columns(
+            pl.col("retained_distinct_exercises").fill_null(0)
+        )
+    return base.select(
+        [
+            "user_id",
+            "cleaned_schema",
+            "transition_count",
+            "retained_attempts",
+            "retained_distinct_exercises",
+        ]
+    ).sort(["transition_count", "cleaned_schema", "user_id"])
+
+
+def _collect_distinct_exercise_counts_for_segments(
+    fact_path: str,
+    *,
+    start_date_iso: str,
+    end_date_iso: str,
+    selected_modules: tuple[str, ...],
+    max_retries: int,
+    retry_filter_mode: str,
+    retained_segments: pl.DataFrame,
+) -> pl.DataFrame:
+    if retained_segments.height == 0:
+        return pl.DataFrame(
+            {"user_id": [], "retained_distinct_exercises": []},
+            schema={"user_id": pl.Utf8, "retained_distinct_exercises": pl.Int64},
+        )
+    base = _normalize_attempt_lazy(
+        pl.scan_parquet(fact_path)
+        .filter(
+            (pl.col("date_utc") >= pl.lit(pl.Date(start_date_iso)))
+            & (pl.col("date_utc") <= pl.lit(pl.Date(end_date_iso)))
+        )
+    )
+    if selected_modules:
+        base = base.filter(pl.col("module_code").is_in(list(selected_modules)))
+    if max_retries > 0:
+        offending_pairs = (
+            base.filter(pl.col("exercise_id").is_not_null() & (pl.col("exercise_id") != ""))
+            .group_by(["user_id", "exercise_id"])
+            .agg(pl.len().alias("attempts"))
+            .with_columns((pl.col("attempts") - 1).alias("retries"))
+            .filter(pl.col("retries") > max_retries)
+            .select(["user_id", "exercise_id"])
+        )
+        if retry_filter_mode == RETRY_FILTER_MODE_REMOVE_STUDENT:
+            offending_users = offending_pairs.select("user_id").unique()
+            base = base.join(offending_users, on="user_id", how="anti")
+        else:
+            base = base.join(offending_pairs, on=["user_id", "exercise_id"], how="anti")
+    segmented = _annotate_segments_lazy(base)
+    retained_keys = retained_segments.select(["user_id", "segment_index"]).lazy()
+    return _collect_lazy(
+        segmented.join(retained_keys, on=["user_id", "segment_index"], how="inner")
+        .group_by("user_id")
+        .agg(pl.col("exercise_id").drop_nulls().n_unique().alias("retained_distinct_exercises"))
     )
 
 
@@ -440,6 +741,171 @@ def apply_schema_filter(
     )
 
 
+def apply_placement_cleanup_segments(
+    segment_summary: pl.DataFrame,
+    segment_module_attempts: pl.DataFrame,
+    *,
+    min_placement_attempts: int,
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    if segment_summary.height == 0:
+        return segment_summary, segment_module_attempts
+    threshold = max(1, int(min_placement_attempts))
+    short_placements = segment_summary.filter(
+        pl.col("segment_work_mode").is_in(sorted(PLACEMENT_WORK_MODES))
+        & (pl.col("segment_attempts") < threshold)
+    ).select(["user_id", "segment_index"])
+    if short_placements.height == 0:
+        return segment_summary, segment_module_attempts
+    segments_to_drop = pl.concat(
+        [
+            short_placements,
+            short_placements.with_columns((pl.col("segment_index") + 1).alias("segment_index")),
+        ],
+        how="vertical_relaxed",
+    ).unique()
+    return (
+        segment_summary.join(segments_to_drop, on=["user_id", "segment_index"], how="anti"),
+        segment_module_attempts.join(segments_to_drop, on=["user_id", "segment_index"], how="anti"),
+    )
+
+
+def apply_same_placement_module_repeat_filter_segments(
+    segment_summary: pl.DataFrame,
+    segment_module_attempts: pl.DataFrame,
+    *,
+    enabled: bool,
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    if not enabled or segment_summary.height == 0:
+        return segment_summary, segment_module_attempts
+    segment_modules = (
+        segment_module_attempts.drop_nulls("module_code")
+        .group_by(["user_id", "segment_index"])
+        .agg(pl.col("module_code").unique().sort().alias("segment_module_codes"))
+    )
+    annotated = (
+        segment_summary.join(segment_modules, on=["user_id", "segment_index"], how="left")
+        .sort(["user_id", "segment_index"])
+        .with_columns(
+            pl.col("segment_work_mode").shift(-1).over("user_id").alias("next_work_mode"),
+            pl.col("segment_module_codes").shift(-1).over("user_id").alias("next_module_codes"),
+        )
+    )
+    offending_users = (
+        annotated.filter(
+            pl.col("segment_work_mode").is_in(sorted(PLACEMENT_WORK_MODES))
+            & (pl.col("next_work_mode") == "zpdes")
+        )
+        .select(
+            "user_id",
+            pl.col("segment_work_mode").alias("placement_mode"),
+            pl.col("next_module_codes").alias("module_code"),
+        )
+        .explode("module_code")
+        .drop_nulls("module_code")
+        .group_by(["user_id", "placement_mode", "module_code"])
+        .agg(pl.len().alias("occurrences"))
+        .filter(pl.col("occurrences") > 1)
+        .select("user_id")
+        .unique()
+    )
+    if offending_users.height == 0:
+        return segment_summary, segment_module_attempts
+    return (
+        segment_summary.join(offending_users, on="user_id", how="anti"),
+        segment_module_attempts.join(offending_users, on="user_id", how="anti"),
+    )
+
+
+def apply_history_threshold_segments(
+    segment_summary: pl.DataFrame,
+    segment_module_attempts: pl.DataFrame,
+    user_paths: pl.DataFrame,
+    *,
+    min_history: int,
+    history_basis: str,
+) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
+    threshold = max(1, int(min_history))
+    if segment_summary.height == 0 or user_paths.height == 0 or threshold <= 1:
+        return segment_summary, segment_module_attempts, user_paths
+    metric_column = (
+        "retained_distinct_exercises"
+        if history_basis == HISTORY_BASIS_DISTINCT_EXERCISES
+        else "retained_attempts"
+    )
+    eligible_users = user_paths.filter(pl.col(metric_column) >= threshold).select("user_id")
+    return (
+        segment_summary.join(eligible_users, on="user_id", how="semi"),
+        segment_module_attempts.join(eligible_users, on="user_id", how="semi"),
+        user_paths.join(eligible_users, on="user_id", how="semi"),
+    )
+
+
+def apply_transition_count_filter_segments(
+    segment_summary: pl.DataFrame,
+    segment_module_attempts: pl.DataFrame,
+    user_paths: pl.DataFrame,
+    *,
+    selected_transition_counts: tuple[int, ...],
+) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
+    counts = tuple(sorted({int(value) for value in selected_transition_counts}))
+    if not counts or segment_summary.height == 0 or user_paths.height == 0:
+        return segment_summary, segment_module_attempts, user_paths
+    eligible_users = user_paths.filter(pl.col("transition_count").is_in(counts)).select("user_id")
+    return (
+        segment_summary.join(eligible_users, on="user_id", how="semi"),
+        segment_module_attempts.join(eligible_users, on="user_id", how="semi"),
+        user_paths.join(eligible_users, on="user_id", how="semi"),
+    )
+
+
+def apply_schema_size_threshold_segments(
+    segment_summary: pl.DataFrame,
+    segment_module_attempts: pl.DataFrame,
+    user_paths: pl.DataFrame,
+    *,
+    min_students_per_schema: int,
+) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
+    threshold = max(1, int(min_students_per_schema))
+    if segment_summary.height == 0 or user_paths.height == 0 or threshold <= 1:
+        return segment_summary, segment_module_attempts, user_paths
+    eligible_schemas = (
+        user_paths.group_by("cleaned_schema")
+        .agg(pl.len().alias("students"))
+        .filter(pl.col("students") >= threshold)
+        .select("cleaned_schema")
+    )
+    if eligible_schemas.height == 0:
+        empty_segments = segment_summary.head(0)
+        empty_seg_mod = segment_module_attempts.head(0)
+        empty_paths = user_paths.head(0)
+        return empty_segments, empty_seg_mod, empty_paths
+    filtered_paths = user_paths.join(eligible_schemas, on="cleaned_schema", how="semi")
+    eligible_users = filtered_paths.select("user_id")
+    return (
+        segment_summary.join(eligible_users, on="user_id", how="semi"),
+        segment_module_attempts.join(eligible_users, on="user_id", how="semi"),
+        filtered_paths,
+    )
+
+
+def apply_schema_filter_segments(
+    segment_summary: pl.DataFrame,
+    segment_module_attempts: pl.DataFrame,
+    user_paths: pl.DataFrame,
+    *,
+    selected_schemas: tuple[str, ...],
+) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
+    schemas = tuple(str(value).strip() for value in selected_schemas if str(value or "").strip())
+    if not schemas or segment_summary.height == 0 or user_paths.height == 0:
+        return segment_summary, segment_module_attempts, user_paths
+    eligible_users = user_paths.filter(pl.col("cleaned_schema").is_in(schemas)).select("user_id")
+    return (
+        segment_summary.join(eligible_users, on="user_id", how="semi"),
+        segment_module_attempts.join(eligible_users, on="user_id", how="semi"),
+        user_paths.join(eligible_users, on="user_id", how="semi"),
+    )
+
+
 def _module_display_expr(column: str = "module_code") -> pl.Expr:
     return (
         pl.when(pl.col(column).is_null() | (pl.col(column).cast(pl.Utf8).str.strip_chars() == ""))
@@ -654,6 +1120,8 @@ def filter_cohort_view(
         ]
     )
     stage_module_attempts = pl.concat(stage_module_frames, how="vertical_relaxed")
+    final_module_summary = build_final_module_summary(final_rows)
+    final_attempts = int(final_rows.height)
 
     return CohortFilterResult(
         stage_summary=stage_summary,
@@ -662,6 +1130,320 @@ def filter_cohort_view(
         schema_options=schema_options,
         final_rows=final_rows,
         final_user_paths=final_user_paths,
+        final_module_summary=final_module_summary,
+        final_attempts=final_attempts,
+        baseline_students=baseline_students,
+        baseline_attempts=baseline_attempts,
+    )
+
+
+def compute_cohort_view_from_parquet(
+    fact_path: str,
+    *,
+    start_date_iso: str,
+    end_date_iso: str,
+    selected_modules: tuple[str, ...],
+    max_retries: int,
+    retry_filter_mode: str,
+    min_placement_attempts: int,
+    reject_same_placement_module_repeat: bool,
+    min_history: int,
+    history_basis: str,
+    selected_transition_counts: tuple[int, ...],
+    min_students_per_schema: int,
+    selected_schemas: tuple[str, ...],
+) -> CohortFilterResult:
+    start_date = pl.lit(start_date_iso).str.strptime(pl.Date, strict=True)
+    end_date = pl.lit(end_date_iso).str.strptime(pl.Date, strict=True)
+    base_scan = _normalize_attempt_lazy(
+        pl.scan_parquet(fact_path).filter(
+            (pl.col("date_utc") >= start_date) & (pl.col("date_utc") <= end_date)
+        )
+    )
+
+    baseline_metrics, baseline_module_attempts_frame, baseline_module_codes = _collect_stage_metrics_from_lazy(
+        base_scan
+    )
+    baseline_students = int(baseline_metrics["students"])
+    baseline_attempts = int(baseline_metrics["attempts"])
+
+    stage_records: list[dict[str, Any]] = [
+        _build_stage_record_from_values(
+            stage_key="baseline",
+            stage_label="Baseline",
+            students=baseline_students,
+            attempts=baseline_attempts,
+            module_codes=baseline_module_codes,
+            baseline_students=baseline_students,
+            baseline_attempts=baseline_attempts,
+        )
+    ]
+    stage_module_frames: list[pl.DataFrame] = [
+        _build_stage_module_attempts_from_aggregated(
+            baseline_module_attempts_frame,
+            stage_key="baseline",
+            stage_label="Baseline",
+        )
+    ]
+
+    module_scan = (
+        base_scan.filter(pl.col("module_code").is_in(list(selected_modules)))
+        if selected_modules
+        else base_scan.head(0)
+    )
+    module_metrics, module_module_attempts_frame, module_codes = _collect_stage_metrics_from_lazy(module_scan)
+    stage_records.append(
+        _build_stage_record_from_values(
+            stage_key="modules",
+            stage_label="Modules kept",
+            students=int(module_metrics["students"]),
+            attempts=int(module_metrics["attempts"]),
+            module_codes=module_codes,
+            baseline_students=baseline_students,
+            baseline_attempts=baseline_attempts,
+        )
+    )
+    stage_module_frames.append(
+        _build_stage_module_attempts_from_aggregated(
+            module_module_attempts_frame,
+            stage_key="modules",
+            stage_label="Modules kept",
+        )
+    )
+
+    retry_scan = module_scan
+    if max_retries > 0:
+        offending_pairs = (
+            module_scan.filter(pl.col("exercise_id").is_not_null() & (pl.col("exercise_id") != ""))
+            .group_by(["user_id", "exercise_id"])
+            .agg(pl.len().alias("attempts"))
+            .with_columns((pl.col("attempts") - 1).alias("retries"))
+            .filter(pl.col("retries") > max_retries)
+            .select(["user_id", "exercise_id"])
+        )
+        if retry_filter_mode == RETRY_FILTER_MODE_REMOVE_STUDENT:
+            retry_scan = module_scan.join(offending_pairs.select("user_id").unique(), on="user_id", how="anti")
+        else:
+            retry_scan = module_scan.join(offending_pairs, on=["user_id", "exercise_id"], how="anti")
+
+    retry_metrics, retry_module_attempts_frame, retry_codes = _collect_stage_metrics_from_lazy(retry_scan)
+    stage_records.append(
+        _build_stage_record_from_values(
+            stage_key="retries",
+            stage_label="Retry filter",
+            students=int(retry_metrics["students"]),
+            attempts=int(retry_metrics["attempts"]),
+            module_codes=retry_codes,
+            baseline_students=baseline_students,
+            baseline_attempts=baseline_attempts,
+        )
+    )
+    stage_module_frames.append(
+        _build_stage_module_attempts_from_aggregated(
+            retry_module_attempts_frame,
+            stage_key="retries",
+            stage_label="Retry filter",
+        )
+    )
+
+    segment_summary, segment_module_attempts = _collect_segment_tables(retry_scan)
+
+    placement_segments, placement_segment_modules = apply_placement_cleanup_segments(
+        segment_summary,
+        segment_module_attempts,
+        min_placement_attempts=min_placement_attempts,
+    )
+    stage_records.append(
+        _build_stage_summary_from_segments(
+            placement_segments,
+            placement_segment_modules,
+            stage_key="placement",
+            stage_label="Placement cleanup",
+            baseline_students=baseline_students,
+            baseline_attempts=baseline_attempts,
+        )
+    )
+    stage_module_frames.append(
+        _build_stage_module_attempts_from_segments(
+            placement_segment_modules,
+            stage_key="placement",
+            stage_label="Placement cleanup",
+        )
+    )
+
+    repeat_segments, repeat_segment_modules = apply_same_placement_module_repeat_filter_segments(
+        placement_segments,
+        placement_segment_modules,
+        enabled=reject_same_placement_module_repeat,
+    )
+    stage_records.append(
+        _build_stage_summary_from_segments(
+            repeat_segments,
+            repeat_segment_modules,
+            stage_key="module_repeat",
+            stage_label="Repeated module after same placement",
+            baseline_students=baseline_students,
+            baseline_attempts=baseline_attempts,
+        )
+    )
+    stage_module_frames.append(
+        _build_stage_module_attempts_from_segments(
+            repeat_segment_modules,
+            stage_key="module_repeat",
+            stage_label="Repeated module after same placement",
+        )
+    )
+
+    distinct_counts = None
+    if history_basis == HISTORY_BASIS_DISTINCT_EXERCISES and repeat_segments.height:
+        distinct_counts = _collect_distinct_exercise_counts_for_segments(
+            fact_path,
+            start_date_iso=start_date_iso,
+            end_date_iso=end_date_iso,
+            selected_modules=selected_modules,
+            max_retries=max_retries,
+            retry_filter_mode=retry_filter_mode,
+            retained_segments=repeat_segments,
+        )
+    repeat_user_paths = _build_user_paths_from_segments(
+        repeat_segments,
+        distinct_exercise_counts=distinct_counts,
+    )
+
+    history_segments, history_segment_modules, history_user_paths = apply_history_threshold_segments(
+        repeat_segments,
+        repeat_segment_modules,
+        repeat_user_paths,
+        min_history=min_history,
+        history_basis=history_basis,
+    )
+    stage_records.append(
+        _build_stage_summary_from_segments(
+            history_segments,
+            history_segment_modules,
+            stage_key="history",
+            stage_label="History threshold",
+            baseline_students=baseline_students,
+            baseline_attempts=baseline_attempts,
+        )
+    )
+    stage_module_frames.append(
+        _build_stage_module_attempts_from_segments(
+            history_segment_modules,
+            stage_key="history",
+            stage_label="History threshold",
+        )
+    )
+
+    transition_options = build_transition_options(history_user_paths)
+
+    transition_segments, transition_segment_modules, transition_user_paths = apply_transition_count_filter_segments(
+        history_segments,
+        history_segment_modules,
+        history_user_paths,
+        selected_transition_counts=selected_transition_counts,
+    )
+    stage_records.append(
+        _build_stage_summary_from_segments(
+            transition_segments,
+            transition_segment_modules,
+            stage_key="transitions",
+            stage_label="Transition filter",
+            baseline_students=baseline_students,
+            baseline_attempts=baseline_attempts,
+        )
+    )
+    stage_module_frames.append(
+        _build_stage_module_attempts_from_segments(
+            transition_segment_modules,
+            stage_key="transitions",
+            stage_label="Transition filter",
+        )
+    )
+
+    schema_size_segments, schema_size_segment_modules, schema_size_user_paths = apply_schema_size_threshold_segments(
+        transition_segments,
+        transition_segment_modules,
+        transition_user_paths,
+        min_students_per_schema=min_students_per_schema,
+    )
+    stage_records.append(
+        _build_stage_summary_from_segments(
+            schema_size_segments,
+            schema_size_segment_modules,
+            stage_key="schema_size",
+            stage_label="Schema size threshold",
+            baseline_students=baseline_students,
+            baseline_attempts=baseline_attempts,
+        )
+    )
+    stage_module_frames.append(
+        _build_stage_module_attempts_from_segments(
+            schema_size_segment_modules,
+            stage_key="schema_size",
+            stage_label="Schema size threshold",
+        )
+    )
+
+    schema_options = build_schema_options(schema_size_user_paths)
+
+    final_segments, final_segment_modules, final_user_paths = apply_schema_filter_segments(
+        schema_size_segments,
+        schema_size_segment_modules,
+        schema_size_user_paths,
+        selected_schemas=selected_schemas,
+    )
+    stage_records.append(
+        _build_stage_summary_from_segments(
+            final_segments,
+            final_segment_modules,
+            stage_key="schemas",
+            stage_label="Schema filter",
+            baseline_students=baseline_students,
+            baseline_attempts=baseline_attempts,
+        )
+    )
+    stage_module_frames.append(
+        _build_stage_module_attempts_from_segments(
+            final_segment_modules,
+            stage_key="schemas",
+            stage_label="Schema filter",
+        )
+    )
+
+    final_module_summary = (
+        final_segment_modules.with_columns(_module_display_expr())
+        .group_by("module_display")
+        .agg(pl.sum("attempts").alias("attempts"))
+        .rename({"module_display": "module_code"})
+        .sort(["attempts", "module_code"], descending=[True, False])
+        if final_segment_modules.height
+        else build_final_module_summary(pl.DataFrame())
+    )
+    final_attempts = (
+        int(final_segments.get_column("segment_attempts").sum()) if final_segments.height else 0
+    )
+    stage_summary = pl.DataFrame(stage_records)
+    stage_module_attempts = pl.concat(stage_module_frames, how="vertical_relaxed")
+    empty_final_rows = base_scan.select(
+        [
+            pl.col("user_id"),
+            pl.col("created_at"),
+            pl.col("work_mode"),
+            pl.col("module_code"),
+            pl.col("exercise_id"),
+            pl.col("attempt_number"),
+        ]
+    ).limit(0).collect()
+    return CohortFilterResult(
+        stage_summary=stage_summary,
+        stage_module_attempts=stage_module_attempts,
+        transition_options=transition_options,
+        schema_options=schema_options,
+        final_rows=empty_final_rows,
+        final_user_paths=final_user_paths,
+        final_module_summary=final_module_summary,
+        final_attempts=final_attempts,
         baseline_students=baseline_students,
         baseline_attempts=baseline_attempts,
     )
