@@ -517,15 +517,15 @@ def main() -> None:
                 max_value=1_000_000,
                 step=1,
                 key=RETRY_FILTER_MAX_KEY,
-                disabled=not retry_filter_enabled,
+                help="Used only when `Enable max retries filter` is checked.",
             )
         )
         retry_filter_mode_label = st.selectbox(
             "Retry overflow handling",
             options=list(RETRY_FILTER_MODE_OPTIONS.keys()),
             key=RETRY_FILTER_MODE_KEY,
-            disabled=not retry_filter_enabled,
             help=(
+                "Used only when `Enable max retries filter` is checked. "
                 "Either drop the whole student when one exercise exceeds the cap, or remove only the offending student-exercise rows."
             ),
         )
