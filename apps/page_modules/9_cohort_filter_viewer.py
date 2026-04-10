@@ -202,6 +202,7 @@ def _reset_page_local_state() -> None:
         SCHEMA_MIN_STUDENTS_KEY,
     ):
         st.session_state.pop(key, None)
+    st.session_state.pop(_applied_filters_state_key(get_active_source_id()), None)
 
 
 def _get_source_scoped_date_defaults(*, source_id: str, min_date: date, max_date: date) -> tuple[date, date]:
@@ -421,41 +422,40 @@ def main() -> None:
         st.session_state[SCHEMA_MIN_STUDENTS_KEY] = 1
 
     applied_filters_key = _applied_filters_state_key(source_id)
-    if applied_filters_key not in st.session_state:
-        st.session_state[applied_filters_key] = _build_filter_payload(
-            start_date=default_start_date,
-            end_date=default_end_date,
-            selected_modules=tuple(module_options),
-            max_retries=-1,
-            retry_filter_mode=RETRY_FILTER_MODE_OPTIONS["Remove offending exercises only"],
-            min_placement_attempts=int(st.session_state[PLACEMENT_THRESHOLD_KEY]),
-            reject_same_placement_module_repeat=bool(st.session_state[REPEAT_MODULE_FILTER_KEY]),
-            min_history=int(st.session_state[HISTORY_THRESHOLD_KEY]),
-            history_basis=HISTORY_BASIS_OPTIONS[str(st.session_state[HISTORY_BASIS_KEY])],
-            selected_transition_counts=tuple(),
-            min_students_per_schema=int(st.session_state[SCHEMA_MIN_STUDENTS_KEY]),
-            selected_schemas=tuple(),
+    applied_payload = st.session_state.get(applied_filters_key)
+    applied_result: CohortFilterResult | None = None
+    transition_options: list[int] = []
+    schema_options: list[str] = []
+    if isinstance(applied_payload, dict):
+        applied_payload = dict(applied_payload)
+        applied_result = _compute_from_payload(fact_path, applied_payload)
+        transition_options = (
+            applied_result.transition_options.get_column("transition_count").to_list()
+            if applied_result.transition_options.height
+            else []
         )
-
-    applied_payload = dict(st.session_state[applied_filters_key])
-    applied_result = _compute_from_payload(fact_path, applied_payload)
-    transition_options = (
-        applied_result.transition_options.get_column("transition_count").to_list()
-        if applied_result.transition_options.height
-        else []
-    )
-    schema_options = (
-        applied_result.schema_options.get_column("cleaned_schema").to_list()
-        if applied_result.schema_options.height
-        else []
-    )
+        schema_options = (
+            applied_result.schema_options.get_column("cleaned_schema").to_list()
+            if applied_result.schema_options.height
+            else []
+        )
+    else:
+        applied_payload = None
 
     with st.sidebar.form(key=f"{source_id}_cohort_filter_form", clear_on_submit=False):
         date_value = st.date_input(
             "Date range (UTC)",
             value=(
-                date.fromisoformat(str(applied_payload["start_date_iso"])),
-                date.fromisoformat(str(applied_payload["end_date_iso"])),
+                (
+                    date.fromisoformat(str(applied_payload["start_date_iso"]))
+                    if isinstance(applied_payload, dict)
+                    else default_start_date
+                ),
+                (
+                    date.fromisoformat(str(applied_payload["end_date_iso"]))
+                    if isinstance(applied_payload, dict)
+                    else default_end_date
+                ),
             ),
             min_value=dimension_domain.min_date,
             max_value=dimension_domain.max_date,
@@ -584,7 +584,7 @@ def main() -> None:
         process_filters = st.form_submit_button("Process cohort", type="primary")
 
     if process_filters:
-        applied_payload = _build_filter_payload(
+        next_payload = _build_filter_payload(
             start_date=start_date,
             end_date=end_date,
             selected_modules=selected_modules,
@@ -598,13 +598,19 @@ def main() -> None:
             min_students_per_schema=min_students_per_schema,
             selected_schemas=selected_schemas,
         )
-        st.session_state[applied_filters_key] = applied_payload
+        st.session_state[applied_filters_key] = next_payload
         set_filter_date_range(source_id, start_date=start_date, end_date=end_date)
         st.rerun()
 
+    if applied_result is None:
+        st.title("Cohort Filter Viewer")
+        st.caption(
+            "Inspect how module, path, and history constraints change the retained student population and attempt volume."
+        )
+        st.info("Set your filters, then click `Process cohort` to build the slice.")
+        return
+
     final_result = applied_result
-    if process_filters:
-        final_result = _compute_from_payload(fact_path, applied_payload)
 
     if final_result.baseline_attempts == 0:
         st.info("No attempts are available for the selected date range.")
