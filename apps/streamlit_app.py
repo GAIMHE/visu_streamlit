@@ -78,6 +78,11 @@ def _select_page(source_id: str) -> str:
     default_page_id = default_page_id_for_source(source)
     visible_ids = [page.page_id for page in pages]
     label_by_id = {page.page_id: page.label for page in pages}
+    if len(visible_ids) == 1:
+        only_page_id = visible_ids[0]
+        if get_active_page_id(default_page_id) != only_page_id:
+            set_active_page_id(only_page_id)
+        return only_page_id
     requested_page_id = get_active_page_id(default_page_id)
     if requested_page_id not in visible_ids:
         show_redirect_info = requested_page_id != "home"

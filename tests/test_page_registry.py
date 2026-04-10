@@ -75,6 +75,6 @@ def test_cohort_filter_viewer_bootstraps_fact_and_catalog_only() -> None:
 
 
 def test_default_page_id_for_source_uses_first_visible_page() -> None:
-    assert default_page_id_for_source(get_runtime_source("main")) == "overview"
-    assert default_page_id_for_source(get_runtime_source("maureen_m16fr")) == "overview"
-    assert default_page_id_for_source(get_runtime_source("mia_module1")) == "overview"
+    assert default_page_id_for_source(get_runtime_source("main")) == "cohort_filter_viewer"
+    assert default_page_id_for_source(get_runtime_source("maureen_m16fr")) == "cohort_filter_viewer"
+    assert default_page_id_for_source(get_runtime_source("mia_module1")) == "cohort_filter_viewer"

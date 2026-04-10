@@ -141,6 +141,7 @@ ALL_PAGE_IDS: frozenset[str] = frozenset(
         "student_objective_spider",
     }
 )
+INSPECTION_ONLY_PAGE_IDS: tuple[str, ...] = ("cohort_filter_viewer",)
 
 CAPABILITY_HAS_CLASSROOMS = "has_classrooms"
 CAPABILITY_HAS_PLAYLIST_DIMENSION = "has_playlist_dimension"
@@ -208,7 +209,7 @@ RUNTIME_SOURCES: dict[str, RuntimeSourceSpec] = {
             "zpdes_rules": Path("data") / "zpdes_rules.json",
             "exercises": Path("data") / "exercises.json",
         },
-        supported_pages=tuple(sorted(ALL_PAGE_IDS)),
+        supported_pages=INSPECTION_ONLY_PAGE_IDS,
         capability_flags=frozenset(
             {
                 CAPABILITY_HAS_CLASSROOMS,
@@ -250,16 +251,7 @@ RUNTIME_SOURCES: dict[str, RuntimeSourceSpec] = {
             / "researcher_data_Comprendre les mots pour mieux les lire(in).csv",
             "module_config_csv": Path("data_maureen") / "M16FR_modules_config 1(M16-Fr).csv",
         },
-        supported_pages=(
-            "overview",
-            "cohort_filter_viewer",
-            "bottlenecks",
-            "matrix",
-            "student_elo",
-            "classroom_replay",
-            "classroom_sankey",
-            "student_objective_spider",
-        ),
+        supported_pages=INSPECTION_ONLY_PAGE_IDS,
         capability_flags=frozenset(
             {
                 CAPABILITY_HAS_CLASSROOMS,
@@ -300,17 +292,7 @@ RUNTIME_SOURCES: dict[str, RuntimeSourceSpec] = {
             / "researcher_data-053df3ec-5501-4ad8-9917-a935bcf76740.csv",
             "config_json": Path("data_MIA") / "config_mia.json",
         },
-        supported_pages=(
-            "overview",
-            "cohort_filter_viewer",
-            "bottlenecks",
-            "matrix",
-            "zpdes_transition_efficiency",
-            "student_elo",
-            "classroom_replay",
-            "classroom_sankey",
-            "student_objective_spider",
-        ),
+        supported_pages=INSPECTION_ONLY_PAGE_IDS,
         capability_flags=frozenset(
             {
                 CAPABILITY_HAS_CLASSROOMS,
