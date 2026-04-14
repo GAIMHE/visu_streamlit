@@ -1,233 +1,400 @@
-# Data Handling in VISU2 (Raw Data, Derived Artifacts, Streamlit, Hugging Face)
+# VISU2: Data and Runtime Guide
 
-This document explains, in practical terms, how data moves through this repository:
-1. what the source files are,
-2. what artifacts are and why they exist,
-3. how the Streamlit app loads local runtime data,
-4. how the deployed app fetches runtime data from Hugging Face,
-5. how the Elo layer is derived and interpreted.
+This is the main practical document for understanding how the project works.
 
-## 1) The 4 source files (inputs)
+It answers:
+- what datasets the repo currently includes
+- what the main data files are
+- how those files relate to each other
+- what artifacts are and why we use them
+- how to rebuild and update runtime data locally and on Hugging Face
 
-The project is built around a standalone 4-file package:
+If you need more detail after this document:
+- raw file reference: `ressources/data.md`
+- metadata contract: `ressources/DERIVED_FILES_FORMAT.md`
+- deployment/runtime package details: `ressources/README_HF.md`
+
+---
+
+## 1. Which datasets the repo currently includes
+
+This repo is not limited to one dataset.
+
+The current source-aware app supports:
+
+- `main`
+  - the large Adaptiv'Math mathematics source
+  - raw attempts come from `data/adaptiv_math_history.parquet`
+- `mia_module1`
+  - a MIA researcher export for one module
+  - raw attempts come from `data_MIA/researcher_data-053df3ec-5501-4ad8-9917-a935bcf76740.csv`
+  - extra structure comes from `data_MIA/config_mia.json`
+- `maureen_m16fr`
+  - a French-language remediation source
+  - raw attempts come from `data_maureen/researcher_data_Comprendre les mots pour mieux les lire(in).csv`
+  - extra structure comes from `data_maureen/M16FR_modules_config 1(M16-Fr).csv`
+
+The goal of the pipeline is to normalize these source-specific inputs into a shared runtime contract so the same app pages can be reused when possible.
+
+---
+
+## 2. Main shared files and source-specific inputs
+
+For the `main` source, the canonical raw/reference set is built around four files:
 
 - `data/adaptiv_math_history.parquet`
-  - The raw interaction history (one row = one attempt on one exercise).
-  - This is the ground-truth behavior table.
+  - raw attempt history
+  - one row = one exercise attempt
 - `data/learning_catalog.json`
-  - The pedagogical structure and label dictionary.
-  - Think: the curriculum map (`module -> objective -> activity -> exercise`).
+  - curriculum map
+  - canonical hierarchy:
+    - `module -> objective -> activity -> exercise`
 - `data/zpdes_rules.json`
-  - The dependency and unlocking rules used in ZPDES (adaptive sequencing).
+  - ZPDES dependency and unlocking rules
 - `data/exercises.json`
-  - Exercise content and metadata (instructions, type, etc.).
+  - exercise content and interaction metadata
 
-Important: the Streamlit app is designed to run from derived artifacts for performance. It does not need to scan the full raw Parquet at runtime in deployment.
+For `mia_module1` and `maureen_m16fr`, the raw inputs differ, but the derived pipeline still tries to produce the same app-facing structure.
 
-## 2) What are artifacts?
+At runtime, the app usually does **not** read the raw inputs directly.
+It reads source-local derived folders under:
 
-Artifacts are **derived (precomputed) data files** stored under `artifacts/`.
+- `artifacts/sources/<source_id>/data/`
+- `artifacts/sources/<source_id>/artifacts/derived/`
 
-They exist for two reasons:
-1. **Speed**: interactive dashboards should not re-scan or re-aggregate millions of rows for every user action.
-2. **Consistency**: cleaning, mapping, and aggregation are done once with a deterministic pipeline, so every page uses the same definitions.
+The normalized attempt file inside those source-local folders is:
 
-Artifacts are not random smaller dataframes. They are:
-- either a cleaned, normalized core fact table used for filtering and drilldowns,
-- or aggregated tables at a coarser grain (daily, per-activity, per-transition, per-student replay, etc.).
+- `data/student_interaction.parquet`
 
-### 2.1 Artifact directories
+---
 
+## 3. How the files relate to each other
+
+The simplest way to think about the relationship is:
+
+1. the source-specific interaction file tells us **what students did**
+2. the catalog or config enrichment tells us **where each exercise sits in the curriculum**
+3. `zpdes_rules.json` tells us **how adaptive progression is structured** when ZPDES is available
+4. `exercises.json` tells us **what the exercise is** when exercise metadata is available
+
+In practice:
+- attempts come from a raw export or parquet
+- readable pedagogical structure comes from the catalog/config layer
+- rule and dependency information comes from ZPDES rules when available
+- exercise instructions and types come from exercise metadata when available
+
+For the `main` source, the canonical hierarchy reference is:
+
+- `learning_catalog.json`
+
+For `mia_module1` and `maureen_m16fr`, the pipeline first converts source-specific inputs into a compatible runtime view.
+
+---
+
+## 4. What artifacts are
+
+Artifacts are precomputed files stored under `artifacts/`.
+
+We use them because:
+- the app must stay interactive
+- the same cleaning and metric logic should be reused across pages
+- the deployed app should not recompute everything from the raw sources
+
+Main idea:
+
+- raw files = source truth
+- artifacts = app-ready derived data
+
+Typical artifact types:
+
+- `fact_*`
+  - cleaned attempt-level tables used for filtering and drilldowns
+- `agg_*`
+  - pre-aggregated tables used for charts and summaries
+- reports
+  - consistency checks and manifest information
+
+One important example:
+
+- `fact_attempt_core.parquet`
+  - the main cleaned attempt-level table used by many pages
+
+In the source-aware layout, that lives under:
+
+- `artifacts/sources/<source_id>/artifacts/derived/fact_attempt_core.parquet`
+
+---
+
+## 5. How the app uses the data
+
+Typical flow:
+
+1. source-specific raw files are validated
+2. source-specific derived artifacts are built
+3. Streamlit pages load the derived artifacts they need
+4. pages also load metadata files when available, such as:
+   - `learning_catalog.json`
+   - `zpdes_rules.json`
+   - `exercises.json`
+
+The app usually reads:
+- metadata from `artifacts/sources/<source_id>/data/`
+- runtime tables from `artifacts/sources/<source_id>/artifacts/derived/`
+
+This means the app depends on the derived pipeline being up to date.
+
+---
+
+## 6. How to run the app locally
+
+Install dependencies:
+
+```bash
+uv sync --dev
+```
+
+Validate contracts:
+
+```bash
+uv run python scripts/check_contracts.py --strict
+```
+
+Build derived artifacts:
+
+```bash
+uv run python scripts/build_derived.py --strict-checks
+```
+
+Run the app:
+
+```bash
+uv run python scripts/run_slice.py --port 8501
+```
+
+Optional smoke check:
+
+```bash
+uv run python scripts/run_slice.py --smoke
+```
+
+If something looks inconsistent in the app, the first thing to check is usually whether the derived artifacts were rebuilt after the last code or data change.
+
+---
+
+## 7. How to rebuild data after a change
+
+Use this when:
+- the raw data changed
+- metadata files changed
+- metric logic changed
+- a page needs newer derived tables
+
+Recommended sequence:
+
+```bash
+uv run python scripts/check_contracts.py --strict
+uv run python scripts/build_derived.py --strict-checks
+```
+
+If you want to rebuild one source explicitly:
+
+```bash
+uv run python scripts/build_derived.py --source main --strict-checks
+uv run python scripts/build_derived.py --source mia_module1 --strict-checks
+uv run python scripts/build_derived.py --source maureen_m16fr --strict-checks
+```
+
+Useful related scripts:
+
+- `scripts/build_derived.py`
+  - rebuilds runtime files
+- `scripts/check_contracts.py`
+  - validates data and contract consistency
+- `scripts/run_slice.py`
+  - runs the app or a smoke check
+- `scripts/sync_runtime_assets.py`
+  - sync helper for runtime assets
+
+---
+
+## 8. How Hugging Face fits in
+
+The deployed app keeps:
+- code on GitHub
+- runtime data in one or more Hugging Face dataset repositories
+
+The app still reads normal local paths internally.
+The difference in deployment is that those files are first synchronized from Hugging Face.
+
+So the deployment model is:
+
+1. build artifacts locally
+2. upload the runtime snapshot to Hugging Face
+3. point the deployed app to that snapshot
+
+This keeps runtime data versioned separately from code.
+
+---
+
+## 9. How to update Hugging Face runtime data
+
+The runtime upload is source-aware.
+
+Each dataset source has its own built runtime folder:
+
+- `artifacts/sources/main/`
+- `artifacts/sources/mia_module1/`
+- `artifacts/sources/maureen_m16fr/`
+
+Local-only files live outside the runtime upload tree:
+
+- `artifacts/local/main/`
+- `artifacts/local/mia_module1/`
+- `artifacts/local/maureen_m16fr/`
+- `artifacts/legacy/main/`
+- `artifacts/legacy/mia_module1/`
+- `artifacts/legacy/maureen_m16fr/`
+
+Each Hugging Face dataset repository should receive the **contents** of one source folder at the repo root.
+
+### Full recommended workflow
+
+1. rebuild locally
+
+```bash
+uv run python scripts/build_derived.py --source main --strict-checks
+uv run python scripts/build_derived.py --source mia_module1 --strict-checks
+uv run python scripts/build_derived.py --source maureen_m16fr --strict-checks
+```
+
+2. log in if needed
+
+```bash
+hf auth login
+```
+
+3. upload each source runtime folder to its dataset repo
+
+Existing examples:
+
+```bash
+hf upload GAIMHE/Adaptiv_Math ./artifacts/sources/main . --repo-type dataset
+hf upload GAIMHE/M16 ./artifacts/sources/maureen_m16fr . --repo-type dataset
+```
+
+For MIA, use the repo that you want to dedicate to that runtime snapshot:
+
+```bash
+hf upload <your-mia-runtime-repo> ./artifacts/sources/mia_module1 . --repo-type dataset
+```
+
+If the upload is large:
+
+```bash
+hf upload-large-folder GAIMHE/Adaptiv_Math --repo-type dataset ./artifacts/sources/main
+hf upload-large-folder <your-mia-runtime-repo> --repo-type dataset ./artifacts/sources/mia_module1
+hf upload-large-folder GAIMHE/M16 --repo-type dataset ./artifacts/sources/maureen_m16fr
+```
+
+4. update the revision used by the deployed app if needed
+
+5. restart or redeploy the app
+
+### Important upload rule
+
+Do **not** upload the whole project root.
+
+Upload only one source runtime folder at a time, for example:
+
+- `./artifacts/sources/main`
+- `./artifacts/sources/mia_module1`
+- `./artifacts/sources/maureen_m16fr`
+
+The target Hugging Face repo root should contain:
+
+- `data/`
 - `artifacts/derived/`
-  - Parquet tables used by the app.
-- `artifacts/reports/`
-  - JSON reports used for runtime health and reproducibility.
 
-### 2.2 Main derived tables (high-level meaning)
+It should **not** contain:
 
-Common patterns:
-- `fact_*` tables: attempt-level (still large, but cleaner and consistent).
-- `agg_*` tables: pre-aggregated metrics used for charts.
+- `artifacts/local/...`
+- `artifacts/legacy/...`
+- local reports under `artifacts/reports/`
 
-Current runtime set includes:
-- `artifacts/derived/fact_attempt_core.parquet`
-  - Attempt-level table (cleaned IDs/labels, playlist backfill logic applied).
-  - This is what pages scan for KPIs, work-mode analytics, and some drilldowns.
-- `artifacts/derived/agg_activity_daily.parquet`
-  - One row per (day x activity); used for trends and bottleneck metrics.
-- `artifacts/derived/agg_objective_daily.parquet`
-  - One row per (day x objective).
-- `artifacts/derived/agg_transition_edges.parquet`
-  - Transition counts between activities (`from -> to`).
-- `artifacts/derived/agg_exercise_daily.parquet`
-  - One row per (day x exercise) within activity/objective/module context.
-- `artifacts/derived/agg_exercise_elo.parquet`
-  - One row per exercise with its fixed retrospective Elo difficulty estimate.
-- `artifacts/derived/agg_activity_elo.parquet`
-  - One row per activity with the mean of the calibrated exercise Elo values inside it.
-- `artifacts/derived/student_elo_events.parquet`
-  - One row per replayable student attempt, with pre/post Elo values.
-- `artifacts/derived/student_elo_profiles.parquet`
-  - One row per student for selector cards and replay filtering.
-- `artifacts/derived/zpdes_exercise_progression_events.parquet`
-  - One row per `student x destination exercise x work_mode` first attempt, capturing prior-history counts used by the ZPDES transition-efficiency page.
-- page-2 usage aggregates:
-  - `agg_module_usage_daily.parquet`
-  - `agg_playlist_module_usage.parquet`
-  - `agg_module_activity_usage.parquet`
+### Streamlit secrets
 
-### 2.3 Reports: manifest + consistency report
+Set `VISU2_HF_SOURCES_JSON` to something like:
 
-- `artifacts/reports/derived_manifest.json`
-  - A machine-readable inventory of derived tables:
-    - list of tables,
-    - row counts,
-    - column names and dtypes,
-    - a `schema_version`.
-  - The app checks that `schema_version` matches `src/visu2/contracts.py:DERIVED_SCHEMA_VERSION`.
-- `artifacts/reports/consistency_report.json`
-  - Data-quality checks about the raw Parquet and metadata integrity (counts, null rates, mapping coverage, etc.).
-  - Used by the UI Data Quality / Health panel.
+```json
+{
+  "main": {
+    "repo_id": "GAIMHE/Adaptiv_Math",
+    "revision": "main"
+  },
+  "mia_module1": {
+    "repo_id": "<your-mia-runtime-repo>",
+    "revision": "main"
+  },
+  "maureen_m16fr": {
+    "repo_id": "GAIMHE/M16",
+    "revision": "main"
+  }
+}
+```
 
-## 3) How artifacts are built (local pipeline)
-
-Artifacts are generated from the 4 source files using:
-
-1. Run consistency checks (writes the report):
-   - `uv run python scripts/check_contracts.py --strict`
-2. Build derived tables and the manifest:
-   - `uv run python scripts/build_derived.py --strict-checks`
-
-Where the logic lives:
-- `src/visu2/derive.py`: transforms raw and metadata into derived Parquet tables.
-- `src/visu2/contracts.py`: defines required columns and the schema version.
-- `src/visu2/checks.py`: builds `consistency_report.json`.
-
-## 4) How Streamlit loads data (local paths)
-
-All pages load data from local file paths (relative to repo root):
-- metadata: `data/*.json`
-- artifacts: `artifacts/derived/*.parquet`, `artifacts/reports/*.json`
-
-Implementation notes:
-- Pages typically use Polars:
-  - `pl.read_parquet(...)` for smaller tables
-  - `pl.scan_parquet(...)` for large tables + filtering (lazy execution)
-- Streamlit caching:
-  - `@st.cache_data` is used on load helpers so repeat navigation is faster.
-  - Some lazy plans are collected with `engine="streaming"` to reduce peak memory.
-
-## 5) How Hugging Face fits in (HF-backed runtime sync)
-
-### 5.1 The core idea
-
-The deployed app still reads the same local paths.
-The difference is: at startup, it can download the required runtime files from a Hugging Face dataset repo into the local filesystem.
-The app now scopes that sync by page so the default landing page does not need to prefetch every heavy artifact used elsewhere in the dashboard.
-
-This is a sync-then-run model:
-1. Download expected files into `data/` and `artifacts/`.
-2. Run the app normally (no code path changes for loading).
-
-### 5.2 Where this is implemented
-
-- `apps/runtime_bootstrap.py`
-  - Called at the start of each page.
-  - Uses Streamlit secrets plus environment variables.
-  - If HF sync fails: it hard-stops the app with an actionable error.
-- `src/visu2/hf_sync.py`
-  - Uses `huggingface_hub.snapshot_download(...)`.
-  - Downloads only a controlled subset (allow-list patterns) into the repo root.
-
-### 5.3 Required deployment secrets
-
-Configured in Streamlit Cloud Secrets (TOML format):
-- `VISU2_HF_REPO_ID` (HF dataset repo, e.g. `org/my_dataset`)
-- `VISU2_HF_REVISION` (pin to a commit hash or tag for reproducibility)
-- `HF_TOKEN` (token with access to the private HF dataset)
-
-### 5.4 Required HF dataset layout
-
-The HF dataset repository should contain the same relative paths as the app expects, for example:
+Also set:
 
 ```text
-data/
-  learning_catalog.json
-  zpdes_rules.json
-  exercises.json
-artifacts/
-  reports/
-    consistency_report.json
-    derived_manifest.json
-  derived/
-    fact_attempt_core.parquet
-    agg_activity_daily.parquet
-    agg_exercise_elo.parquet
-    student_elo_events.parquet
-    ...
+HF_TOKEN=...
+```
+
+### Useful variants
+
+If you want to force a rebuild before upload:
+
+```bash
+uv run python scripts/build_derived.py --source main --strict-checks --force
+uv run python scripts/build_derived.py --source mia_module1 --strict-checks --force
+uv run python scripts/build_derived.py --source maureen_m16fr --strict-checks --force
+```
+
+If you changed only a few derived tables and the raw inputs did **not** change, prefer a targeted build:
+
+```bash
+uv run python scripts/build_derived.py --source main --tables student_elo_events_batch_replay,student_elo_profiles_batch_replay --skip-checks
 ```
 
 Notes:
-- `data/adaptiv_math_history.parquet` is typically **not** required at deployed runtime (unless you rebuild derived artifacts inside the deployment environment).
-- Pinning `VISU2_HF_REVISION` means the app is reproducible: you control exactly which data snapshot is served.
 
-## 6) Updating data in a deployment (refresh workflow)
+- `--tables` expects runtime derived table names, comma-separated
+- this lightweight path reuses existing local inputs
+- if the raw inputs changed, run the full build instead
 
-Typical workflow:
-1. Rebuild artifacts locally:
-   - `uv run python scripts/build_derived.py --strict-checks`
-2. Upload or sync `data/` and `artifacts/` to the HF dataset repo.
-3. Create a new HF commit (or tag).
-4. Update Streamlit secret `VISU2_HF_REVISION` to the new commit/tag.
-5. Reboot the Streamlit app.
+If you want to relocate older non-runtime files out of the runtime trees:
 
-## 7) Elo-derived artifacts: what they mean
+```bash
+uv run python scripts/migrate_runtime_legacy_artifacts.py
+```
 
-The Elo layer is built in two stages.
+Dry run:
 
-### 7.1 Stage A: exercise Elo calibration
+```bash
+uv run python scripts/migrate_runtime_legacy_artifacts.py --dry-run
+```
 
-Goal:
-- estimate a fixed retrospective difficulty for each exercise.
+For package-level details of what the runtime repository should contain, use:
 
-How it works:
-- use historical **first attempts only**,
-- process them in chronological order,
-- update both the student rating and the exercise rating,
-- keep only the final exercise rating at the end.
+- `ressources/README_HF.md`
 
-What this produces:
-- `agg_exercise_elo.parquet`
-- then `agg_activity_elo.parquet` by averaging exercise Elo values inside each activity.
+---
 
-Interpretation:
-- higher exercise Elo = harder exercise
-- higher activity Elo = harder activity on average
+## 10. One short summary
 
-### 7.2 Stage B: student Elo replay
+If you remember only one thing:
 
-Goal:
-- reconstruct how a student's estimated level evolves over time.
-
-How it works:
-- freeze the exercise Elo values from Stage A,
-- replay each student's attempts in their own chronological order,
-- update only the student rating after each attempt.
-
-What this produces:
-- `student_elo_events.parquet` (attempt-by-attempt trajectory)
-- `student_elo_profiles.parquet` (one-row-per-student summary)
-
-Interpretation:
-- this is a descriptive retrospective replay,
-- it is useful for comparing trajectories,
-- it is not a causal claim or a production online mastery model.
-
-## 8) Troubleshooting checklist
-
-If you see INCOMPATIBLE / missing core columns in the UI:
-- Check `artifacts/reports/derived_manifest.json`:
-  - `schema_version` must match `src/visu2/contracts.py:DERIVED_SCHEMA_VERSION`.
-- Ensure the deployed app is running the correct GitHub commit:
-  - schema errors often happen when code is updated but HF artifacts are not (or vice versa).
-- Ensure `VISU2_HF_REVISION` points to the HF snapshot that contains the new derived artifacts.
+- the repo supports several dataset sources, not just the main Adaptiv'Math one
+- raw files are the ground truth
+- artifacts are the app-ready derived layer
+- the app mostly runs from source-specific artifacts
+- when code or data changes, rebuild artifacts first
+- deployment uses Hugging Face as the runtime data store
