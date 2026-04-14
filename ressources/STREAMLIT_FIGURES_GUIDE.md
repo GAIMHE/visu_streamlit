@@ -6,6 +6,8 @@ Important note:
 - These visuals are descriptive.
 - They help spot patterns and compare groups.
 - They do **not** prove cause-and-effect by themselves.
+- This guide describes the broader multipage app as the reference landscape.
+- On the current `inspection` branch, the visible UI may be reduced to the `Cohort Filter Viewer` plus source selection.
 
 ---
 
@@ -150,9 +152,25 @@ Important note:
 
 ---
 
+## Page: Module 1 Individual Path
+
+### 9) Module 1 Path Replay (dependency replay graph)
+**What it shows**
+- One selected student's full attempt path inside Module 1.
+- The attempts are replayed on top of the fixed M1 dependency layout.
+- The page keeps the structural topology fixed and lets you step through the student's local progression over time.
+- It mixes all visible work modes inside M1 for that student.
+
+**Question it can answer**
+- In what order did this student reach activities inside M1?
+- Where do retries or pauses accumulate on the dependency layout?
+- Does the student follow a clean path or bounce across different parts of the module?
+
+---
+
 ## Page: Classroom Progression Replay
 
-### 9) Student x Activity Replay Matrix (animated heatmap)
+### 10) Student x Activity Replay Matrix (animated heatmap)
 **What it shows**
 - A classroom matrix:
   - X-axis = students (anonymized)
@@ -172,7 +190,7 @@ Important note:
 
 ## Page: Classroom Progression Sankey
 
-### 10) Classroom Activity Sankey (static Sankey)
+### 11) Classroom Activity Sankey (static Sankey)
 **What it shows**
 - A static Sankey diagram for one selected classroom in the chosen work-mode scope.
 - Each student contributes the ordered sequence of activities they reach for the first time.
@@ -189,7 +207,7 @@ Important note:
 
 ## Page: Student Elo Evolution
 
-### 11) Student Elo Evolution (replay line chart)
+### 12) Student Elo Evolution (replay line chart)
 **What it shows**
 - One student's Elo trajectory over that student's own attempt sequence under two systems:
   - the current retrospective item-Elo calibration
@@ -207,7 +225,7 @@ Important note:
 
 ## Page: Student Objective Spider
 
-### 12) Student Objective Spider (radar chart)
+### 13) Student Objective Spider (radar chart)
 **What it shows**
 - One selected student inside one selected module.
 - One spoke per catalog objective in that module.
@@ -220,6 +238,30 @@ Important note:
 - Which objectives has this student explored broadly versus only lightly?
 - Are there objectives where coverage is high but success is still weak?
 - Which parts of the selected module remain untouched for this student?
+
+---
+
+## Internal Page: Cohort Filter Viewer
+
+### 14) Cohort Filter Viewer (funnel + final slice summary)
+**What it shows**
+- A cohort-definition tool rather than a teaching-facing figure.
+- You can combine filters such as:
+  - modules to keep
+  - minimum student history
+  - retry caps
+  - transition counts
+  - exact work-mode schemas
+- The page then shows:
+  - how many students remain
+  - how many attempts remain
+  - how attempts are distributed across modules
+  - which cleaned schemas remain in the final slice
+
+**Question it can answer**
+- How much of the dataset remains after a given cohort definition?
+- Does a filtered cohort still represent a large enough population?
+- Which work-mode patterns dominate inside the filtered slice?
 
 ---
 
