@@ -18,6 +18,8 @@ RETRY_FILTER_MODE_OPTIONS: dict[str, str] = {
     "Remove offending exercises only": RETRY_FILTER_MODE_REMOVE_EXERCISE,
     "Remove full student history": RETRY_FILTER_MODE_REMOVE_STUDENT,
 }
+SCHEMA_FILTER_MODE_KEEP = "keep_selected"
+SCHEMA_FILTER_MODE_REMOVE = "remove_selected"
 UNKNOWN_MODULE_LABEL = "Unknown"
 
 
@@ -101,6 +103,7 @@ def normalize_attempt_rows(frame: pl.DataFrame) -> pl.DataFrame:
         "created_at",
         "work_mode",
         "module_code",
+        "activity_id",
         "exercise_id",
         "attempt_number",
     }
@@ -116,6 +119,7 @@ def normalize_attempt_rows(frame: pl.DataFrame) -> pl.DataFrame:
                 pl.col("created_at").cast(pl.Datetime(time_unit="us")),
                 pl.col("work_mode").cast(pl.Utf8),
                 pl.col("module_code").cast(pl.Utf8),
+                pl.col("activity_id").cast(pl.Utf8),
                 pl.col("exercise_id").cast(pl.Utf8),
                 pl.col("attempt_number").cast(pl.Int64),
             ]
@@ -131,10 +135,11 @@ def normalize_attempt_rows(frame: pl.DataFrame) -> pl.DataFrame:
             pl.col("user_id").str.strip_chars().alias("user_id"),
             pl.col("work_mode").str.strip_chars().alias("work_mode"),
             _normalize_optional_string("module_code"),
+            _normalize_optional_string("activity_id"),
             _normalize_optional_string("exercise_id"),
             pl.col("attempt_number").fill_null(0).alias("attempt_number"),
         )
-        .sort(["user_id", "created_at", "module_code", "exercise_id", "attempt_number"])
+        .sort(["user_id", "created_at", "module_code", "activity_id", "exercise_id", "attempt_number"])
     )
     if normalized.height == 0:
         return normalized.with_columns(
@@ -148,7 +153,7 @@ def _annotate_segments(frame: pl.DataFrame) -> pl.DataFrame:
     if frame.height == 0:
         return frame.with_columns(pl.lit(0, dtype=pl.Int64).alias("segment_index"))
     return (
-        frame.sort(["user_id", "created_at", "module_code", "exercise_id", "attempt_number"])
+        frame.sort(["user_id", "created_at", "module_code", "activity_id", "exercise_id", "attempt_number"])
         .with_columns(
             (
                 pl.col("user_id").ne(pl.col("user_id").shift(1)).fill_null(True)
@@ -243,6 +248,7 @@ def _normalize_attempt_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
                 pl.col("created_at").cast(pl.Datetime(time_unit="us")),
                 pl.col("work_mode").cast(pl.Utf8),
                 pl.col("module_code").cast(pl.Utf8),
+                pl.col("activity_id").cast(pl.Utf8),
                 pl.col("exercise_id").cast(pl.Utf8),
                 pl.col("attempt_number").cast(pl.Int64),
             ]
@@ -258,6 +264,7 @@ def _normalize_attempt_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
             pl.col("user_id").str.strip_chars().alias("user_id"),
             pl.col("work_mode").str.strip_chars().alias("work_mode"),
             _normalize_optional_string("module_code"),
+            _normalize_optional_string("activity_id"),
             _normalize_optional_string("exercise_id"),
             pl.col("attempt_number").fill_null(0).alias("attempt_number"),
         )
@@ -266,7 +273,7 @@ def _normalize_attempt_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
 
 def _annotate_segments_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
     return (
-        lf.sort(["user_id", "created_at", "module_code", "exercise_id", "attempt_number"])
+        lf.sort(["user_id", "created_at", "module_code", "activity_id", "exercise_id", "attempt_number"])
         .with_columns(
             (
                 pl.col("user_id").ne(pl.col("user_id").shift(1)).fill_null(True)
@@ -469,8 +476,10 @@ def _collect_distinct_exercise_counts_for_segments(
     start_date_iso: str,
     end_date_iso: str,
     selected_modules: tuple[str, ...],
+    removed_work_modes: tuple[str, ...],
     max_retries: int,
     retry_filter_mode: str,
+    retry_exempt_activity_ids: pl.DataFrame | None,
     retained_segments: pl.DataFrame,
 ) -> pl.DataFrame:
     if retained_segments.height == 0:
@@ -487,20 +496,24 @@ def _collect_distinct_exercise_counts_for_segments(
     )
     if selected_modules:
         base = base.filter(pl.col("module_code").is_in(list(selected_modules)))
-    if max_retries > 0:
+    if removed_work_modes:
+        base = base.filter(~pl.col("work_mode").is_in(list(removed_work_modes)))
+    if max_retries >= 0:
         offending_pairs = (
             base.filter(pl.col("exercise_id").is_not_null() & (pl.col("exercise_id") != ""))
-            .group_by(["user_id", "exercise_id"])
+            .group_by(["user_id", "exercise_id", "activity_id"])
             .agg(pl.len().alias("attempts"))
             .with_columns((pl.col("attempts") - 1).alias("retries"))
             .filter(pl.col("retries") > max_retries)
-            .select(["user_id", "exercise_id"])
+            .select(["user_id", "exercise_id", "activity_id"])
         )
+        if retry_exempt_activity_ids is not None and retry_exempt_activity_ids.height:
+            offending_pairs = offending_pairs.join(retry_exempt_activity_ids.lazy(), on="activity_id", how="anti")
         if retry_filter_mode == RETRY_FILTER_MODE_REMOVE_STUDENT:
             offending_users = offending_pairs.select("user_id").unique()
             base = base.join(offending_users, on="user_id", how="anti")
         else:
-            base = base.join(offending_pairs, on=["user_id", "exercise_id"], how="anti")
+            base = base.join(offending_pairs.select(["user_id", "exercise_id"]), on=["user_id", "exercise_id"], how="anti")
     segmented = _annotate_segments_lazy(base)
     retained_keys = retained_segments.select(["user_id", "segment_index"]).lazy()
     return _collect_lazy(
@@ -518,27 +531,54 @@ def apply_module_keep_filter(frame: pl.DataFrame, selected_modules: tuple[str, .
     return frame.filter(pl.col("module_code").is_in(normalized_modules))
 
 
+def apply_work_mode_removal(frame: pl.DataFrame, *, removed_work_modes: tuple[str, ...]) -> pl.DataFrame:
+    """Remove attempt rows whose work mode is explicitly excluded by the user."""
+    normalized_modes = tuple(sorted({str(mode).strip() for mode in removed_work_modes if str(mode or "").strip()}))
+    if frame.height == 0 or not normalized_modes:
+        return frame
+    return frame.filter(~pl.col("work_mode").is_in(normalized_modes))
+
+
+def _select_retry_exempt_activity_ids(
+    activity_exercise_counts: pl.DataFrame | None,
+    *,
+    enabled: bool,
+    max_exercises_per_activity: int,
+) -> pl.DataFrame | None:
+    if not enabled or activity_exercise_counts is None or activity_exercise_counts.height == 0:
+        return None
+    threshold = max(1, int(max_exercises_per_activity))
+    exempt = (
+        activity_exercise_counts
+        .filter(pl.col("activity_exercise_count") <= threshold)
+        .select("activity_id")
+        .drop_nulls("activity_id")
+        .unique()
+    )
+    return exempt if exempt.height else None
+
+
 def apply_max_retry_filter(
     frame: pl.DataFrame,
     *,
     max_retries: int,
     retry_filter_mode: str,
+    retry_exempt_activity_ids: pl.DataFrame | None = None,
 ) -> pl.DataFrame:
     """Drop either offending exercises or full students when retries exceed the selected limit."""
     threshold = int(max_retries)
     if frame.height == 0 or threshold < 0:
         return frame
-    if threshold == 0:
-        return frame
-
     offending_pairs = (
         frame.filter(pl.col("exercise_id").is_not_null() & (pl.col("exercise_id").str.strip_chars() != ""))
-        .group_by(["user_id", "exercise_id"])
+        .group_by(["user_id", "exercise_id", "activity_id"])
         .agg(pl.len().alias("attempts"))
         .with_columns((pl.col("attempts") - 1).alias("retries"))
         .filter(pl.col("retries") > threshold)
-        .select(["user_id", "exercise_id"])
+        .select(["user_id", "exercise_id", "activity_id"])
     )
+    if retry_exempt_activity_ids is not None and retry_exempt_activity_ids.height:
+        offending_pairs = offending_pairs.join(retry_exempt_activity_ids, on="activity_id", how="anti")
     if offending_pairs.height == 0:
         return frame
 
@@ -546,7 +586,7 @@ def apply_max_retry_filter(
         offending_users = offending_pairs.select("user_id").unique()
         return frame.join(offending_users, on="user_id", how="anti")
 
-    return frame.join(offending_pairs, on=["user_id", "exercise_id"], how="anti")
+    return frame.join(offending_pairs.select(["user_id", "exercise_id"]), on=["user_id", "exercise_id"], how="anti")
 
 
 def apply_placement_cleanup(
@@ -596,7 +636,7 @@ def apply_placement_cleanup(
         _annotate_segments(frame)
         .join(segments_to_drop, on=["user_id", "segment_index"], how="anti")
         .drop("segment_index")
-        .sort(["user_id", "created_at", "module_code", "exercise_id", "attempt_number"])
+        .sort(["user_id", "created_at", "module_code", "activity_id", "exercise_id", "attempt_number"])
     )
     if retained_rows.height == 0:
         empty_rows = frame.with_columns(
@@ -730,11 +770,18 @@ def apply_schema_filter(
     user_paths: pl.DataFrame,
     *,
     selected_schemas: tuple[str, ...],
+    schema_filter_mode: str = SCHEMA_FILTER_MODE_KEEP,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
-    """Keep only students whose cleaned path matches one of the selected exact schemas."""
+    """Keep or remove students whose cleaned path matches the selected exact schemas."""
     schemas = tuple(str(value).strip() for value in selected_schemas if str(value or "").strip())
     if not schemas or rows.height == 0 or user_paths.height == 0:
         return rows, user_paths
+    mode = str(schema_filter_mode or SCHEMA_FILTER_MODE_KEEP).strip()
+    if mode == SCHEMA_FILTER_MODE_REMOVE:
+        excluded_users = user_paths.filter(pl.col("cleaned_schema").is_in(schemas)).select("user_id")
+        return rows.join(excluded_users, on="user_id", how="anti"), user_paths.join(
+            excluded_users, on="user_id", how="anti"
+        )
     eligible_users = user_paths.filter(pl.col("cleaned_schema").is_in(schemas)).select("user_id")
     return rows.join(eligible_users, on="user_id", how="semi"), user_paths.join(
         eligible_users, on="user_id", how="semi"
@@ -894,10 +941,19 @@ def apply_schema_filter_segments(
     user_paths: pl.DataFrame,
     *,
     selected_schemas: tuple[str, ...],
+    schema_filter_mode: str = SCHEMA_FILTER_MODE_KEEP,
 ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     schemas = tuple(str(value).strip() for value in selected_schemas if str(value or "").strip())
     if not schemas or segment_summary.height == 0 or user_paths.height == 0:
         return segment_summary, segment_module_attempts, user_paths
+    mode = str(schema_filter_mode or SCHEMA_FILTER_MODE_KEEP).strip()
+    if mode == SCHEMA_FILTER_MODE_REMOVE:
+        excluded_users = user_paths.filter(pl.col("cleaned_schema").is_in(schemas)).select("user_id")
+        return (
+            segment_summary.join(excluded_users, on="user_id", how="anti"),
+            segment_module_attempts.join(excluded_users, on="user_id", how="anti"),
+            user_paths.join(excluded_users, on="user_id", how="anti"),
+        )
     eligible_users = user_paths.filter(pl.col("cleaned_schema").is_in(schemas)).select("user_id")
     return (
         segment_summary.join(eligible_users, on="user_id", how="semi"),
@@ -1028,12 +1084,17 @@ def filter_cohort_view(
     min_placement_attempts: int,
     min_history: int,
     history_basis: str,
+    selected_removed_work_modes: tuple[str, ...] = (),
     max_retries: int = -1,
     retry_filter_mode: str = RETRY_FILTER_MODE_REMOVE_EXERCISE,
+    retry_small_activity_exemption_enabled: bool = False,
+    retry_small_activity_max_exercises: int = 1,
+    activity_exercise_counts: pl.DataFrame | None = None,
     reject_same_placement_module_repeat: bool = False,
     selected_transition_counts: tuple[int, ...] = (),
     min_students_per_schema: int = 1,
     selected_schemas: tuple[str, ...] = (),
+    schema_filter_mode: str = SCHEMA_FILTER_MODE_KEEP,
 ) -> CohortFilterResult:
     """Apply the full cohort filter pipeline and return all stage summaries."""
     baseline_rows = normalize_attempt_rows(attempt_rows)
@@ -1054,10 +1115,22 @@ def filter_cohort_view(
     module_rows = apply_module_keep_filter(baseline_rows, selected_modules)
     record_stage("modules", "Modules kept", module_rows)
 
-    retry_filtered_rows = apply_max_retry_filter(
+    work_mode_filtered_rows = apply_work_mode_removal(
         module_rows,
+        removed_work_modes=selected_removed_work_modes,
+    )
+    record_stage("work_modes", "Work modes removed", work_mode_filtered_rows)
+
+    retry_exempt_activity_ids = _select_retry_exempt_activity_ids(
+        activity_exercise_counts,
+        enabled=retry_small_activity_exemption_enabled,
+        max_exercises_per_activity=retry_small_activity_max_exercises,
+    )
+    retry_filtered_rows = apply_max_retry_filter(
+        work_mode_filtered_rows,
         max_retries=max_retries,
         retry_filter_mode=retry_filter_mode,
+        retry_exempt_activity_ids=retry_exempt_activity_ids,
     )
     record_stage("retries", "Retry filter", retry_filtered_rows)
 
@@ -1104,6 +1177,7 @@ def filter_cohort_view(
         schema_threshold_rows,
         schema_threshold_user_paths,
         selected_schemas=selected_schemas,
+        schema_filter_mode=schema_filter_mode,
     )
     record_stage("schemas", "Schema filter", final_rows)
 
@@ -1143,8 +1217,12 @@ def compute_cohort_view_from_parquet(
     start_date_iso: str,
     end_date_iso: str,
     selected_modules: tuple[str, ...],
+    selected_removed_work_modes: tuple[str, ...],
     max_retries: int,
     retry_filter_mode: str,
+    retry_small_activity_exemption_enabled: bool,
+    retry_small_activity_max_exercises: int,
+    activity_exercise_counts: pl.DataFrame | None,
     min_placement_attempts: int,
     reject_same_placement_module_repeat: bool,
     min_history: int,
@@ -1152,6 +1230,7 @@ def compute_cohort_view_from_parquet(
     selected_transition_counts: tuple[int, ...],
     min_students_per_schema: int,
     selected_schemas: tuple[str, ...],
+    schema_filter_mode: str,
 ) -> CohortFilterResult:
     start_date = pl.lit(start_date_iso).str.strptime(pl.Date, strict=True)
     end_date = pl.lit(end_date_iso).str.strptime(pl.Date, strict=True)
@@ -1211,20 +1290,65 @@ def compute_cohort_view_from_parquet(
         )
     )
 
-    retry_scan = module_scan
-    if max_retries > 0:
+    removed_work_modes = tuple(
+        sorted({str(mode).strip() for mode in selected_removed_work_modes if str(mode or "").strip()})
+    )
+    work_mode_scan = (
+        module_scan.filter(~pl.col("work_mode").is_in(list(removed_work_modes)))
+        if removed_work_modes
+        else module_scan
+    )
+    work_mode_metrics, work_mode_module_attempts_frame, work_mode_codes = _collect_stage_metrics_from_lazy(
+        work_mode_scan
+    )
+    stage_records.append(
+        _build_stage_record_from_values(
+            stage_key="work_modes",
+            stage_label="Work modes removed",
+            students=int(work_mode_metrics["students"]),
+            attempts=int(work_mode_metrics["attempts"]),
+            module_codes=work_mode_codes,
+            baseline_students=baseline_students,
+            baseline_attempts=baseline_attempts,
+        )
+    )
+    stage_module_frames.append(
+        _build_stage_module_attempts_from_aggregated(
+            work_mode_module_attempts_frame,
+            stage_key="work_modes",
+            stage_label="Work modes removed",
+        )
+    )
+
+    retry_scan = work_mode_scan
+    retry_exempt_activity_ids = _select_retry_exempt_activity_ids(
+        activity_exercise_counts,
+        enabled=retry_small_activity_exemption_enabled,
+        max_exercises_per_activity=retry_small_activity_max_exercises,
+    )
+    if max_retries >= 0:
         offending_pairs = (
-            module_scan.filter(pl.col("exercise_id").is_not_null() & (pl.col("exercise_id") != ""))
-            .group_by(["user_id", "exercise_id"])
+            work_mode_scan.filter(pl.col("exercise_id").is_not_null() & (pl.col("exercise_id") != ""))
+            .group_by(["user_id", "exercise_id", "activity_id"])
             .agg(pl.len().alias("attempts"))
             .with_columns((pl.col("attempts") - 1).alias("retries"))
             .filter(pl.col("retries") > max_retries)
-            .select(["user_id", "exercise_id"])
+            .select(["user_id", "exercise_id", "activity_id"])
         )
+        if retry_exempt_activity_ids is not None and retry_exempt_activity_ids.height:
+            offending_pairs = offending_pairs.join(retry_exempt_activity_ids.lazy(), on="activity_id", how="anti")
         if retry_filter_mode == RETRY_FILTER_MODE_REMOVE_STUDENT:
-            retry_scan = module_scan.join(offending_pairs.select("user_id").unique(), on="user_id", how="anti")
+            retry_scan = work_mode_scan.join(
+                offending_pairs.select("user_id").unique(),
+                on="user_id",
+                how="anti",
+            )
         else:
-            retry_scan = module_scan.join(offending_pairs, on=["user_id", "exercise_id"], how="anti")
+            retry_scan = work_mode_scan.join(
+                offending_pairs.select(["user_id", "exercise_id"]),
+                on=["user_id", "exercise_id"],
+                how="anti",
+            )
 
     retry_metrics, retry_module_attempts_frame, retry_codes = _collect_stage_metrics_from_lazy(retry_scan)
     stage_records.append(
@@ -1301,8 +1425,10 @@ def compute_cohort_view_from_parquet(
             start_date_iso=start_date_iso,
             end_date_iso=end_date_iso,
             selected_modules=selected_modules,
+            removed_work_modes=removed_work_modes,
             max_retries=max_retries,
             retry_filter_mode=retry_filter_mode,
+            retry_exempt_activity_ids=retry_exempt_activity_ids,
             retained_segments=repeat_segments,
         )
     repeat_user_paths = _build_user_paths_from_segments(
@@ -1392,6 +1518,7 @@ def compute_cohort_view_from_parquet(
         schema_size_segment_modules,
         schema_size_user_paths,
         selected_schemas=selected_schemas,
+        schema_filter_mode=schema_filter_mode,
     )
     stage_records.append(
         _build_stage_summary_from_segments(
@@ -1431,6 +1558,7 @@ def compute_cohort_view_from_parquet(
             pl.col("created_at"),
             pl.col("work_mode"),
             pl.col("module_code"),
+            pl.col("activity_id"),
             pl.col("exercise_id"),
             pl.col("attempt_number"),
         ]

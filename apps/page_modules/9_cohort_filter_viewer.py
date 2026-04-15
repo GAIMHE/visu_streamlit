@@ -36,25 +36,36 @@ from source_state import (
 from visu2.cohort_filter_viewer import (
     HISTORY_BASIS_OPTIONS,
     RETRY_FILTER_MODE_OPTIONS,
+    SCHEMA_FILTER_MODE_KEEP,
+    SCHEMA_FILTER_MODE_REMOVE,
     CohortFilterResult,
     build_schema_summary_vs_baseline,
     compute_cohort_view_from_parquet,
 )
 from visu2.config import get_settings
+from visu2.loaders import catalog_to_summary_frames, load_learning_catalog
 
 PAGE_RUNTIME_TABLES: tuple[str, ...] = ("fact_attempt_core",)
 MODULE_SELECTION_KEY = "cohort_filter_viewer_modules"
+WORK_MODE_REMOVE_KEY = "cohort_filter_viewer_removed_work_modes"
 TRANSITION_SELECTION_KEY = "cohort_filter_viewer_transition_counts"
 SCHEMA_SELECTION_KEY = "cohort_filter_viewer_schemas"
+SCHEMA_FILTER_MODE_KEY = "cohort_filter_viewer_schema_filter_mode"
 HISTORY_THRESHOLD_KEY = "cohort_filter_viewer_min_history"
 HISTORY_BASIS_KEY = "cohort_filter_viewer_history_basis"
 PLACEMENT_THRESHOLD_KEY = "cohort_filter_viewer_min_placement_attempts"
 RETRY_FILTER_ENABLED_KEY = "cohort_filter_viewer_retry_filter_enabled"
 RETRY_FILTER_MAX_KEY = "cohort_filter_viewer_max_retries"
 RETRY_FILTER_MODE_KEY = "cohort_filter_viewer_retry_filter_mode"
+RETRY_SMALL_ACTIVITY_EXEMPTION_ENABLED_KEY = "cohort_filter_viewer_retry_small_activity_exemption_enabled"
+RETRY_SMALL_ACTIVITY_MAX_EXERCISES_KEY = "cohort_filter_viewer_retry_small_activity_max_exercises"
 REPEAT_MODULE_FILTER_KEY = "cohort_filter_viewer_repeat_module_filter"
 SCHEMA_MIN_STUDENTS_KEY = "cohort_filter_viewer_schema_min_students"
 APPLIED_FILTERS_KEY_PREFIX = "cohort_filter_viewer_applied_filters"
+SCHEMA_FILTER_MODE_OPTIONS: dict[str, str] = {
+    "Keep selected schemas": SCHEMA_FILTER_MODE_KEEP,
+    "Remove selected schemas": SCHEMA_FILTER_MODE_REMOVE,
+}
 
 
 @st.cache_data(show_spinner=False)
@@ -69,9 +80,62 @@ def _load_cohort_attempt_rows(
     query = (
         pl.scan_parquet(fact_path)
         .filter((pl.col("date_utc") >= pl.lit(start_date)) & (pl.col("date_utc") <= pl.lit(end_date)))
-        .select(["user_id", "created_at", "work_mode", "module_code", "exercise_id", "attempt_number"])
+        .select(
+            [
+                "user_id",
+                "created_at",
+                "work_mode",
+                "module_code",
+                "activity_id",
+                "exercise_id",
+                "attempt_number",
+            ]
+        )
     )
     return collect_lazy(query)
+
+
+@st.cache_data(show_spinner=False)
+def _load_work_mode_options(fact_path: Path) -> list[str]:
+    query = (
+        pl.scan_parquet(fact_path)
+        .select(pl.col("work_mode").cast(pl.Utf8).str.strip_chars().alias("work_mode"))
+        .filter(pl.col("work_mode").is_not_null() & (pl.col("work_mode") != ""))
+        .unique()
+        .sort("work_mode")
+    )
+    frame = collect_lazy(query)
+    return frame.get_column("work_mode").to_list() if frame.height else []
+
+
+@st.cache_data(show_spinner=False)
+def _load_fact_module_options(fact_path: Path) -> list[str]:
+    query = (
+        pl.scan_parquet(fact_path)
+        .select(pl.col("module_code").cast(pl.Utf8).str.strip_chars().alias("module_code"))
+        .filter(pl.col("module_code").is_not_null() & (pl.col("module_code") != ""))
+        .unique()
+        .sort("module_code")
+    )
+    frame = collect_lazy(query)
+    return frame.get_column("module_code").to_list() if frame.height else []
+
+
+@st.cache_data(show_spinner=False)
+def _load_activity_exercise_counts(learning_catalog_path: Path) -> pl.DataFrame:
+    frames = catalog_to_summary_frames(load_learning_catalog(learning_catalog_path))
+    activity_exercises = frames.activity_exercises
+    if activity_exercises.height == 0:
+        return pl.DataFrame(
+            {"activity_id": [], "activity_exercise_count": []},
+            schema={"activity_id": pl.Utf8, "activity_exercise_count": pl.Int64},
+        )
+    return (
+        activity_exercises
+        .group_by("activity_id")
+        .agg(pl.col("exercise_id").drop_nulls().n_unique().alias("activity_exercise_count"))
+        .sort("activity_id")
+    )
 
 
 def _applied_filters_state_key(source_id: str) -> str:
@@ -81,12 +145,16 @@ def _applied_filters_state_key(source_id: str) -> str:
 @st.cache_data(show_spinner=False)
 def _compute_cohort_result(
     fact_path_str: str,
+    learning_catalog_path_str: str,
     *,
     start_date_iso: str,
     end_date_iso: str,
     selected_modules: tuple[str, ...],
+    selected_removed_work_modes: tuple[str, ...],
     max_retries: int,
     retry_filter_mode: str,
+    retry_small_activity_exemption_enabled: bool,
+    retry_small_activity_max_exercises: int,
     min_placement_attempts: int,
     reject_same_placement_module_repeat: bool,
     min_history: int,
@@ -94,14 +162,20 @@ def _compute_cohort_result(
     selected_transition_counts: tuple[int, ...],
     min_students_per_schema: int,
     selected_schemas: tuple[str, ...],
+    schema_filter_mode: str,
 ) -> CohortFilterResult:
+    activity_exercise_counts = _load_activity_exercise_counts(Path(learning_catalog_path_str))
     return compute_cohort_view_from_parquet(
         fact_path_str,
         start_date_iso=start_date_iso,
         end_date_iso=end_date_iso,
         selected_modules=selected_modules,
+        selected_removed_work_modes=selected_removed_work_modes,
         max_retries=max_retries,
         retry_filter_mode=retry_filter_mode,
+        retry_small_activity_exemption_enabled=retry_small_activity_exemption_enabled,
+        retry_small_activity_max_exercises=retry_small_activity_max_exercises,
+        activity_exercise_counts=activity_exercise_counts,
         min_placement_attempts=min_placement_attempts,
         reject_same_placement_module_repeat=reject_same_placement_module_repeat,
         min_history=min_history,
@@ -109,6 +183,7 @@ def _compute_cohort_result(
         selected_transition_counts=selected_transition_counts,
         min_students_per_schema=min_students_per_schema,
         selected_schemas=selected_schemas,
+        schema_filter_mode=schema_filter_mode,
     )
 
 
@@ -117,8 +192,11 @@ def _build_filter_payload(
     start_date: date,
     end_date: date,
     selected_modules: tuple[str, ...],
+    selected_removed_work_modes: tuple[str, ...],
     max_retries: int,
     retry_filter_mode: str,
+    retry_small_activity_exemption_enabled: bool,
+    retry_small_activity_max_exercises: int,
     min_placement_attempts: int,
     reject_same_placement_module_repeat: bool,
     min_history: int,
@@ -126,13 +204,17 @@ def _build_filter_payload(
     selected_transition_counts: tuple[int, ...],
     min_students_per_schema: int,
     selected_schemas: tuple[str, ...],
+    schema_filter_mode: str,
 ) -> dict[str, object]:
     return {
         "start_date_iso": start_date.isoformat(),
         "end_date_iso": end_date.isoformat(),
         "selected_modules": selected_modules,
+        "selected_removed_work_modes": selected_removed_work_modes,
         "max_retries": max_retries,
         "retry_filter_mode": retry_filter_mode,
+        "retry_small_activity_exemption_enabled": retry_small_activity_exemption_enabled,
+        "retry_small_activity_max_exercises": retry_small_activity_max_exercises,
         "min_placement_attempts": min_placement_attempts,
         "reject_same_placement_module_repeat": reject_same_placement_module_repeat,
         "min_history": min_history,
@@ -140,17 +222,32 @@ def _build_filter_payload(
         "selected_transition_counts": selected_transition_counts,
         "min_students_per_schema": min_students_per_schema,
         "selected_schemas": selected_schemas,
+        "schema_filter_mode": schema_filter_mode,
     }
 
 
-def _compute_from_payload(fact_path: Path, payload: dict[str, object]) -> CohortFilterResult:
+def _compute_from_payload(
+    fact_path: Path,
+    learning_catalog_path: Path,
+    payload: dict[str, object],
+) -> CohortFilterResult:
     return _compute_cohort_result(
         str(fact_path),
+        str(learning_catalog_path),
         start_date_iso=str(payload["start_date_iso"]),
         end_date_iso=str(payload["end_date_iso"]),
         selected_modules=tuple(str(value) for value in payload["selected_modules"]),
+        selected_removed_work_modes=tuple(
+            str(value) for value in payload.get("selected_removed_work_modes", ())
+        ),
         max_retries=int(payload["max_retries"]),
         retry_filter_mode=str(payload["retry_filter_mode"]),
+        retry_small_activity_exemption_enabled=bool(
+            payload.get("retry_small_activity_exemption_enabled", False)
+        ),
+        retry_small_activity_max_exercises=int(
+            payload.get("retry_small_activity_max_exercises", 1)
+        ),
         min_placement_attempts=int(payload["min_placement_attempts"]),
         reject_same_placement_module_repeat=bool(payload["reject_same_placement_module_repeat"]),
         min_history=int(payload["min_history"]),
@@ -158,6 +255,7 @@ def _compute_from_payload(fact_path: Path, payload: dict[str, object]) -> Cohort
         selected_transition_counts=tuple(int(value) for value in payload["selected_transition_counts"]),
         min_students_per_schema=int(payload["min_students_per_schema"]),
         selected_schemas=tuple(str(value) for value in payload["selected_schemas"]),
+        schema_filter_mode=str(payload.get("schema_filter_mode", SCHEMA_FILTER_MODE_KEEP)),
     )
 
 
@@ -186,14 +284,18 @@ def _clamp_date_range(
 def _reset_page_local_state() -> None:
     for key in (
         MODULE_SELECTION_KEY,
+        WORK_MODE_REMOVE_KEY,
         TRANSITION_SELECTION_KEY,
         SCHEMA_SELECTION_KEY,
+        SCHEMA_FILTER_MODE_KEY,
         HISTORY_THRESHOLD_KEY,
         HISTORY_BASIS_KEY,
         PLACEMENT_THRESHOLD_KEY,
         RETRY_FILTER_ENABLED_KEY,
         RETRY_FILTER_MAX_KEY,
         RETRY_FILTER_MODE_KEY,
+        RETRY_SMALL_ACTIVITY_EXEMPTION_ENABLED_KEY,
+        RETRY_SMALL_ACTIVITY_MAX_EXERCISES_KEY,
         REPEAT_MODULE_FILTER_KEY,
         SCHEMA_MIN_STUDENTS_KEY,
     ):
@@ -392,7 +494,7 @@ def main() -> None:
         )
         st.rerun()
 
-    module_options = (
+    catalog_module_options = (
         dimension_domain.curriculum_frame.select("module_code")
         .drop_nulls()
         .unique()
@@ -400,6 +502,9 @@ def main() -> None:
         .get_column("module_code")
         .to_list()
     )
+    fact_module_options = _load_fact_module_options(fact_path)
+    module_options = sorted({*catalog_module_options, *fact_module_options})
+    work_mode_options = _load_work_mode_options(fact_path)
     if HISTORY_THRESHOLD_KEY not in st.session_state:
         st.session_state[HISTORY_THRESHOLD_KEY] = 1
     if HISTORY_BASIS_KEY not in st.session_state:
@@ -412,10 +517,16 @@ def main() -> None:
         st.session_state[RETRY_FILTER_MAX_KEY] = 0
     if RETRY_FILTER_MODE_KEY not in st.session_state:
         st.session_state[RETRY_FILTER_MODE_KEY] = "Remove offending exercises only"
+    if RETRY_SMALL_ACTIVITY_EXEMPTION_ENABLED_KEY not in st.session_state:
+        st.session_state[RETRY_SMALL_ACTIVITY_EXEMPTION_ENABLED_KEY] = False
+    if RETRY_SMALL_ACTIVITY_MAX_EXERCISES_KEY not in st.session_state:
+        st.session_state[RETRY_SMALL_ACTIVITY_MAX_EXERCISES_KEY] = 1
     if REPEAT_MODULE_FILTER_KEY not in st.session_state:
         st.session_state[REPEAT_MODULE_FILTER_KEY] = False
     if SCHEMA_MIN_STUDENTS_KEY not in st.session_state:
         st.session_state[SCHEMA_MIN_STUDENTS_KEY] = 1
+    if SCHEMA_FILTER_MODE_KEY not in st.session_state:
+        st.session_state[SCHEMA_FILTER_MODE_KEY] = "Keep selected schemas"
 
     applied_filters_key = _applied_filters_state_key(source_id)
     applied_payload = st.session_state.get(applied_filters_key)
@@ -424,7 +535,7 @@ def main() -> None:
     schema_options: list[str] = []
     if isinstance(applied_payload, dict):
         applied_payload = dict(applied_payload)
-        applied_result = _compute_from_payload(fact_path, applied_payload)
+        applied_result = _compute_from_payload(fact_path, settings.learning_catalog_path, applied_payload)
         transition_options = (
             applied_result.transition_options.get_column("transition_count").to_list()
             if applied_result.transition_options.height
@@ -473,6 +584,19 @@ def main() -> None:
                 help=(
                     "Only keep attempts from these modules. "
                     "The work-mode path is then rebuilt from that reduced slice."
+                ),
+            )
+        )
+        _sync_multiselect_state(WORK_MODE_REMOVE_KEY, work_mode_options, default_all=False)
+        selected_removed_work_modes = tuple(
+            st.multiselect(
+                "Work modes to remove",
+                options=work_mode_options,
+                key=WORK_MODE_REMOVE_KEY,
+                help=(
+                    "Remove attempts in these work modes before rebuilding the path. "
+                    "Students stay in the cohort if they still have attempts left. "
+                    "Use this to remove `initial-test` attempts without removing the full student."
                 ),
             )
         )
@@ -544,6 +668,28 @@ def main() -> None:
                 "or remove only that over-repeated exercise."
             ),
         )
+        retry_small_activity_exemption_enabled = bool(
+            st.checkbox(
+                "Allow unlimited retries in very small activities",
+                key=RETRY_SMALL_ACTIVITY_EXEMPTION_ENABLED_KEY,
+                help=(
+                    "Ignore the retry cap for exercises that belong to activities with very few exercises. "
+                    "Example: if an activity has only one exercise, repeated practice there can stay in the cohort."
+                ),
+            )
+        )
+        retry_small_activity_max_exercises = int(
+            st.number_input(
+                "Max exercises in activity for retry exemption",
+                min_value=1,
+                max_value=1_000_000,
+                step=1,
+                key=RETRY_SMALL_ACTIVITY_MAX_EXERCISES_KEY,
+                help=(
+                    "Activities with this many exercises or fewer are exempt from the retry cap when the option above is enabled."
+                ),
+            )
+        )
         effective_max_retries = max_retries if retry_filter_enabled else -1
         reject_same_placement_module_repeat = bool(
             st.checkbox(
@@ -599,6 +745,15 @@ def main() -> None:
                 st.caption("No transition-count options are available for the current processed cohort.")
 
         if schema_options:
+            schema_filter_mode_label = st.selectbox(
+                "Exact schema mode",
+                options=list(SCHEMA_FILTER_MODE_OPTIONS.keys()),
+                key=SCHEMA_FILTER_MODE_KEY,
+                help=(
+                    "Choose whether the selected exact schemas should be kept in the cohort "
+                    "or removed from it."
+                ),
+            )
             _sync_multiselect_state(SCHEMA_SELECTION_KEY, schema_options, default_all=False)
             selected_schemas = tuple(
                 str(value)
@@ -614,6 +769,10 @@ def main() -> None:
                 )
             )
         else:
+            schema_filter_mode_label = str(
+                st.session_state.get(SCHEMA_FILTER_MODE_KEY)
+                or "Keep selected schemas"
+            )
             selected_schemas = tuple(
                 str(value)
                 for value in (
@@ -634,8 +793,11 @@ def main() -> None:
             start_date=start_date,
             end_date=end_date,
             selected_modules=selected_modules,
+            selected_removed_work_modes=selected_removed_work_modes,
             max_retries=effective_max_retries,
             retry_filter_mode=RETRY_FILTER_MODE_OPTIONS[retry_filter_mode_label],
+            retry_small_activity_exemption_enabled=retry_small_activity_exemption_enabled,
+            retry_small_activity_max_exercises=retry_small_activity_max_exercises,
             min_placement_attempts=min_placement_attempts,
             reject_same_placement_module_repeat=reject_same_placement_module_repeat,
             min_history=min_history,
@@ -643,6 +805,7 @@ def main() -> None:
             selected_transition_counts=selected_transition_counts,
             min_students_per_schema=min_students_per_schema,
             selected_schemas=selected_schemas,
+            schema_filter_mode=SCHEMA_FILTER_MODE_OPTIONS[schema_filter_mode_label],
         )
         st.session_state[applied_filters_key] = next_payload
         set_filter_date_range(source_id, start_date=start_date, end_date=end_date)

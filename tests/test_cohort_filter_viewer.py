@@ -10,6 +10,7 @@ from visu2.cohort_filter_viewer import (
     HISTORY_BASIS_RAW_ATTEMPTS,
     RETRY_FILTER_MODE_REMOVE_EXERCISE,
     RETRY_FILTER_MODE_REMOVE_STUDENT,
+    SCHEMA_FILTER_MODE_REMOVE,
     build_final_module_summary,
     build_final_schema_summary,
     build_schema_summary_vs_baseline,
@@ -28,8 +29,10 @@ def _sample_attempts() -> pl.DataFrame:
         attempts: int,
         module_code: str,
         exercise_ids: list[str],
+        activity_id: str | None = None,
     ) -> int:
         idx = start_idx
+        resolved_activity_id = activity_id or f"{user_id}_{work_mode}_{module_code}_{exercise_ids[0]}_activity"
         for offset in range(attempts):
             rows.append(
                 {
@@ -37,6 +40,7 @@ def _sample_attempts() -> pl.DataFrame:
                     "created_at": datetime(2025, 1, 1, 8, 0, 0) + timedelta(minutes=idx),
                     "work_mode": work_mode,
                     "module_code": module_code,
+                    "activity_id": resolved_activity_id,
                     "exercise_id": exercise_ids[offset % len(exercise_ids)],
                     "attempt_number": offset + 1,
                 }
@@ -108,6 +112,24 @@ def test_placement_cleanup_removes_short_segment_and_following_segment() -> None
     assert row["retained_attempts"] == 16
 
 
+def test_work_mode_removal_drops_attempts_without_dropping_student() -> None:
+    result = filter_cohort_view(
+        _sample_attempts(),
+        selected_modules=("M31",),
+        selected_removed_work_modes=("adaptive-test",),
+        min_placement_attempts=1,
+        min_history=1,
+        history_basis=HISTORY_BASIS_RAW_ATTEMPTS,
+    )
+
+    row = result.final_user_paths.row(0, named=True)
+    assert row["user_id"] == "u_mod"
+    assert row["cleaned_schema"] == "zpdes"
+    assert row["transition_count"] == 0
+    assert row["retained_attempts"] == 3
+    assert set(result.final_rows.get_column("work_mode").to_list()) == {"zpdes"}
+
+
 def test_history_threshold_supports_raw_attempts_and_distinct_exercises() -> None:
     raw_result = filter_cohort_view(
         _sample_attempts(),
@@ -154,6 +176,17 @@ def test_transition_count_and_schema_filters_apply_exact_matches() -> None:
     )
     assert set(schema_result.final_user_paths["user_id"].to_list()) == {"u_schema"}
 
+    schema_remove_result = filter_cohort_view(
+        _sample_attempts(),
+        selected_modules=("M1",),
+        min_placement_attempts=5,
+        min_history=1,
+        history_basis=HISTORY_BASIS_RAW_ATTEMPTS,
+        selected_schemas=("initial-test -> zpdes",),
+        schema_filter_mode=SCHEMA_FILTER_MODE_REMOVE,
+    )
+    assert "u_schema" not in set(schema_remove_result.final_user_paths["user_id"].to_list())
+
 
 def test_max_retry_filter_can_remove_only_offending_exercise_rows() -> None:
     result = filter_cohort_view(
@@ -172,6 +205,43 @@ def test_max_retry_filter_can_remove_only_offending_exercise_rows() -> None:
         result.final_rows.filter(pl.col("user_id") == "u_retry").get_column("exercise_id").to_list()
     )
     assert set(remaining_exercises) == {"r_keep1", "r_keep2"}
+
+
+def test_max_retry_filter_can_ignore_small_activities_when_exemption_is_enabled() -> None:
+    attempts = pl.DataFrame(
+        {
+            "user_id": ["u_exempt"] * 4 + ["u_blocked"] * 4,
+            "created_at": [datetime(2025, 1, 1, 8, 0, 0) + timedelta(minutes=index) for index in range(8)],
+            "work_mode": ["zpdes"] * 8,
+            "module_code": ["M1"] * 8,
+            "activity_id": ["a_single"] * 4 + ["a_multi"] * 4,
+            "exercise_id": ["ex_single"] * 4 + ["ex_multi"] * 4,
+            "attempt_number": [1, 2, 3, 4, 1, 2, 3, 4],
+        }
+    )
+    activity_exercise_counts = pl.DataFrame(
+        {
+            "activity_id": ["a_single", "a_multi"],
+            "activity_exercise_count": [1, 2],
+        }
+    )
+
+    result = filter_cohort_view(
+        attempts,
+        selected_modules=("M1",),
+        max_retries=1,
+        retry_filter_mode=RETRY_FILTER_MODE_REMOVE_EXERCISE,
+        retry_small_activity_exemption_enabled=True,
+        retry_small_activity_max_exercises=1,
+        activity_exercise_counts=activity_exercise_counts,
+        min_placement_attempts=1,
+        min_history=1,
+        history_basis=HISTORY_BASIS_RAW_ATTEMPTS,
+    )
+
+    assert set(result.final_user_paths.get_column("user_id").to_list()) == {"u_exempt"}
+    assert result.final_rows.filter(pl.col("user_id") == "u_exempt").height == 4
+    assert result.final_rows.filter(pl.col("user_id") == "u_blocked").height == 0
 
 
 def test_max_retry_filter_can_remove_full_student_history() -> None:
