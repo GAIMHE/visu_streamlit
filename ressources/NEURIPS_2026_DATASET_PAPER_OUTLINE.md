@@ -242,7 +242,7 @@ For `main`, the core source files are:
 - `data/exercises.json`
 
 For `mia`, the current source materials include:
-- `data_MIA/researcher_data-053df3ec-5501-4ad8-9917-a935bcf76740.csv`
+- `data_MIA/986-neurips-mia_20260415_100024.csv`
 - `data_MIA/config_mia.json`
 
 ### What the raw rows represent
@@ -365,6 +365,71 @@ This section should probably discuss:
 - define benchmark splits
 - decide whether the paper should include screenshots of the visualization tool
 - add a dataset limitations subsection
+
+### Ready-to-paste draft for Section 3 (`The \DATASET dataset`)
+
+#### 3.1 Collection and pedagogical setting
+
+Adaptiv'Math and MIA 2nd are classroom-grounded digital learning environments designed to support structured mathematics learning in ordinary educational settings. Both systems record interaction traces during real student use rather than in a laboratory protocol, and both preserve enough pedagogical metadata to reconnect each attempt to an authored curriculum structure. In this paper, we define a curated benchmark slice intended to remain pedagogically interpretable while still large enough for modern sequence modeling and transfer experiments.
+
+The current Adaptiv'Math scope covers two Modules, "Number and calculation" and "Solving arithmetic problems". The current MIA 2nd scope is anchored on two Modules as well, "Number and calculation" (but at a higher level) and will include one additional module that remains to be finalized at the time of writing (`TODO: insert second MIA module code and title`). This design keeps a large arithmetic-oriented benchmark core while preserving room for cross-source comparison under a shared interaction schema.
+
+Both sources follow the same pedagogical hierarchy. Modules define broad instructional units. Objectives decompose each module into more specific mathematical skills. Activities correspond to pedagogical steps within an objective, and exercises are the concrete student-facing tasks attempted on the platform. In addition to these structured identifiers, exercises retain content-side metadata, including gameplay formats, which makes it possible to study not only success sequences but also heterogeneous forms of student interaction.
+
+#### 3.2 Data representation and work modes
+
+At the raw level, the benchmark is built from one-row-per-attempt interaction logs: `data/adaptiv_math_history.parquet` for Adaptiv'Math and `data_MIA/986-neurips-mia_20260415_100024.csv` plus `data_MIA/config_mia.json` for MIA 2nd. Each row corresponds to one student attempt on one exercise at one timestamp. After normalization, both sources can be represented in a common benchmark schema that retains student, classroom, and teacher identifiers, module/objective/activity/exercise identifiers, timestamps, interaction duration, correctness, and work mode.
+
+Work modes are important because they encode instructional context rather than mere logging metadata. In Adaptiv'Math, attempts can occur in `zpdes`, `initial-test`, `adaptive-test`, or `playlist`, corresponding respectively to adaptive progression, earlier diagnostic phases, later adaptive placement phases, and teacher-defined activity sequences. In MIA 2nd, the dominant modes are `zpdes`, `adaptive-test`, and `playlist`, with smaller amounts of `duo` and `revision`. Combined with the hierarchy described above, these mode annotations make the dataset suitable for more than plain next-response prediction: they expose how performance unfolds under distinct instructional conditions.
+
+#### 3.3 Descriptive statistics
+
+The released benchmark is multi-source but harmonized into a common interaction schema, which makes the two sources directly comparable at the attempt level while preserving their pedagogical structure. The main paper will focus on selected modules rather than the full raw inventory, because the goal is to define a controlled and reproducible benchmark slice whose educational scope remains easy to interpret.
+
+| Source | Modules included | Students | Attempts | Classrooms | Teachers | Objectives | Activities | Exercises | Time span | Work modes present |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---|---|
+| Adaptiv'Math selected subset | `M1` + `M31`-`M33` | `29,006` | `6,205,511` | `4,755` | `TODO if reported in final table` | `65` | `296` | `6,468` | `2022-08-05` to `2025-11-20` | `adaptive-test`, `initial-test`, `playlist`, `zpdes` |
+| MIA selected subset | `M101` + `TODO(second MIA module)` | `TODO` | `TODO` | `TODO` | `TODO` | `TODO` | `TODO` | `TODO` | `TODO` | `adaptive-test`, `duo`, `playlist`, `revision`, `zpdes` |
+
+Drafting note. Before the second MIA module is frozen, the audited anchor module `M101` alone already contributes `16,819` students, `1,758,891` attempts, `2,017` classrooms, `1,145` teachers, `10` objectives, `70` activities, and `1,062` exercises over the period `2024-02-27` to `2026-04-14`.
+
+Even at the selected-scope level, the two sources remain complementary. Adaptiv'Math contributes a large multi-module benchmark slice spanning Module 1 and the 3X family, with four instructional modes and broad classroom coverage. MIA 2nd contributes a smaller but still substantial benchmark slice with compatible attempt-level structure and a different balance of work modes. This shared schema, combined with differences in source design, makes the benchmark large enough for modern modeling while keeping the pedagogical units readable at the level of modules, objectives, and activities.
+
+#### 3.4 Scope and usefulness
+
+The value of the dataset is not limited to classical knowledge tracing. Because attempts are aligned with an explicit pedagogical hierarchy and annotated with instructional modes, the benchmark captures both performance traces and the educational structure in which those traces were produced. This makes it possible to study modeling questions that are closer to real classroom use, where the same student may appear in diagnostic, adaptive, or teacher-directed contexts rather than in a single flattened interaction sequence.
+
+The dataset also supports analysis at multiple levels of abstraction. At the finest level, models can predict correctness or response behavior on individual exercises. At higher levels, the same interaction data can be aggregated to activities, objectives, and modules to study progression, transfer, or cross-context behavior. The selected subset is therefore narrow enough to remain interpretable, but rich enough to support controlled comparisons across sources, work modes, and curricular levels.
+
+Candidate benchmark directions supported by this scope:
+- response or success prediction at the attempt level
+- work-mode-aware knowledge tracing
+- transfer across objectives within a module
+- transfer across modules
+- comparison of instructional contexts within a shared interaction schema
+
+### Main-paper presentation plan for this section
+
+Keep the main text balanced:
+- include one core statistics table
+- include one explanatory figure
+- move broader descriptive material to the appendix
+
+Recommended figure:
+- preferred version: a two-panel figure
+  - left panel: hierarchy overview (`Module -> Objective -> Activity -> Exercise`)
+  - right panel: compact work-mode overview for Adaptiv'Math and MIA 2nd
+- fallback version if space is tight: keep only the hierarchy diagram in the main text and move the work-mode panel to the appendix
+
+Suggested caption draft:
+- `Figure X: Structure of the released benchmark subset. Each interaction is an exercise-level attempt linked to a pedagogical hierarchy (module, objective, activity, exercise) and to an instructional context captured by the work mode. The benchmark combines two classroom-grounded sources under a shared attempt-level schema while preserving source-specific pedagogical settings.`
+
+Material to reserve for appendix or supplementary material:
+- gameplay distribution tables
+- detailed work-mode frequency tables
+- per-module descriptive breakdowns
+- sequence-length or retry distributions
+- example exercise screenshots or gameplay-specific illustrations
 
 ---
 
@@ -559,4 +624,3 @@ Avoid overclaiming:
 - or one family name plus subsets
 
 5. Build the first statistics table directly from the repo.
-

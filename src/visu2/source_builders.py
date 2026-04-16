@@ -6,6 +6,7 @@ import csv
 import json
 import re
 import shutil
+import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -17,11 +18,19 @@ import polars as pl
 from .config import Settings, ensure_artifact_directories
 from .runtime_sources import get_runtime_source
 
+_CSV_FIELD_SIZE_LIMIT = sys.maxsize
+while True:
+    try:
+        csv.field_size_limit(_CSV_FIELD_SIZE_LIMIT)
+        break
+    except OverflowError:
+        _CSV_FIELD_SIZE_LIMIT = int(_CSV_FIELD_SIZE_LIMIT / 10)
+
 UUID_RE = re.compile(
     r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 )
 
-_MAUREEN_RESEARCHER_HEADERS: tuple[str, ...] = (
+_RESEARCHER_REQUIRED_HEADERS: tuple[str, ...] = (
     "UAI",
     "classroom_id",
     "teacher_id",
@@ -43,6 +52,14 @@ _MAUREEN_RESEARCHER_HEADERS: tuple[str, ...] = (
     "data_duration",
     "session_duration",
     "work_mode",
+)
+_RESEARCHER_OPTIONAL_HEADERS: tuple[str, ...] = (
+    "progression_score",
+    "initial_test_max_success",
+    "initial_test_weighted_max_success",
+    "initial_test_success_rate",
+    "finished_module_mean_score",
+    "finished_module_graphe_coverage_rate",
 )
 
 
@@ -111,6 +128,8 @@ def _load_maureen_config_rows(path: Path) -> list[dict[str, str | None]]:
 
 
 def _repair_maureen_researcher_row(raw_line: str, expected_length: int) -> list[str] | None:
+    if expected_length != len(_RESEARCHER_REQUIRED_HEADERS):
+        return None
     text = raw_line.rstrip("\r\n")
     if not text:
         return None
@@ -141,10 +160,16 @@ def _load_maureen_researcher_attempts(path: Path) -> tuple[pl.DataFrame, tuple[s
             _strip_trailing_semicolon(value)
             for value in next(csv.reader([header_line], delimiter=","))
         ]
-        if tuple(parsed_header) != _MAUREEN_RESEARCHER_HEADERS:
+        required_missing = [name for name in _RESEARCHER_REQUIRED_HEADERS if name not in parsed_header]
+        unexpected = [
+            name
+            for name in parsed_header
+            if name not in set(_RESEARCHER_REQUIRED_HEADERS) | set(_RESEARCHER_OPTIONAL_HEADERS)
+        ]
+        if required_missing or unexpected:
             raise ValueError(
                 "Maureen researcher CSV has an unexpected header. "
-                f"Expected {list(_MAUREEN_RESEARCHER_HEADERS)}, got {parsed_header}."
+                f"Missing required headers={required_missing}, unexpected headers={unexpected}, got {parsed_header}."
             )
 
         rows: list[dict[str, str | None]] = []
@@ -167,7 +192,15 @@ def _load_maureen_researcher_attempts(path: Path) -> tuple[pl.DataFrame, tuple[s
             }
             rows.append(normalized)
 
-    attempts = pl.DataFrame(rows) if rows else pl.DataFrame(schema={name: pl.Utf8 for name in parsed_header})
+    attempts = pl.DataFrame(
+        rows,
+        schema={name: pl.Utf8 for name in parsed_header},
+    ) if rows else pl.DataFrame(schema={name: pl.Utf8 for name in parsed_header})
+    missing_optional_headers = [name for name in _RESEARCHER_OPTIONAL_HEADERS if name not in attempts.columns]
+    if missing_optional_headers:
+        attempts = attempts.with_columns(
+            [pl.lit(None, dtype=pl.Utf8).alias(name) for name in missing_optional_headers]
+        )
     attempts = attempts.with_columns(
         _optional_text_expr("UAI").alias("UAI"),
         _optional_text_expr("classroom_id").alias("classroom_id"),
@@ -187,6 +220,16 @@ def _load_maureen_researcher_attempts(path: Path) -> tuple[pl.DataFrame, tuple[s
         pl.col("data_nb_tries").cast(pl.Int64, strict=False).alias("data_nb_tries"),
         pl.col("data_duration").cast(pl.Float64, strict=False).alias("data_duration"),
         pl.col("session_duration").cast(pl.Float64, strict=False).alias("session_duration"),
+        pl.col("progression_score").cast(pl.Float64, strict=False).alias("progression_score"),
+        pl.col("initial_test_max_success").cast(pl.Float64, strict=False).alias("initial_test_max_success"),
+        pl.col("initial_test_weighted_max_success")
+        .cast(pl.Float64, strict=False)
+        .alias("initial_test_weighted_max_success"),
+        pl.col("initial_test_success_rate").cast(pl.Float64, strict=False).alias("initial_test_success_rate"),
+        pl.col("finished_module_mean_score").cast(pl.Float64, strict=False).alias("finished_module_mean_score"),
+        pl.col("finished_module_graphe_coverage_rate")
+        .cast(pl.Float64, strict=False)
+        .alias("finished_module_graphe_coverage_rate"),
         pl.col("created_at")
         .map_elements(_parse_created_at, return_dtype=pl.Datetime(time_zone="UTC"))
         .alias("created_at"),
@@ -221,6 +264,12 @@ def _activity_prefix(code: str | None) -> str | None:
     return match.group(1) if match else None
 
 
+def _module_prefix(code: str | None) -> str | None:
+    text = str(code or "").strip()
+    match = re.match(r"^(M\d+)", text)
+    return match.group(1) if match else None
+
+
 def _next_code(base_prefix: str, used_codes: set[str]) -> str:
     used_numbers = [
         int(match.group(1))
@@ -230,6 +279,17 @@ def _next_code(base_prefix: str, used_codes: set[str]) -> str:
     ]
     next_idx = max(used_numbers, default=0) + 1
     return f"{base_prefix}A{next_idx}"
+
+
+def _next_objective_code(module_code: str, used_codes: set[str]) -> str:
+    used_numbers = [
+        int(match.group(1))
+        for code in used_codes
+        for match in [re.match(re.escape(module_code) + r"O(\d+)$", code)]
+        if match is not None
+    ]
+    next_idx = max(used_numbers, default=0) + 1
+    return f"{module_code}O{next_idx}"
 
 
 def _choose_unique_value(
@@ -370,6 +430,129 @@ def _load_single_module_researcher_config_metadata(
         }
 
     return module_metadata, objective_metadata_by_id, activity_metadata_by_id, ()
+
+
+def _load_multi_module_researcher_config_metadata(
+    config_json_path: Path | None,
+    *,
+    required: bool = False,
+) -> tuple[
+    dict[str, dict[str, Any]],
+    dict[str, dict[str, Any]],
+    dict[str, dict[str, Any]],
+    dict[str, dict[str, str]],
+    tuple[str, ...],
+]:
+    config, warnings = _load_single_module_researcher_config_payload(
+        config_json_path,
+        required=required,
+    )
+    if config is None:
+        return {}, {}, {}, {}, warnings
+
+    module_entries = config.get("module")
+    objective_entries = config.get("objective")
+    activity_entries = config.get("activity")
+    if (
+        not isinstance(module_entries, dict)
+        or not isinstance(objective_entries, dict)
+        or not isinstance(activity_entries, dict)
+    ):
+        if required:
+            raise ValueError(
+                f"MIA config JSON at {config_json_path} is missing one of module/objective/activity maps."
+            )
+        return {}, {}, {}, {}, (
+            f"MIA config JSON at {config_json_path} is missing one of module/objective/activity maps; using synthetic labels.",
+        )
+
+    modules_by_id: dict[str, dict[str, Any]] = {}
+    module_id_by_code: dict[str, str] = {}
+    for value in module_entries.values():
+        if not isinstance(value, dict):
+            continue
+        module_id = _clean_text(value.get("id"))
+        module_code = _clean_text(value.get("code"))
+        if module_id is None or module_code is None:
+            continue
+        short_title, long_title = _json_title_pair(value)
+        metadata = {
+            "id": module_id,
+            "code": module_code,
+            "short_title": short_title or module_code,
+            "long_title": long_title or (short_title or module_code),
+            "status": _clean_text(value.get("visibilityStatus")) or "visible",
+            "source_files": [str(config_json_path)] if config_json_path is not None else [],
+        }
+        modules_by_id[module_id] = metadata
+        module_id_by_code[module_code] = module_id
+
+    objectives_by_id: dict[str, dict[str, Any]] = {}
+    objective_id_by_code: dict[str, str] = {}
+    for value in objective_entries.values():
+        if not isinstance(value, dict):
+            continue
+        objective_id = _clean_text(value.get("id"))
+        objective_code = _clean_text(value.get("code"))
+        module_code = _module_prefix(objective_code)
+        module_id = module_id_by_code.get(module_code or "")
+        if objective_id is None or objective_code is None or module_id is None:
+            continue
+        short_title, long_title = _json_title_pair(value)
+        metadata = {
+            "id": objective_id,
+            "code": objective_code,
+            "module_id": module_id,
+            "module_code": module_code,
+            "short_title": short_title or objective_code,
+            "long_title": long_title or (short_title or objective_code),
+            "status": _clean_text(value.get("visibilityStatus")) or "visible",
+            "activity_ids": [],
+        }
+        objectives_by_id[objective_id] = metadata
+        objective_id_by_code[objective_code] = objective_id
+
+    activities_by_id: dict[str, dict[str, Any]] = {}
+    exercise_to_hierarchy: dict[str, dict[str, str]] = {}
+    for value in activity_entries.values():
+        if not isinstance(value, dict):
+            continue
+        activity_id = _clean_text(value.get("id"))
+        activity_code = _clean_text(value.get("code"))
+        objective_code = _activity_prefix(activity_code)
+        objective_id = objective_id_by_code.get(objective_code or "")
+        objective_metadata = objectives_by_id.get(objective_id or "")
+        if activity_id is None or activity_code is None or objective_metadata is None:
+            continue
+        short_title, long_title = _json_title_pair(value)
+        exercise_ids = [
+            str(exercise_id).strip()
+            for exercise_id in (value.get("learning_items") or [])
+            if str(exercise_id or "").strip()
+        ]
+        metadata = {
+            "id": activity_id,
+            "code": activity_code,
+            "objective_id": objective_id,
+            "objective_code": objective_code,
+            "module_id": str(objective_metadata["module_id"]),
+            "module_code": str(objective_metadata["module_code"]),
+            "short_title": short_title or activity_code,
+            "long_title": long_title or (short_title or activity_code),
+            "status": _clean_text(value.get("visibilityStatus")) or "visible",
+            "exercise_ids": exercise_ids,
+            "synthetic": False,
+        }
+        activities_by_id[activity_id] = metadata
+        objective_metadata["activity_ids"].append(activity_id)
+        for exercise_id in exercise_ids:
+            exercise_to_hierarchy[exercise_id] = {
+                "module_id": str(objective_metadata["module_id"]),
+                "objective_id": str(objective_id),
+                "activity_id": activity_id,
+            }
+
+    return modules_by_id, objectives_by_id, activities_by_id, exercise_to_hierarchy, ()
 
 
 def _index_list(value: object) -> list[int]:
@@ -1144,6 +1327,512 @@ def _build_single_module_researcher_catalog_and_raw(
     return raw_attempts, learning_catalog, exercises_json, tuple(sorted(set(warnings)))
 
 
+def _build_multi_module_researcher_catalog_and_raw(
+    attempts_csv_path: Path,
+    *,
+    source_id: str,
+    config_json_path: Path | None,
+) -> tuple[pl.DataFrame, dict[str, Any], dict[str, Any], tuple[str, ...]]:
+    attempts, parse_warnings = _load_maureen_researcher_attempts(attempts_csv_path)
+    if attempts.height == 0:
+        raise ValueError("Multi-module researcher CSV is empty after parsing.")
+
+    (
+        modules_by_id,
+        objectives_by_id,
+        activities_by_id,
+        exercise_to_hierarchy,
+        config_warnings,
+    ) = _load_multi_module_researcher_config_metadata(config_json_path, required=True)
+    if not modules_by_id:
+        raise ValueError("Multi-module researcher source requires module metadata in config_mia.json.")
+
+    warnings: list[str] = list(parse_warnings)
+    warnings.extend(config_warnings)
+
+    objective_codes_used_by_module: defaultdict[str, set[str]] = defaultdict(set)
+    for metadata in objectives_by_id.values():
+        objective_codes_used_by_module[str(metadata["module_code"])].add(str(metadata["code"]))
+
+    activity_codes_used_by_objective: defaultdict[str, set[str]] = defaultdict(set)
+    for metadata in activities_by_id.values():
+        activity_codes_used_by_objective[str(metadata["objective_code"])].add(str(metadata["code"]))
+
+    attempt_rows = attempts.select(
+        [
+            "playlist_or_module_id",
+            "objective_id",
+            "activity_id",
+            "exercise_id",
+            "created_at",
+        ]
+    ).to_dicts()
+    attempt_exercises_by_activity: defaultdict[str, list[str]] = defaultdict(list)
+    objective_ids_seen_in_attempts: set[str] = set()
+    activity_ids_seen_in_attempts: set[str] = set()
+    for row in attempt_rows:
+        objective_id = str(row.get("objective_id") or "").strip()
+        activity_id = str(row.get("activity_id") or "").strip()
+        exercise_id = str(row.get("exercise_id") or "").strip()
+        if objective_id:
+            objective_ids_seen_in_attempts.add(objective_id)
+        if activity_id:
+            activity_ids_seen_in_attempts.add(activity_id)
+        if activity_id and exercise_id and exercise_id not in attempt_exercises_by_activity[activity_id]:
+            attempt_exercises_by_activity[activity_id].append(exercise_id)
+
+    for objective_id in sorted(objective_ids_seen_in_attempts):
+        if objective_id in objectives_by_id:
+            continue
+        objective_rows = attempts.filter(pl.col("objective_id") == objective_id)
+        inferred_module_id = None
+        if objective_rows.height:
+            inferred_module_id = (
+                objective_rows.select(pl.col("playlist_or_module_id"))
+                .filter(pl.col("playlist_or_module_id").is_in(list(modules_by_id)))
+                .head(1)
+                .item(0, 0)
+            )
+        if inferred_module_id is None:
+            continue
+        module_metadata = modules_by_id[str(inferred_module_id)]
+        module_code = str(module_metadata["code"])
+        synthetic_code = _next_objective_code(module_code, objective_codes_used_by_module[module_code])
+        objective_codes_used_by_module[module_code].add(synthetic_code)
+        objectives_by_id[objective_id] = {
+            "id": objective_id,
+            "code": synthetic_code,
+            "module_id": str(inferred_module_id),
+            "module_code": module_code,
+            "short_title": f"Unmapped objective {objective_id[:8]}",
+            "long_title": f"Unmapped objective {objective_id}",
+            "status": "synthetic",
+            "activity_ids": [],
+        }
+        warnings.append(f"Added synthetic objective for unmatched MIA objective_id={objective_id}.")
+
+    for activity_id in sorted(activity_ids_seen_in_attempts):
+        if activity_id in activities_by_id:
+            continue
+        row = (
+            attempts.filter(pl.col("activity_id") == activity_id)
+            .select(["objective_id"])
+            .filter(pl.col("objective_id").is_not_null())
+            .head(1)
+        )
+        objective_id = row.item(0, 0) if row.height else None
+        objective_metadata = objectives_by_id.get(str(objective_id or ""))
+        if objective_metadata is None:
+            continue
+        objective_code = str(objective_metadata["code"])
+        synthetic_code = _next_code(
+            objective_code,
+            activity_codes_used_by_objective[objective_code],
+        )
+        activity_codes_used_by_objective[objective_code].add(synthetic_code)
+        activities_by_id[activity_id] = {
+            "id": activity_id,
+            "code": synthetic_code,
+            "objective_id": str(objective_id),
+            "objective_code": objective_code,
+            "module_id": str(objective_metadata["module_id"]),
+            "module_code": str(objective_metadata["module_code"]),
+            "short_title": f"Unmapped activity {activity_id[:8]}",
+            "long_title": f"Unmapped activity {activity_id}",
+            "status": "synthetic",
+            "exercise_ids": list(attempt_exercises_by_activity.get(activity_id, [])),
+            "synthetic": True,
+        }
+        objective_metadata["activity_ids"].append(activity_id)
+        for exercise_id in activities_by_id[activity_id]["exercise_ids"]:
+            exercise_to_hierarchy[exercise_id] = {
+                "module_id": str(objective_metadata["module_id"]),
+                "objective_id": str(objective_id),
+                "activity_id": activity_id,
+            }
+        warnings.append(f"Added synthetic activity for unmatched MIA activity_id={activity_id}.")
+
+    for activity_id, metadata in activities_by_id.items():
+        existing = list(metadata["exercise_ids"])
+        for exercise_id in attempt_exercises_by_activity.get(activity_id, []):
+            if exercise_id not in existing:
+                existing.append(exercise_id)
+                exercise_to_hierarchy[exercise_id] = {
+                    "module_id": str(metadata["module_id"]),
+                    "objective_id": str(metadata["objective_id"]),
+                    "activity_id": activity_id,
+                }
+        metadata["exercise_ids"] = existing
+
+    modules_payload: list[dict[str, Any]] = []
+    id_label_index: dict[str, dict[str, Any]] = {}
+
+    for module_metadata in sorted(modules_by_id.values(), key=lambda row: _code_sort_key(str(row["code"]))):
+        module_id = str(module_metadata["id"])
+        module_code = str(module_metadata["code"])
+        module_short = str(module_metadata["short_title"])
+        module_long = str(module_metadata["long_title"])
+        id_label_index[module_id] = {
+            "type": "module",
+            "code": module_code,
+            "short_title": module_short,
+            "long_title": module_long,
+            "sources": ["mia_config"],
+        }
+        module_objectives: list[dict[str, Any]] = []
+        module_objective_rows = sorted(
+            [
+                metadata
+                for metadata in objectives_by_id.values()
+                if str(metadata["module_id"]) == module_id
+            ],
+            key=lambda row: _code_sort_key(str(row["code"])),
+        )
+        for objective_metadata in module_objective_rows:
+            objective_id = str(objective_metadata["id"])
+            objective_code = str(objective_metadata["code"])
+            objective_short = str(objective_metadata["short_title"])
+            objective_long = str(objective_metadata["long_title"])
+            id_label_index[objective_id] = {
+                "type": "objective",
+                "code": objective_code,
+                "short_title": objective_short,
+                "long_title": objective_long,
+                "sources": ["mia_config"] if objective_metadata["status"] != "synthetic" else ["mia_attempts"],
+            }
+            activity_entries: list[dict[str, Any]] = []
+            objective_activity_rows = sorted(
+                [
+                    activities_by_id[activity_id]
+                    for activity_id in objective_metadata["activity_ids"]
+                    if activity_id in activities_by_id
+                ],
+                key=lambda row: _code_sort_key(str(row["code"])),
+            )
+            for activity_metadata in objective_activity_rows:
+                activity_id = str(activity_metadata["id"])
+                activity_code = str(activity_metadata["code"])
+                activity_short = str(activity_metadata["short_title"])
+                activity_long = str(activity_metadata["long_title"])
+                id_label_index[activity_id] = {
+                    "type": "activity",
+                    "code": activity_code,
+                    "short_title": activity_short,
+                    "long_title": activity_long,
+                    "sources": ["mia_config"] if not activity_metadata["synthetic"] else ["mia_attempts"],
+                }
+                exercise_ids = list(activity_metadata["exercise_ids"])
+                for exercise_id in exercise_ids:
+                    if exercise_id not in id_label_index:
+                        id_label_index[exercise_id] = {
+                            "type": "exercise",
+                            "code": None,
+                            "short_title": None,
+                            "long_title": None,
+                            "sources": ["mia_config"],
+                        }
+                activity_entries.append(
+                    {
+                        "id": activity_id,
+                        "code": activity_code,
+                        "status": str(activity_metadata["status"]),
+                        "title": {
+                            "short": activity_short,
+                            "long": activity_long,
+                        },
+                        "exercise_ids": exercise_ids,
+                    }
+                )
+            module_objectives.append(
+                {
+                    "id": objective_id,
+                    "code": objective_code,
+                    "status": str(objective_metadata["status"]),
+                    "title": {
+                        "short": objective_short,
+                        "long": objective_long,
+                    },
+                    "activities": activity_entries,
+                }
+            )
+        modules_payload.append(
+            {
+                "id": module_id,
+                "code": module_code,
+                "status": str(module_metadata["status"]),
+                "title": {
+                    "short": module_short,
+                    "long": module_long,
+                },
+                "objectives": module_objectives,
+            }
+        )
+
+    learning_catalog = {
+        "meta": {
+            "generated_by": "visu2 multi-module researcher adapter",
+            "source_id": source_id,
+            "build_timestamp_utc": datetime.now(UTC).isoformat(),
+            "version": "multi_module_runtime_v1",
+            "source_files": [str(attempts_csv_path), *(modules_by_id[next(iter(modules_by_id))]["source_files"] if modules_by_id else [])],
+            "counts": {
+                "modules": len(modules_payload),
+                "objectives": len(objectives_by_id),
+                "activities": len(activities_by_id),
+                "exercises_unique": len(exercise_to_hierarchy),
+            },
+        },
+        "conflicts": {
+            "coverage": {
+                "overlapping_activity_count": 0,
+                "primary_only_activity_count": len([row for row in activities_by_id.values() if not row["synthetic"]]),
+                "secondary_only_activity_count": len([row for row in activities_by_id.values() if row["synthetic"]]),
+                "overlap_membership_disagreement_count": 0,
+            },
+            "missing_references": {
+                "missing_activity_ids_in_objectives": [],
+                "missing_objective_ids_in_modules": [],
+            },
+            "source_disagreements": {
+                "activity_exercise_membership_disagreements": [],
+                "id_label_disagreements": [],
+            },
+            "secondary_mapping_candidates_for_orphans": {
+                "unique_count": 0,
+                "ambiguous_count": 0,
+            },
+        },
+        "orphans": [],
+        "id_label_index": id_label_index,
+        "modules": modules_payload,
+        "exercise_to_hierarchy": exercise_to_hierarchy,
+    }
+
+    exercises_json = {
+        "exercises": [
+            {
+                "id": exercise_id,
+                "type": None,
+                "instruction": None,
+                "activities": [mapping["activity_id"]],
+                "objectives": [mapping["objective_id"]],
+                "modules": [mapping["module_id"]],
+            }
+            for exercise_id, mapping in sorted(exercise_to_hierarchy.items())
+        ]
+    }
+
+    module_lookup = pl.DataFrame(
+        {
+            "module_id_lookup": [str(metadata["id"]) for metadata in modules_by_id.values()],
+            "module_long_title_lookup": [str(metadata["long_title"]) for metadata in modules_by_id.values()],
+        }
+    )
+    objective_lookup = pl.DataFrame(
+        {
+            "objective_id_lookup": [objective_id for objective_id in objectives_by_id],
+            "objective_module_id_lookup": [str(metadata["module_id"]) for metadata in objectives_by_id.values()],
+        }
+    )
+    activity_lookup = pl.DataFrame(
+        {
+            "activity_id_lookup": [activity_id for activity_id in activities_by_id],
+            "activity_objective_id_lookup": [str(metadata["objective_id"]) for metadata in activities_by_id.values()],
+            "activity_module_id_lookup": [str(metadata["module_id"]) for metadata in activities_by_id.values()],
+        }
+    )
+    exercise_lookup = pl.DataFrame(
+        {
+            "exercise_id_lookup": [exercise_id for exercise_id in exercise_to_hierarchy],
+            "exercise_activity_id_lookup": [mapping["activity_id"] for mapping in exercise_to_hierarchy.values()],
+            "exercise_objective_id_lookup": [mapping["objective_id"] for mapping in exercise_to_hierarchy.values()],
+            "exercise_module_id_lookup": [mapping["module_id"] for mapping in exercise_to_hierarchy.values()],
+        }
+    )
+
+    raw_attempts = (
+        attempts.join(activity_lookup, left_on="activity_id", right_on="activity_id_lookup", how="left")
+        .join(objective_lookup, left_on="objective_id", right_on="objective_id_lookup", how="left")
+        .join(exercise_lookup, left_on="exercise_id", right_on="exercise_id_lookup", how="left")
+        .with_columns(
+            pl.when(pl.col("playlist_or_module_id").is_in(list(modules_by_id)))
+            .then(pl.col("playlist_or_module_id"))
+            .otherwise(pl.lit(None, dtype=pl.Utf8))
+            .alias("playlist_module_id_lookup")
+        )
+        .with_columns(
+            pl.coalesce(
+                [
+                    pl.col("activity_id"),
+                    pl.col("exercise_activity_id_lookup"),
+                ]
+            ).alias("activity_id"),
+            pl.coalesce(
+                [
+                    pl.col("objective_id"),
+                    pl.col("activity_objective_id_lookup"),
+                    pl.col("exercise_objective_id_lookup"),
+                ]
+            ).alias("objective_id"),
+            pl.coalesce(
+                [
+                    pl.col("activity_module_id_lookup"),
+                    pl.col("objective_module_id_lookup"),
+                    pl.col("exercise_module_id_lookup"),
+                    pl.col("playlist_module_id_lookup"),
+                ]
+            ).alias("module_id"),
+        )
+        .join(module_lookup, left_on="module_id", right_on="module_id_lookup", how="left")
+        .with_columns(
+            pl.coalesce(
+                [pl.col("module_long_title_lookup"), pl.col("module_long_title")]
+            ).alias("module_long_title")
+        )
+        .drop(
+            [
+                "activity_id_lookup",
+                "objective_id_lookup",
+                "exercise_id_lookup",
+                "activity_objective_id_lookup",
+                "activity_module_id_lookup",
+                "objective_module_id_lookup",
+                "exercise_activity_id_lookup",
+                "exercise_objective_id_lookup",
+                "exercise_module_id_lookup",
+                "playlist_module_id_lookup",
+                "module_id_lookup",
+                "module_long_title_lookup",
+            ],
+            strict=False,
+        )
+        .with_columns(
+            pl.lit(None, dtype=pl.Utf8).alias("variation"),
+            pl.lit(None, dtype=pl.Boolean).alias("is_gar"),
+        )
+        .sort(["user_id", "created_at", "exercise_id"])
+        .with_columns(
+            pl.col("exercise_id").cum_count().over(["user_id", "exercise_id"]).alias("attempt_number"),
+            pl.col("user_id").cum_count().over("user_id").alias("student_attempt_index"),
+        )
+        .select(
+            [
+                "user_id",
+                "variation",
+                "module_id",
+                "objective_id",
+                "activity_id",
+                "exercise_id",
+                "created_at",
+                "login_time",
+                "data_score",
+                "data_correct",
+                "work_mode",
+                "data_test_context",
+                "progression_score",
+                "initial_test_max_success",
+                "initial_test_weighted_max_success",
+                "initial_test_success_rate",
+                "finished_module_mean_score",
+                "finished_module_graphe_coverage_rate",
+                "is_gar",
+                "teacher_id",
+                "classroom_id",
+                "playlist_or_module_id",
+                "data_duration",
+                "session_duration",
+                "attempt_number",
+                "student_attempt_index",
+                "module_long_title",
+            ]
+        )
+    )
+
+    unresolved_rows = raw_attempts.filter(pl.col("module_id").is_null()).height
+    if unresolved_rows:
+        warnings.append(
+            f"Kept {unresolved_rows} row(s) without resolved module hierarchy; these rows remain available but outside the module catalog."
+        )
+
+    return raw_attempts, learning_catalog, exercises_json, tuple(sorted(set(warnings)))
+
+
+def _build_multi_module_researcher_zpdes_rules(
+    *,
+    source_id: str,
+    learning_catalog: dict[str, Any],
+    config_json_path: Path,
+) -> tuple[dict[str, Any], tuple[str, ...]]:
+    module_rules: list[dict[str, Any]] = []
+    dependency_topology: dict[str, Any] = {}
+    code_to_id: dict[str, str] = {}
+    id_to_codes: defaultdict[str, list[str]] = defaultdict(list)
+    module_ids_linked: list[str] = []
+    objective_ids_linked: list[str] = []
+    activity_ids_linked: list[str] = []
+    warnings: list[str] = []
+
+    for module in learning_catalog.get("modules", []):
+        if not isinstance(module, dict):
+            continue
+        module_id = _clean_text(module.get("id"))
+        if module_id is None:
+            continue
+        try:
+            module_payload, module_warnings = _build_single_module_researcher_zpdes_rules(
+                source_id=source_id,
+                module_id=module_id,
+                learning_catalog=learning_catalog,
+                config_json_path=config_json_path,
+            )
+        except ValueError as err:
+            warnings.append(str(err))
+            continue
+        warnings.extend(module_warnings)
+        module_rules.extend(module_payload.get("module_rules", []))
+        dependency_topology.update(module_payload.get("dependency_topology", {}))
+        code_to_id.update(module_payload.get("map_id_code", {}).get("code_to_id", {}))
+        for identifier, codes in module_payload.get("map_id_code", {}).get("id_to_codes", {}).items():
+            for code in codes:
+                if code not in id_to_codes[identifier]:
+                    id_to_codes[identifier].append(code)
+        links = module_payload.get("links_to_catalog", {})
+        module_ids_linked.extend(links.get("module_ids_linked", []))
+        objective_ids_linked.extend(links.get("objective_ids_linked", []))
+        activity_ids_linked.extend(links.get("activity_ids_linked", []))
+
+    return (
+        {
+            "meta": {
+                "generated_by": "visu2 multi-module researcher adapter",
+                "source_id": source_id,
+                "build_timestamp_utc": datetime.now(UTC).isoformat(),
+                "version": "multi_module_zpdes_runtime_v1",
+                "source_files": [str(config_json_path)],
+            },
+            "module_rules": module_rules,
+            "map_id_code": {
+                "code_to_id": code_to_id,
+                "id_to_codes": dict(id_to_codes),
+            },
+            "links_to_catalog": {
+                "rule_module_ids": sorted({str(row.get("module_id")) for row in module_rules if row.get("module_id")}),
+                "module_ids_linked": sorted(set(module_ids_linked)),
+                "objective_ids_linked": sorted(set(objective_ids_linked)),
+                "activity_ids_linked": sorted(set(activity_ids_linked)),
+            },
+            "unresolved_links": {
+                "rule_ids_missing_in_catalog": [],
+                "catalog_module_ids_missing_in_rules": [],
+                "codes_with_multiple_ids": {},
+                "ids_with_multiple_codes": {},
+            },
+            "dependency_topology": dependency_topology,
+        },
+        tuple(sorted(set(warnings))),
+    )
+
+
 def _build_maureen_catalog_and_raw(
     attempts_csv_path: Path,
     module_config_csv_path: Path,
@@ -1659,6 +2348,52 @@ def materialize_source_runtime_inputs(settings: Settings) -> SourceMaterializati
             zpdes_rules, zpdes_warnings = _build_single_module_researcher_zpdes_rules(
                 source_id=settings.source_id,
                 module_id=str(learning_catalog["modules"][0]["id"]),
+                learning_catalog=learning_catalog,
+                config_json_path=config_json_path,
+            )
+            warnings = tuple(sorted(set((*warnings, *zpdes_warnings))))
+            settings.zpdes_rules_path.write_text(
+                json.dumps(zpdes_rules, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            input_paths.append(str(settings.zpdes_rules_path))
+        return SourceMaterializationReport(
+            source_id=settings.source_id,
+            input_paths=tuple(input_paths),
+            warnings=warnings,
+        )
+
+    if source.build_profile == "multi_module_researcher":
+        attempts_csv_path = settings.root_dir / source.raw_inputs["attempts_csv"]
+        config_json_path = (
+            settings.root_dir / source.raw_inputs["config_json"]
+            if "config_json" in source.raw_inputs
+            else None
+        )
+        raw_attempts, learning_catalog, exercises_json, warnings = (
+            _build_multi_module_researcher_catalog_and_raw(
+                attempts_csv_path,
+                source_id=settings.source_id,
+                config_json_path=config_json_path,
+            )
+        )
+        input_paths = [
+            str(settings.parquet_path),
+            str(settings.learning_catalog_path),
+            str(settings.exercises_json_path),
+        ]
+        raw_attempts.write_parquet(settings.parquet_path)
+        settings.learning_catalog_path.write_text(
+            json.dumps(learning_catalog, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        settings.exercises_json_path.write_text(
+            json.dumps(exercises_json, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        if config_json_path is not None:
+            zpdes_rules, zpdes_warnings = _build_multi_module_researcher_zpdes_rules(
+                source_id=settings.source_id,
                 learning_catalog=learning_catalog,
                 config_json_path=config_json_path,
             )

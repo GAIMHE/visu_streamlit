@@ -7,6 +7,8 @@ from pathlib import Path
 
 from visu2.source_builders import (
     _build_maureen_catalog_and_raw,
+    _build_multi_module_researcher_catalog_and_raw,
+    _build_multi_module_researcher_zpdes_rules,
     _build_single_module_researcher_catalog_and_raw,
     _build_single_module_researcher_zpdes_rules,
 )
@@ -339,3 +341,114 @@ def test_build_single_module_researcher_zpdes_rules_uses_module_config_graph(tmp
     edges = {(row["from_node_code"], row["to_node_code"]) for row in topology["edges"]}
     assert ("M101O1A1", "M101O1A2") in edges
     assert ("M101O1A2", "M101O2") in edges
+
+
+def test_build_multi_module_researcher_catalog_and_rules_supports_playlist_rows(tmp_path: Path) -> None:
+    attempts_path = tmp_path / "mia_multi_attempts.csv"
+    attempts_path.write_text(
+        "\n".join(
+            [
+                "UAI,classroom_id,teacher_id,user_id,playlist_or_module_id,objective_id,activity_id,exercise_id,module_short_title,module_long_title,created_at,login_time,is_initial_test,data_score,data_correct,data_nb_tries,data_test_context,data_answer,data_duration,session_duration,work_mode,progression_score,initial_test_max_success,initial_test_weighted_max_success,initial_test_success_rate,finished_module_mean_score,finished_module_graphe_coverage_rate",
+                "001,class-1,teacher-1,user-1,module-1,objective-1,activity-1,11111111-1111-1111-1111-111111111111,Module 1,Module 1,2025-01-01 09:00:00+00:00,2025-01-01 08:59:00+00:00,False,1.0,True,1,zpdes,[1],10.0,100,zpdes,0.5,10,9,0.9,0.8,1.0",
+                "001,class-1,teacher-1,user-1,playlist-xyz,,,22222222-2222-2222-2222-222222222222,Module 2,Module 2,2025-01-01 09:02:00+00:00,2025-01-01 08:59:00+00:00,False,0.0,False,1,playlist,[0],11.0,100,playlist,0.5,10,9,0.9,0.8,1.0",
+                "001,class-1,teacher-2,user-2,module-2,objective-2,activity-2,22222222-2222-2222-2222-222222222222,Module 2,Module 2,2025-01-02 09:00:00+00:00,2025-01-02 08:59:00+00:00,False,0.0,False,1,adaptive-test,[0],12.0,200,adaptive-test,0.2,12,10,0.8,0.6,0.7",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    config_path = tmp_path / "config_mia.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "config": {
+                    "module": {
+                        "m1": {
+                            "id": "module-1",
+                            "code": "M1",
+                            "title": {"short": "Module 1", "long": "Module 1"},
+                            "visibilityStatus": "VISIBLE",
+                        },
+                        "m2": {
+                            "id": "module-2",
+                            "code": "M2",
+                            "title": {"short": "Module 2", "long": "Module 2"},
+                            "visibilityStatus": "VISIBLE",
+                        },
+                    },
+                    "objective": {
+                        "o1": {
+                            "id": "objective-1",
+                            "code": "M1O1",
+                            "title": {"short": "Objective 1", "long": "Objective 1"},
+                            "visibilityStatus": "VISIBLE",
+                        },
+                        "o2": {
+                            "id": "objective-2",
+                            "code": "M2O1",
+                            "title": {"short": "Objective 2", "long": "Objective 2"},
+                            "visibilityStatus": "VISIBLE",
+                        },
+                    },
+                    "activity": {
+                        "a1": {
+                            "id": "activity-1",
+                            "code": "M1O1A1",
+                            "title": {"short": "Activity 1", "long": "Activity 1"},
+                            "visibilityStatus": "VISIBLE",
+                            "learning_items": ["11111111-1111-1111-1111-111111111111"],
+                        },
+                        "a2": {
+                            "id": "activity-2",
+                            "code": "M2O1A1",
+                            "title": {"short": "Activity 2", "long": "Activity 2"},
+                            "visibilityStatus": "VISIBLE",
+                            "learning_items": ["22222222-2222-2222-2222-222222222222"],
+                        },
+                    },
+                    "ai": {
+                        "moduleConfig": {
+                            "module-1": {
+                                "module-1": {"subgroups": [["objective-1"]], "init_ssb": [[0]], "requirements": [{}]},
+                                "objective-1": {"subgroups": [["activity-1"]], "init_ssb": [[0]], "requirements": [{}]},
+                            },
+                            "module-2": {
+                                "module-2": {"subgroups": [["objective-2"]], "init_ssb": [[0]], "requirements": [{}]},
+                                "objective-2": {"subgroups": [["activity-2"]], "init_ssb": [[0]], "requirements": [{}]},
+                            },
+                        }
+                    },
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    raw_attempts, learning_catalog, exercises_json, warnings = _build_multi_module_researcher_catalog_and_raw(
+        attempts_path,
+        source_id="mia_module1",
+        config_json_path=config_path,
+    )
+
+    assert raw_attempts.height == 3
+    assert set(raw_attempts["module_id"].drop_nulls().to_list()) == {"module-1", "module-2"}
+    playlist_row = raw_attempts.filter(raw_attempts["work_mode"] == "playlist").row(0, named=True)
+    assert playlist_row["module_id"] == "module-2"
+    assert playlist_row["objective_id"] == "objective-2"
+    assert playlist_row["activity_id"] == "activity-2"
+    assert playlist_row["progression_score"] == 0.5
+    assert warnings == ()
+
+    module_codes = {module["code"] for module in learning_catalog["modules"]}
+    assert module_codes == {"M1", "M2"}
+    assert exercises_json["exercises"][1]["modules"] == ["module-2"]
+
+    zpdes_rules, zpdes_warnings = _build_multi_module_researcher_zpdes_rules(
+        source_id="mia_module1",
+        learning_catalog=learning_catalog,
+        config_json_path=config_path,
+    )
+
+    assert zpdes_warnings == ()
+    assert {row["module_code"] for row in zpdes_rules["module_rules"]} == {"M1", "M2"}
+    assert set(zpdes_rules["dependency_topology"]) == {"M1", "M2"}

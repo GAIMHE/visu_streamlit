@@ -26,8 +26,8 @@ The current source-aware app supports:
   - the large Adaptiv'Math mathematics source
   - raw attempts come from `data/adaptiv_math_history.parquet`
 - `mia_module1`
-  - a MIA researcher export for one module
-  - raw attempts come from `data_MIA/researcher_data-053df3ec-5501-4ad8-9917-a935bcf76740.csv`
+  - a MIA researcher export now spanning multiple modules
+  - raw attempts come from `data_MIA/986-neurips-mia_20260415_100024.csv`
   - extra structure comes from `data_MIA/config_mia.json`
 - `maureen_m16fr`
   - a French-language remediation source

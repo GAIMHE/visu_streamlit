@@ -284,18 +284,17 @@ RUNTIME_SOURCES: dict[str, RuntimeSourceSpec] = {
     ),
     "mia_module1": RuntimeSourceSpec(
         source_id="mia_module1",
-        label="MIA Module 1",
+        label="MIA",
         description=(
-            "Single-module remediation dataset adapted from a researcher export, "
-            "with a config-enriched catalog, inferred ZPDES topology, and a mostly reduced page surface."
+            "Multi-module remediation dataset adapted from a researcher export, "
+            "with a config-enriched catalog, inferred ZPDES topology, and a shared runtime surface."
         ),
         runtime_root_relative=Path("artifacts") / "sources" / "mia_module1",
         local_root_relative=Path("artifacts") / "local" / "mia_module1",
         legacy_root_relative=Path("artifacts") / "legacy" / "mia_module1",
-        build_profile="single_module_researcher",
+        build_profile="multi_module_researcher",
         raw_inputs={
-            "attempts_csv": Path("data_MIA")
-            / "researcher_data-053df3ec-5501-4ad8-9917-a935bcf76740.csv",
+            "attempts_csv": Path("data_MIA") / "986-neurips-mia_20260415_100024.csv",
             "config_json": Path("data_MIA") / "config_mia.json",
         },
         supported_pages=(
