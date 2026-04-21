@@ -169,3 +169,23 @@ def test_build_filter_payload_keeps_removed_work_modes() -> None:
     assert payload["retry_small_activity_exemption_enabled"] is True
     assert payload["retry_small_activity_max_exercises"] == 1
     assert payload["schema_filter_mode"] == "keep_selected"
+
+
+def test_build_final_rows_preview_keeps_headers_and_caps_rows() -> None:
+    frame = pl.DataFrame(
+        {
+            "user_id": ["u1", "u2", "u3"],
+            "created_at": [
+                datetime(2025, 1, 1, 8, 0, 0),
+                datetime(2025, 1, 1, 8, 1, 0),
+                datetime(2025, 1, 1, 8, 2, 0),
+            ],
+            "work_mode": ["adaptive-test", "zpdes", "playlist"],
+        }
+    )
+
+    preview = page_module._build_final_rows_preview(frame, row_limit=2)
+
+    assert preview.columns == frame.columns
+    assert preview.height == 2
+    assert preview.get_column("user_id").to_list() == ["u1", "u2"]

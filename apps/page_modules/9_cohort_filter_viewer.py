@@ -448,6 +448,12 @@ def _format_schema_table(frame: pl.DataFrame) -> pl.DataFrame:
     )
 
 
+def _build_final_rows_preview(frame: pl.DataFrame, *, row_limit: int = 5) -> pl.DataFrame:
+    if frame.height == 0:
+        return frame
+    return frame.head(max(int(row_limit), 1))
+
+
 def main() -> None:
     render_dashboard_style()
     source_id = get_active_source_id()
@@ -905,6 +911,14 @@ def main() -> None:
         config=chart_config,
     )
     st.dataframe(_format_schema_table(final_schema_summary), width="stretch", hide_index=True)
+
+    st.subheader("Retained Rows Preview")
+    preview_rows = _build_final_rows_preview(final_result.final_rows)
+    st.caption(
+        f"First {preview_rows.height:,} attempt-level rows kept after all filters. "
+        "All retained columns are shown in the table header."
+    )
+    st.dataframe(preview_rows, width="stretch", hide_index=True)
 
 
 if __name__ == "__main__":

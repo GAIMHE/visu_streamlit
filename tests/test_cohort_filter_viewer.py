@@ -14,6 +14,7 @@ from visu2.cohort_filter_viewer import (
     build_final_module_summary,
     build_final_schema_summary,
     build_schema_summary_vs_baseline,
+    compute_cohort_view_from_parquet,
     filter_cohort_view,
 )
 
@@ -335,3 +336,43 @@ def test_empty_final_slice_is_supported() -> None:
     assert result.final_rows.height == 0
     assert result.final_user_paths.height == 0
     assert result.stage_summary.filter(pl.col("stage_key") == "schemas").item(0, "students") == 0
+
+
+def test_compute_cohort_view_from_parquet_restores_retained_rows_preview(tmp_path) -> None:
+    attempts = _sample_attempts().with_columns(pl.col("created_at").dt.date().alias("date_utc"))
+    fact_path = tmp_path / "fact_attempt_core.parquet"
+    attempts.write_parquet(fact_path)
+
+    result = compute_cohort_view_from_parquet(
+        str(fact_path),
+        start_date_iso="2025-01-01",
+        end_date_iso="2025-01-01",
+        selected_modules=("M1",),
+        selected_removed_work_modes=(),
+        max_retries=-1,
+        retry_filter_mode=RETRY_FILTER_MODE_REMOVE_EXERCISE,
+        retry_small_activity_exemption_enabled=False,
+        retry_small_activity_max_exercises=1,
+        activity_exercise_counts=None,
+        min_placement_attempts=1,
+        reject_same_placement_module_repeat=False,
+        min_history=1,
+        history_basis=HISTORY_BASIS_RAW_ATTEMPTS,
+        selected_transition_counts=(),
+        min_students_per_schema=1,
+        selected_schemas=(),
+        schema_filter_mode="keep_selected",
+    )
+
+    assert result.final_attempts > 0
+    assert result.final_rows.height > 0
+    assert result.final_rows.height <= 5
+    assert result.final_rows.columns == [
+        "user_id",
+        "created_at",
+        "work_mode",
+        "module_code",
+        "activity_id",
+        "exercise_id",
+        "attempt_number",
+    ]

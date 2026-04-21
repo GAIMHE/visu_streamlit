@@ -21,6 +21,7 @@ RETRY_FILTER_MODE_OPTIONS: dict[str, str] = {
 SCHEMA_FILTER_MODE_KEEP = "keep_selected"
 SCHEMA_FILTER_MODE_REMOVE = "remove_selected"
 UNKNOWN_MODULE_LABEL = "Unknown"
+FINAL_ROWS_PREVIEW_LIMIT = 5
 
 
 @dataclass(frozen=True, slots=True)
@@ -487,11 +488,11 @@ def _collect_distinct_exercise_counts_for_segments(
             {"user_id": [], "retained_distinct_exercises": []},
             schema={"user_id": pl.Utf8, "retained_distinct_exercises": pl.Int64},
         )
+    start_date = pl.lit(start_date_iso).str.strptime(pl.Date, strict=True)
+    end_date = pl.lit(end_date_iso).str.strptime(pl.Date, strict=True)
     base = _normalize_attempt_lazy(
-        pl.scan_parquet(fact_path)
-        .filter(
-            (pl.col("date_utc") >= pl.lit(pl.Date(start_date_iso)))
-            & (pl.col("date_utc") <= pl.lit(pl.Date(end_date_iso)))
+        pl.scan_parquet(fact_path).filter(
+            (pl.col("date_utc") >= start_date) & (pl.col("date_utc") <= end_date)
         )
     )
     if selected_modules:
@@ -520,6 +521,98 @@ def _collect_distinct_exercise_counts_for_segments(
         segmented.join(retained_keys, on=["user_id", "segment_index"], how="inner")
         .group_by("user_id")
         .agg(pl.col("exercise_id").drop_nulls().n_unique().alias("retained_distinct_exercises"))
+    )
+
+
+def _collect_preview_rows_for_segments(
+    fact_path: str,
+    *,
+    start_date_iso: str,
+    end_date_iso: str,
+    selected_modules: tuple[str, ...],
+    removed_work_modes: tuple[str, ...],
+    max_retries: int,
+    retry_filter_mode: str,
+    retry_exempt_activity_ids: pl.DataFrame | None,
+    retained_segments: pl.DataFrame,
+    row_limit: int = FINAL_ROWS_PREVIEW_LIMIT,
+) -> pl.DataFrame:
+    empty_preview = pl.DataFrame(
+        {
+            "user_id": [],
+            "created_at": [],
+            "work_mode": [],
+            "module_code": [],
+            "activity_id": [],
+            "exercise_id": [],
+            "attempt_number": [],
+        },
+        schema={
+            "user_id": pl.Utf8,
+            "created_at": pl.Datetime(time_unit="us"),
+            "work_mode": pl.Utf8,
+            "module_code": pl.Utf8,
+            "activity_id": pl.Utf8,
+            "exercise_id": pl.Utf8,
+            "attempt_number": pl.Int64,
+        },
+    )
+    if retained_segments.height == 0 or row_limit <= 0:
+        return empty_preview
+
+    start_date = pl.lit(start_date_iso).str.strptime(pl.Date, strict=True)
+    end_date = pl.lit(end_date_iso).str.strptime(pl.Date, strict=True)
+    base = _normalize_attempt_lazy(
+        pl.scan_parquet(fact_path).filter(
+            (pl.col("date_utc") >= start_date) & (pl.col("date_utc") <= end_date)
+        )
+    )
+    if selected_modules:
+        base = base.filter(pl.col("module_code").is_in(list(selected_modules)))
+    if removed_work_modes:
+        base = base.filter(~pl.col("work_mode").is_in(list(removed_work_modes)))
+    if max_retries >= 0:
+        offending_pairs = (
+            base.filter(pl.col("exercise_id").is_not_null() & (pl.col("exercise_id") != ""))
+            .group_by(["user_id", "exercise_id", "activity_id"])
+            .agg(pl.len().alias("attempts"))
+            .with_columns((pl.col("attempts") - 1).alias("retries"))
+            .filter(pl.col("retries") > max_retries)
+            .select(["user_id", "exercise_id", "activity_id"])
+        )
+        if retry_exempt_activity_ids is not None and retry_exempt_activity_ids.height:
+            offending_pairs = offending_pairs.join(
+                retry_exempt_activity_ids.lazy(),
+                on="activity_id",
+                how="anti",
+            )
+        if retry_filter_mode == RETRY_FILTER_MODE_REMOVE_STUDENT:
+            offending_users = offending_pairs.select("user_id").unique()
+            base = base.join(offending_users, on="user_id", how="anti")
+        else:
+            base = base.join(
+                offending_pairs.select(["user_id", "exercise_id"]),
+                on=["user_id", "exercise_id"],
+                how="anti",
+            )
+
+    segmented = _annotate_segments_lazy(base)
+    retained_keys = retained_segments.select(["user_id", "segment_index"]).lazy()
+    return _collect_lazy(
+        segmented.join(retained_keys, on=["user_id", "segment_index"], how="inner")
+        .select(
+            [
+                "user_id",
+                "created_at",
+                "work_mode",
+                "module_code",
+                "activity_id",
+                "exercise_id",
+                "attempt_number",
+            ]
+        )
+        .sort(["user_id", "created_at", "module_code", "activity_id", "exercise_id", "attempt_number"])
+        .limit(max(int(row_limit), 1))
     )
 
 
@@ -1552,23 +1645,24 @@ def compute_cohort_view_from_parquet(
     )
     stage_summary = pl.DataFrame(stage_records)
     stage_module_attempts = pl.concat(stage_module_frames, how="vertical_relaxed")
-    empty_final_rows = base_scan.select(
-        [
-            pl.col("user_id"),
-            pl.col("created_at"),
-            pl.col("work_mode"),
-            pl.col("module_code"),
-            pl.col("activity_id"),
-            pl.col("exercise_id"),
-            pl.col("attempt_number"),
-        ]
-    ).limit(0).collect()
+    preview_final_rows = _collect_preview_rows_for_segments(
+        fact_path,
+        start_date_iso=start_date_iso,
+        end_date_iso=end_date_iso,
+        selected_modules=selected_modules,
+        removed_work_modes=removed_work_modes,
+        max_retries=max_retries,
+        retry_filter_mode=retry_filter_mode,
+        retry_exempt_activity_ids=retry_exempt_activity_ids,
+        retained_segments=final_segments,
+        row_limit=FINAL_ROWS_PREVIEW_LIMIT,
+    )
     return CohortFilterResult(
         stage_summary=stage_summary,
         stage_module_attempts=stage_module_attempts,
         transition_options=transition_options,
         schema_options=schema_options,
-        final_rows=empty_final_rows,
+        final_rows=preview_final_rows,
         final_user_paths=final_user_paths,
         final_module_summary=final_module_summary,
         final_attempts=final_attempts,
@@ -1652,3 +1746,4 @@ def build_schema_summary_vs_baseline(
             pl.col("attempts") / baseline_attempts if baseline_attempts else pl.lit(0.0)
         ).alias("attempt_share"),
     )
+
