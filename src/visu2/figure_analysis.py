@@ -738,6 +738,8 @@ def analyze_transition_chart(frame: pl.DataFrame | pd.DataFrame | None) -> Figur
     table = _as_polars(frame)
     if table.height == 0:
         return _insufficient()
+    share_col = "source_objective_attempt_share"
+    has_source_objective_share = share_col in table.columns
     table = table.with_columns(
         pl.col('transition_count').cast(pl.Int64),
         pl.col('success_conditioned_count').cast(pl.Int64),
@@ -747,19 +749,56 @@ def analyze_transition_chart(frame: pl.DataFrame | pd.DataFrame | None) -> Figur
         .otherwise(0.0)
         .alias('fragility_impact'),
     )
+    if has_source_objective_share:
+        table = table.with_columns(pl.col(share_col).cast(pl.Float64))
     total = int(table['transition_count'].sum())
     if total < TRANSITION_MIN_OBSERVATIONS:
         return _insufficient(["Transition commentary is only surfaced when the current slice contains at least 20 transitions."])
     ranked = table.sort(['transition_count', 'from_activity_label', 'to_activity_label'], descending=[True, False, False])
-    top = ranked.row(0, named=True)
-    findings = [f"The most common displayed cross-objective transition is {top['from_activity_label']} -> {top['to_activity_label']} with {_format_num(top['transition_count'])} transitions ({_format_pct((_safe_float(top['transition_count']) or 0.0) / total)} of the visible total)."]
-    top_three_share = float(ranked.head(min(3, ranked.height))['transition_count'].sum()) / total
-    if top_three_share >= 0.60:
-        findings.append(f"A small number of paths dominate the visible flow: the top 3 transitions account for {_format_pct(top_three_share)} of the displayed total.")
-        concentration = 'high'
+    top_count = ranked.row(0, named=True)
+    findings: list[str] = []
+    concentration = 'moderate'
+    if has_source_objective_share and table.select(pl.col(share_col).is_not_null().any()).item():
+        display_ranked = table.sort(
+            [share_col, 'transition_count', 'from_activity_label', 'to_activity_label'],
+            descending=[True, True, False, False],
+        )
+        top_display = display_ranked.row(0, named=True)
+        denominator = _safe_float(top_display.get('source_objective_attempts'))
+        if denominator and denominator > 0:
+            denominator_text = (
+                f" ({_format_num(top_display['transition_count'])} transitions out of "
+                f"{_format_num(denominator)} attempts in the source objective)"
+            )
+        else:
+            denominator_text = f" ({_format_num(top_display['transition_count'])} transitions)"
+        findings.append(
+            f"The largest displayed bar is {top_display['from_activity_label']} -> {top_display['to_activity_label']}: {_format_pct(_safe_float(top_display[share_col]))} of attempts in its source objective{denominator_text}."
+        )
+        findings.append(
+            "These percentages are local to each source objective, so the displayed bars are not expected to add up to 100% across rows."
+        )
+        display_text = _top_rank_text(
+            display_ranked,
+            label_fn=lambda row: f"{row['from_activity_label']} -> {row['to_activity_label']}",
+            metric_fn=lambda row: f"{_format_pct(_safe_float(row[share_col]))} of source objective attempts",
+        )
+        if display_text:
+            findings.append(f"Largest displayed shares: {display_text}.")
+        top_three_count_share = float(ranked.head(min(3, ranked.height))['transition_count'].sum()) / total
+        if top_three_count_share >= 0.60:
+            concentration = 'high'
+        findings.append(
+            f"By raw transition count, the most common displayed path is {top_count['from_activity_label']} -> {top_count['to_activity_label']} with {_format_num(top_count['transition_count'])} transitions ({_format_pct((_safe_float(top_count['transition_count']) or 0.0) / total)} of displayed transition events)."
+        )
     else:
-        findings.append(f"The visible flow is more distributed: the top 3 transitions account for {_format_pct(top_three_share)} of the displayed total.")
-        concentration = 'moderate'
+        findings.append(f"The most common displayed cross-objective transition is {top_count['from_activity_label']} -> {top_count['to_activity_label']} with {_format_num(top_count['transition_count'])} transitions ({_format_pct((_safe_float(top_count['transition_count']) or 0.0) / total)} of the visible total).")
+        top_three_share = float(ranked.head(min(3, ranked.height))['transition_count'].sum()) / total
+        if top_three_share >= 0.60:
+            findings.append(f"A small number of paths dominate the visible flow: the top 3 transitions account for {_format_pct(top_three_share)} of the displayed total.")
+            concentration = 'high'
+        else:
+            findings.append(f"The visible flow is more distributed: the top 3 transitions account for {_format_pct(top_three_share)} of the displayed total.")
     weak_common = ranked.filter(pl.col('transition_count') >= TRANSITION_MIN_OBSERVATIONS).sort(['destination_success_rate', 'transition_count', 'from_activity_label', 'to_activity_label'], descending=[False, True, False, False])
     fragile = ranked.filter(pl.col('transition_count') >= TRANSITION_MIN_OBSERVATIONS).sort(
         ['fragility_impact', 'transition_count', 'from_activity_label', 'to_activity_label'],
@@ -768,7 +807,7 @@ def analyze_transition_chart(frame: pl.DataFrame | pd.DataFrame | None) -> Figur
     if fragile.height > 0:
         fragile_top = fragile.row(0, named=True)
         findings.append(
-            f"The highest raw-impact fragile transition is {fragile_top['from_activity_label']} -> {fragile_top['to_activity_label']} with {_format_num(_safe_float(fragile_top['fragility_impact']), digits=1)} estimated failing destination transitions."
+            f"Separately from the bar percentage, the highest volume-weighted fragile transition is {fragile_top['from_activity_label']} -> {fragile_top['to_activity_label']} with {_format_num(_safe_float(fragile_top['fragility_impact']), digits=1)} estimated failing destination transitions."
         )
     weak_rate = None
     if weak_common.height > 0:

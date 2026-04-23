@@ -520,9 +520,9 @@ def main() -> None:
             "success_conditioned_count",
             "source_objective_share_text",
         ],
-        title="Top cross-objective activity transitions by share of source objective attempts",
+        title="Common cross-objective transitions shown as share of source objective attempts",
         labels={
-            "source_objective_attempt_share": "Share of source objective attempts",
+            "source_objective_attempt_share": "Transition count / source-objective attempts",
             "edge": "Activity path",
             "success_conditioned_count": "Successful destination attempts (count)",
         },
@@ -532,7 +532,7 @@ def main() -> None:
         hovertemplate=(
             "<b>From</b>: %{customdata[0]}<br>"
             "<b>To</b>: %{customdata[1]}<br>"
-            "Share of source objective attempts: %{customdata[4]}<br>"
+            "Transition share within source objective: %{customdata[4]}<br>"
             "Transitions: %{customdata[2]:,}<br>"
             "Successful destination attempts: %{customdata[3]:,}<extra></extra>"
         ),

@@ -68,6 +68,27 @@ def test_analyze_transition_chart_requires_transition_threshold() -> None:
     assert INSUFFICIENT_EVIDENCE_MESSAGE in analysis.caveats
 
 
+def test_analyze_transition_chart_explains_source_objective_share() -> None:
+    frame = pl.DataFrame(
+        {
+            "from_activity_label": ["High share", "High count"],
+            "to_activity_label": ["Target A", "Target B"],
+            "transition_count": [20, 80],
+            "success_conditioned_count": [10, 60],
+            "source_objective_attempts": [100, 4_000],
+            "source_objective_attempt_share": [0.20, 0.02],
+        }
+    )
+
+    analysis = analyze_transition_chart(frame)
+
+    assert analysis.findings
+    assert "largest displayed bar" in analysis.findings[0]
+    assert "20.0%" in analysis.findings[0]
+    assert "not expected to add up to 100%" in " ".join(analysis.findings)
+    assert "most common displayed path is High count -> Target B" in " ".join(analysis.findings)
+
+
 def test_analyze_matrix_drilldown_table_reports_supported_spread() -> None:
     frame = pl.DataFrame(
         {

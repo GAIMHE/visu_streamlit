@@ -100,7 +100,9 @@ FIGURE_INFO: dict[str, dict[str, tuple[str, ...]]] = {
             "It focuses on cross-objective transitions, so it highlights movement between different parts of the module rather than short local loops inside the same objective.",
         ),
         "Metrics": (
-            "The default bar length shows the share of attempts this transition represents inside the source objective.",
+            "Rows are selected from the common cross-objective transitions, using transition count.",
+            "Bar length shows `transition_count / attempts in the source objective`, so each row has its own denominator.",
+            "Because the denominator changes by row, the displayed percentages should not be expected to sum to 100%.",
             "Transition count is still available in hover as the raw number of observed moves from one activity to the next.",
             "Successful destination attempts counts how many of those transitions were followed by a correct attempt on the destination activity.",
         ),
