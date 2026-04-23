@@ -84,9 +84,14 @@ FIGURE_INFO: dict[str, dict[str, tuple[str, ...]]] = {
         ),
         "Metrics": (
             "Failure rate is the share of attempts that were not successful.",
-            "Repeat attempt rate is the share of attempts that were repeats rather than first tries.",
-            "Bar length now shows failure rate directly, while bar color shows repeat attempt rate.",
-            "The combined bottleneck score is still kept in hover and analysis as a summary signal, with more weight given to low success than to repetition.",
+            "Retries before first success is the share of attempts that repeat an exercise while the student has not yet succeeded on that exercise.",
+            "Bar length shows failure rate directly, while bar color shows retries before first success.",
+            "All repeat attempts are still shown in hover as context, but they are not the retry signal used in the bottleneck score.",
+            "The combined bottleneck score gives more weight to failure than to retries before first success: 70% failure rate and 30% retry-before-success rate.",
+            "The volume-weighted impact score used in the automatic analysis combines the bottleneck score with the number of attempts.",
+        ),
+        "Controls that affect it": (
+            "The sidebar `Min attempts for bottleneck` filter removes low-volume candidates before the score ranking and volume-weighted impact analysis are computed.",
         ),
     },
     "bottlenecks_transitions_path_chart": {

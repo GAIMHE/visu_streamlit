@@ -9,11 +9,14 @@ from .derive_catalog import exercise_metadata_frame
 from .derive_common import as_lazy
 
 
-def build_agg_activity_daily_from_fact(fact: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame:
-    """Aggregate attempt metrics at the activity/day grain."""
+def _with_attempt_context(fact: pl.DataFrame | pl.LazyFrame) -> pl.LazyFrame:
+    """Add attempt-level helper flags used by multiple aggregates."""
     return (
         as_lazy(fact)
+        .sort(["user_id", "exercise_id", "created_at", "attempt_number"])
         .with_columns(
+            pl.col("data_correct").cast(pl.Float64).fill_null(0).cast(pl.Int64).alias("_attempt_success_int"),
+            pl.col("attempt_number").cast(pl.Int64).fill_null(1).alias("_safe_attempt_number"),
             pl.when(pl.col("attempt_number") == 1)
             .then(pl.col("data_correct").cast(pl.Float64))
             .otherwise(None)
@@ -23,6 +26,33 @@ def build_agg_activity_daily_from_fact(fact: pl.DataFrame | pl.LazyFrame) -> pl.
             .otherwise(pl.lit(0))
             .alias("first_attempt_flag"),
         )
+        .with_columns(
+            pl.col("_attempt_success_int")
+            .cum_sum()
+            .over(["user_id", "exercise_id"])
+            .alias("_success_count_including_current")
+        )
+        .with_columns(
+            (
+                pl.col("_success_count_including_current")
+                - pl.col("_attempt_success_int")
+            ).alias("_prior_success_count")
+        )
+        .with_columns(
+            (
+                (pl.col("_safe_attempt_number") > 1)
+                & (pl.col("_prior_success_count") == 0)
+            )
+            .cast(pl.Float64)
+            .alias("retry_before_success_flag")
+        )
+    )
+
+
+def build_agg_activity_daily_from_fact(fact: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame:
+    """Aggregate attempt metrics at the activity/day grain."""
+    return (
+        _with_attempt_context(fact)
         .group_by(
             [
                 "date_utc",
@@ -43,6 +73,7 @@ def build_agg_activity_daily_from_fact(fact: pl.DataFrame | pl.LazyFrame) -> pl.
             pl.col("first_attempt_flag").sum().alias("first_attempt_count"),
             pl.col("data_duration").median().alias("median_duration"),
             (pl.col("attempt_number") > 1).cast(pl.Float64).mean().alias("repeat_attempt_rate"),
+            pl.col("retry_before_success_flag").mean().alias("retry_before_success_rate"),
             pl.col("attempt_number").mean().alias("avg_attempt_number"),
         )
         .sort(["date_utc", "attempts"], descending=[False, True])
@@ -162,17 +193,7 @@ def build_agg_exercise_daily_from_fact(
     """Aggregate attempt metrics at the exercise/day grain."""
     exercise_meta = exercise_metadata_frame(settings)
     return (
-        as_lazy(fact)
-        .with_columns(
-            pl.when(pl.col("attempt_number") == 1)
-            .then(pl.col("data_correct").cast(pl.Float64))
-            .otherwise(None)
-            .alias("first_attempt_correct_value"),
-            pl.when(pl.col("attempt_number") == 1)
-            .then(pl.lit(1))
-            .otherwise(pl.lit(0))
-            .alias("first_attempt_flag"),
-        )
+        _with_attempt_context(fact)
         .join(exercise_meta.lazy(), on="exercise_id", how="left")
         .with_columns(
             pl.coalesce(
@@ -205,6 +226,7 @@ def build_agg_exercise_daily_from_fact(
             pl.col("first_attempt_flag").sum().alias("first_attempt_count"),
             pl.col("data_duration").median().alias("median_duration"),
             (pl.col("attempt_number") > 1).cast(pl.Float64).mean().alias("repeat_attempt_rate"),
+            pl.col("retry_before_success_flag").mean().alias("retry_before_success_rate"),
             pl.col("attempt_number").mean().alias("avg_attempt_number"),
         )
         .sort(["date_utc", "attempts"], descending=[False, True])

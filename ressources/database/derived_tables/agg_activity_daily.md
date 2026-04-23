@@ -25,6 +25,7 @@ Render a runtime-ready derived table for `agg_activity_daily`.
 - `success_rate`
 - `median_duration`
 - `repeat_attempt_rate`
+- `retry_before_success_rate`
 - `avg_attempt_number`
 
 ## Label Columns (Runtime expectation)
@@ -35,6 +36,7 @@ Render a runtime-ready derived table for `agg_activity_daily`.
 ## Metric / Computation Notes
 - `success_rate` is attempt-weighted mean of correctness.
 - `repeat_attempt_rate` is the share of attempts with attempt index > 1.
+- `retry_before_success_rate` is the share of attempts with attempt index > 1 where the same student had not yet succeeded on the same exercise before that attempt.
 
 ## Filters / Scope Semantics
 - Date/work-mode/module filters are applied in page-level query logic, not by mutating this artifact.

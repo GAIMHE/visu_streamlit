@@ -1,626 +1,351 @@
-# NeurIPS 2026 Dataset Paper Outline
+\documentclass{article}
+
+% if you need to pass options to natbib, use, e.g.:
+%     \PassOptionsToPackage{numbers, compress}{natbib}
+% before loading neurips_2026
+
+\usepackage[square,numbers]{natbib}
+% \usepackage{natbib}
+\bibliographystyle{plainnat}
+
+\usepackage[eandd]{neurips_2026}
+% the "default" option is equal to the "main" option, which is used for the Main Track with double-blind reviewing.
+% 1. "main" option is used for the Main Track
+%  \usepackage[main]{neurips_2026}
+% 2. "position" option is used for the Position Paper Track
+%  \usepackage[position]{neurips_2026}
+% 3. "eandd" option is used for the Evaluations & Datasets Track
+ % \usepackage[eandd]{neurips_2026}
+ % if you need to opt-in for a single-blind submission in the E&D track:
+ %\usepackage[eandd, nonanonymous]{neurips_2026}
+% 4. "creativeai" option is used for the Creative AI Track
+%  \usepackage[creativeai]{neurips_2026}
+% 5. "sglblindworkshop" option is used for the Workshop with single-blind reviewing
+ % \usepackage[sglblindworkshop]{neurips_2026}
+% 6. "dblblindworkshop" option is used for the Workshop with double-blind reviewing
+%  \usepackage[dblblindworkshop]{neurips_2026}
+
+% After being accepted, the authors should add "final" behind the track to compile a camera-ready version.
+% 1. Main Track
+ % \usepackage[main, final]{neurips_2026}
+% 2. Position Paper Track
+%  \usepackage[position, final]{neurips_2026}
+% 3. Evaluations & Datasets Track
+ % \usepackage[eandd, final]{neurips_2026}
+% 4. Creative AI Track
+%  \usepackage[creativeai, final]{neurips_2026}
+% 5. Workshop with single-blind reviewing
+%  \usepackage[sglblindworkshop, final]{neurips_2026}
+% 6. Workshop with double-blind reviewing
+%  \usepackage[dblblindworkshop, final]{neurips_2026}
+% Note. For the workshop paper template, both \title{} and \workshoptitle{} are required, with the former indicating the paper title shown in the title and the latter indicating the workshop title displayed in the footnote.
+% For workshops (5., 6.), the authors should add the name of the workshop, "\workshoptitle" command is used to set the workshop title.
+% \workshoptitle{WORKSHOP TITLE}
+
+% "preprint" option is used for arXiv or other preprint submissions
+ % \usepackage[preprint]{neurips_2026}
+
+% to avoid loading the natbib package, add option nonatbib:
+%    \usepackage[nonatbib]{neurips_2026}
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{graphicx}       % figures
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{xcolor}         % colors
+\usepackage{comment}
+% Note. For the workshop paper template, both \title{} and \workshoptitle{} are required, with the former indicating the paper title shown in the title and the latter indicating the workshop title displayed in the footnote. 
+\newcommand{\DATASET}{Dataset Name}
+\title{\DATASET}
+
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{makecell}
+
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to LaTeX to determine where to break the
+% lines. Using \AND forces a line break at that point. So, if LaTeX puts 3 of 4
+% authors names on the first line, and the last on the second line, try using
+% \AND instead of \And before the third author name.
+
+
+\author{%
+  David S.~Hippocampus\thanks{Use footnote for providing further information
+    about author (webpage, alternative address)---\emph{not} for acknowledging
+    funding agencies.} \\
+  Department of Computer Science\\
+  Cranberry-Lemon University\\
+  Pittsburgh, PA 15213 \\
+  \texttt{hippo@cs.cranberry-lemon.edu} \\
+  % examples of more authors
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \AND
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+}
+
+
+\begin{document}
+
+
+\maketitle
+
+
+\begin{abstract}
+  
+\end{abstract}
+
+
+\section{Introduction}
+presentation of the dataset: exercises + learning pathways + evaluation benchmark
+Briefly describe the adressed gap and the contribution
 
-Working draft structured from the template discussed for a NeurIPS 2026 Datasets / Evaluations style submission.
+Expliquer l’intérêt du pdv éducatif
+Décrire l’intérêt du pdv ML : quelles questions scientifiques, comparer aux autre DS ML pour ED
 
-Goal of this document:
-- keep a paper-shaped skeleton early,
-- fill what is already grounded in the current repo and dataset state,
-- leave explicit TODO bullets for analysis, writing, and positioning work still needed.
+Find a name for the dataset
 
----
+\section{Related work}
+S’inspirer de la section 2.1 de XES3G5M
 
-## Title Block
+describe existing limitations in AI for Ed field
+describe the gap in the educational datasets (real students)
+describe existing datasets and why they are unsufficient
+describe our contribution and how it addressed the gap
 
-`Formatting Instructions For NeurIPS 2026`
 
-`Anonymous Author(s)`
 
-`Affiliation`
-
-`Address`
+\section{The \DATASET~dataset}
+\subsection{Collection}
+\begin{itemize}
+    \item Introduce AdaptivMath \& MIA
+    \item How exercises were designed, with their type (give examples in appendices)
+    \item Work modes - uniquement MIA groupe de contrôle
+    \item Population and classrooms
+    \item Student's consent?
+\end{itemize}
 
-`email`
-
-TODO:
-- decide final paper title
-- decide whether to pitch the paper as:
-  - a KT benchmark dataset,
-  - an educational modeling benchmark,
-  - or a structured/intervention-aware learning dataset
-
-Working title ideas:
-- `Adaptiv'Math and MIA: A Classroom-Grounded Benchmark for Structured Learning Trajectories in Mathematics`
-- `A Benchmark for Knowledge Tracing and Progression Modeling with Pedagogical Modes and Curriculum Structure`
-- `Main and MIA: A Multi-Source Dataset for Classroom-Aware and Intervention-Aware Student Modeling`
-
----
-
-## Abstract
-
-Current draft direction:
-
-- present the dataset family as interaction traces from a real adaptive math learning environment used in classrooms
-- emphasize that the contribution is **not only** next-response KT
-- highlight the extra structure compared with classic KT benchmarks:
-  - work modes / pedagogical sequencing modes
-  - curriculum hierarchy: module -> objective -> activity -> exercise
-  - duration per interaction
-  - classroom / teacher context
-  - pedagogical dependency topology
-  - aligned multi-source setup (`main` and `mia`)
-- state that the benchmark supports both standard KT and richer educational modeling tasks
-
-What can already be stated safely:
-- `main` contains `6,264,394` interactions from `29,226` students
-- `mia` contains `1,114,822` interactions from `11,500` students
-- both are math datasets collected from real usage
-- both have timestamps and duration
-- both can be normalized into a common schema
-
-TODO:
-- decide the exact benchmark scope described in the abstract
-- decide whether to mention one benchmark task only, or a task family
-- write final abstract once positioning and benchmark tasks are frozen
-
----
-
-## 1 Outline
-
-### 1.1 Introduction
-
-### Core story to aim for
-
-The introduction should probably open with a gap like:
-
-- existing public KT datasets are strong for sequence modeling,
-- but they often flatten away the instructional context,
-- while real educational products involve:
-  - diagnostic phases,
-  - adaptive progression,
-  - teacher-defined or alternative sequencing modes,
-  - structured curriculum hierarchies,
-  - classroom-level deployment context.
-
-### Draft contribution framing
-
-Proposed framing:
-
-- present a dataset family for mathematics learning trajectories in real classrooms
-- include exercises, learning pathways, and evaluation benchmark(s)
-- support both student-level and classroom-level analyses
-- support both standard KT tasks and richer progression tasks
-
-Potential contribution bullets:
-- a large-scale real-world interaction dataset in mathematics
-- explicit curriculum structure:
-  - modules
-  - objectives
-  - activities
-  - exercises
-- pedagogical mode information:
-  - `main`: `zpdes`, `initial-test`, `adaptive-test`, `playlist`
-  - `mia`: `zpdes`, `adaptive-test`, `duo`, `revision`
-- duration on every interaction
-- classroom / teacher context
-- pedagogical dependency graph / progression topology
-- two aligned sources under one schema
-
-### What can already be inserted
-
-`main`:
-- `6,264,394` interactions
-- `29,226` students
-- `9,009` exercises
-- `543` activities
-- `126` objectives
-- `12` resolved modules in `fact_attempt_core`
-- `4,788` classrooms
-- `3,630` teachers in raw data
-- time range: `2022-08-05` to `2025-11-20`
-
-`mia`:
-- `1,114,822` interactions
-- `11,500` students
-- `1,062` exercises
-- `70` activities
-- `10` objectives
-- `1` module
-- `1,575` classrooms
-- `895` teachers in raw data
-- time range: `2024-11-02` to `2026-04-02`
-
-### TODO
-
-- decide whether the introduction should foreground:
-  - KT,
-  - progression modeling,
-  - or evaluation of educational AI systems in realistic contexts
-- decide whether to position `main` and `mia` as:
-  - one benchmark with two sources,
-  - or one primary dataset with one transfer/generalization companion source
-- decide which benchmark tasks are central enough to mention in the introduction
-
----
-
-### 1.2 Related Work
-
-### Anchor reference
-
-The most important close reference at the moment is:
-
-- `XES3G5M: A Knowledge Tracing Benchmark Dataset with Auxiliary Information`
-  - NeurIPS 2023 Datasets and Benchmarks
-  - useful both as:
-    - a structural reference for the paper
-    - a comparison point for dataset contribution
-
-### Current comparison intuition
-
-`XES3G5M` is strong on:
-- question-side auxiliary information
-- KC routes / KC structure
-- question analysis
-- standard KT benchmark packaging
-
-Our dataset family is stronger on:
-- pedagogical work modes
-- classroom / teacher context
-- curriculum hierarchy grounded in the product
-- duration per interaction
-- progression topology tied to instructional rules
-- multi-source alignment
-
-### Draft comparative claim
-
-Do **not** position the paper as:
-- “another math KT dataset with rich metadata”
-
-Better position:
-- a benchmark for structured, intervention-aware, classroom-grounded educational modeling
-
-### Related work subsections to include
-
-1. KT benchmark datasets
-- ASSISTments
-- Junyi
-- KDD Cup algebra datasets
-- EdNet
-- Eedi / NeurIPS Education Challenge style datasets
-- XES3G5M
-
-2. AI for Education datasets with real learner traces
-- focus on what is publicly available
-- highlight what is usually missing:
-  - real classroom context
-  - pedagogical modes
-  - explicit progression structure
-  - durations
-
-3. Product-grounded structured learning datasets
-- if enough close references exist
-- otherwise merge into the KT datasets section
-
-4. ZPDES / adaptive progression context and MIA product context
-- explain the instructional modes and product setting
-- distinguish this from generic KC graphs
-
-### TODO
-
-- build a related-work comparison table
-- verify exactly which datasets have:
-  - timestamps
-  - duration
-  - classroom context
-  - question content
-  - curricular topology
-  - multiple instructional modes
-- write one paragraph explicitly explaining how our contribution differs from XES3G5M
-- decide how much product-specific detail about ZPDES / MIA belongs in related work versus data description
-
----
-
-### 1.3 Dataset Collection and Processing
-
-### Dataset family overview
-
-This section can describe the dataset family as two aligned sources:
-
-- `main`: Adaptiv'Math main source
-- `mia`: MIA source for a single module currently available in the repo
-
-Possible framing:
-- interaction data from a deployed digital math learning environment
-- content authored within a structured pedagogical framework
-- traces collected from real student usage in classrooms
-
-### Current source files
-
-For `main`, the core source files are:
-- `data/adaptiv_math_history.parquet`
-- `data/learning_catalog.json`
-- `data/zpdes_rules.json`
-- `data/exercises.json`
-
-For `mia`, the current source materials include:
-- `data_MIA/986-neurips-mia_20260415_100024.csv`
-- `data_MIA/config_mia.json`
-
-### What the raw rows represent
-
-`main` and `mia` raw interaction data:
-- one row = one attempt on one exercise by one student at one time
-
-Available interaction information includes:
-- student id
-- classroom id
-- teacher id
-- module/objective/activity/exercise ids
-- correctness
-- answer payload
-- timestamp
-- duration
-- work mode
-
-### Processing pipeline already available in the repo
-
-We already have a normalized view through `fact_attempt_core.parquet`, which:
-- standardizes the hierarchy
-- resolves readable labels
-- aligns both sources to a common schema
-
-That makes it possible to describe both:
-- the raw interaction logs
-- the normalized benchmark-ready interaction table
-
-### Data quality and known caveats
-
-For `main`, we already know several irregularities exist:
-- suspiciously high work-mode transitions for a minority of students
-- some orphan playlist exercises
-- some initial-test exercises with raw objective/activity ids not present in canonical metadata
-- retry-heavy students
-- classroom heterogeneity
-
-For `mia`, the audit suggests the data is cleaner on several of those dimensions:
-- no unmapped exercise hierarchy holes
-- much lower transition extremes
-- less extreme retry patterns
-
-This could become a useful subsection or appendix:
-- either as known limitations,
-- or as a strength of releasing both the raw and normalized forms
-
-### Human-readable content generation
-
-Already possible to describe:
-- `main` uses:
-  - `learning_catalog.json`
-  - `zpdes_rules.json`
-  - `exercises.json`
-- `mia` uses:
-  - `config_mia.json`
-  - generated `learning_catalog.json`
-  - generated `zpdes_rules.json`
-
-This is important because it shows that:
-- the benchmark is not just anonymous ids,
-- it preserves or reconstructs meaningful pedagogical labels and structures.
-
-### Data statistics subsection
-
-Likely statistics to include:
-- number of students
-- number of interactions
-- number of classrooms
-- number of teachers
-- number of modules/objectives/activities/exercises
-- work-mode distribution
-- time span covered
-- retry statistics
-- interaction duration statistics
-- sequence length statistics after benchmark preprocessing
-
-### Splits
-
-This needs to be specified depending on the benchmark tasks.
-
-Possible split strategies:
-- student-level train/dev/test
-- classroom-level split
-- source transfer:
-  - train on `main`, evaluate on `mia`
-- time-based split
-
-### Visualization examples
-
-Potential examples already available from the repo:
-- work-mode transition examples
-- ZPDES dependency graph examples
-- classroom progression replay
-- student Elo trajectory examples
-
-These could be:
-- paper figures
-- appendix figures
-- or supported by the public visualization tool/demo
-
-### Bias / noise / ethics
-
-This section should probably discuss:
-- anonymization
-- real-world logging noise
-- unresolved metadata irregularities in `main`
-- source imbalance
-- work-mode imbalance
-- classroom heterogeneity
-- one-source-vs-two-source representativeness
+\subsubsection{Introduce AdaptivMath \& MIA}
 
-### TODO
-
-- confirm deployment geography if we want to mention number of countries
-- confirm authorship / curation process of the exercises
-- add anonymization details
-- decide whether to include both raw and normalized schema diagrams
-- add descriptive statistics tables
-- define benchmark splits
-- decide whether the paper should include screenshots of the visualization tool
-- add a dataset limitations subsection
-
-### Ready-to-paste draft for Section 3 (`The \DATASET dataset`)
-
-#### 3.1 Collection and pedagogical setting
-
-Adaptiv'Math and MIA 2nd are classroom-grounded digital learning environments designed to support structured mathematics learning in ordinary educational settings. Both systems record interaction traces during real student use rather than in a laboratory protocol, and both preserve enough pedagogical metadata to reconnect each attempt to an authored curriculum structure. In this paper, we define a curated benchmark slice intended to remain pedagogically interpretable while still large enough for modern sequence modeling and transfer experiments.
-
-The current Adaptiv'Math scope covers two Modules, "Number and calculation" and "Solving arithmetic problems". The current MIA 2nd scope is anchored on two Modules as well, "Number and calculation" (but at a higher level) and will include one additional module that remains to be finalized at the time of writing (`TODO: insert second MIA module code and title`). This design keeps a large arithmetic-oriented benchmark core while preserving room for cross-source comparison under a shared interaction schema.
+% Products of EvidenceB are deployed in 5 counties and count more than 160k users.
+% AM counts more than 30k user, deployed in > 1k schools, > 2mln exercises are realized.
+% MIA seconde > 70k students, ~ 2.5k schools, 4 mln exercises realized.
 
-Both sources follow the same pedagogical hierarchy. Modules define broad instructional units. Objectives decompose each module into more specific mathematical skills. Activities correspond to pedagogical steps within an objective, and exercises are the concrete student-facing tasks attempted on the platform. In addition to these structured identifiers, exercises retain content-side metadata, including gameplay formats, which makes it possible to study not only success sequences but also heterogeneous forms of student interaction.
 
-#### 3.2 Data representation and work modes
+Adaptiv’Math (AM) is an adaptive digital learning resource developed as part of the P2IA (Innovation and Artificial Intelligence Partnership) and dedicated to mathematics education for early primary school students (ages 6–8). The platform is grounded in advances in cognitive science and artificial intelligence, enabling learners to develop a robust and intuitive understanding of core mathematical concepts and fundamentals. It includes more than 8000 exercises organized into 7 Modules. AM counts more than 30k user, deployed in > 1k schools, > 2mln exercises are realized. \\
+MIA Seconde is digital service provides teachers with pedagogical resources and tools to implement personalized remediation and support pathways in French and mathematics, aiming to strengthen the core competencies of secondary school students. Initiated by the French Ministry of Education and developed by EvidenceB and Docaposte in collaboration with research labs and EdTech partners, it follows a user-centered co-design approach and is supported under the Programme d’Investissements d’Avenir (PIA, Program of Future Inverstments). It contains 24 modules : 16 in French and 8 in maths and more than 20 000 exercises. MIA Seconde is the first AI-based remediation product to be evaluated through a large-scale scientific impact study, involving over 500 high schools across all academic regions in France (more than 1,000 classes and 60,000 students). [SUPERSET USAGE INFO HERE] \\
+Both learning solutions are incorporated into an AI driven teaching platform (AITP) that allows to personalize the learning path through a ZPDES algorithm. The platform is designed to complement the standard curriculum, supporting remediation, consolidation, or enrichment. All content is aligned with official educational standards. Students can engage with the platform in the classroom or at home, either independently or in paired mode, depending on the teacher’s instructional strategy. Teachers access a dedicated dashboard that provides detailed insights into student progress, areas of difficulty, and overall performance.\\
+The platform includes a hierarchically structured exercise corpus developed by experts in pedagogy and cognitive science, grounded in contemporary research in psychology and cognitive sciences ([12,10] CHECK REFS). The design enables interactive and cognitively informed formats that extend beyond traditional textbook activities. Exercises are organized as interconnected graphs and are structured within interdependent modules, objectives, and activities. Each exercise is associated with an action-driven metacognitive feedback aiming at reinforcing students’ cognitive strategy. A  recommendation engine selects subsequent tasks dynamically based on individual performance, with the objective of maximizing expected learning progress ([9] [CHECK REFS]). This personalization is driven by the ZPDES algorithm, a multi-armed bandit reinforcement learning framework ([5,6] REFS), developed by the Inria FLOWERS team. The algorithm is grounded in Learning Progress theory and computational models of curiosity-driven learning ([17,9] REFS). \\
+The platform also offers a “playlist” mode, enabling teachers to assign a predefined set of exercises to students. However, this mode does not support adaptive personalization and is therefore not the default usage. In practice, it was primarily used to constitute control groups in the randomized controlled trial (RCT) conducted for the impact study.
 
-At the raw level, the benchmark is built from one-row-per-attempt interaction logs: `data/adaptiv_math_history.parquet` for Adaptiv'Math and `data_MIA/986-neurips-mia_20260415_100024.csv` plus `data_MIA/config_mia.json` for MIA 2nd. Each row corresponds to one student attempt on one exercise at one timestamp. After normalization, both sources can be represented in a common benchmark schema that retains student, classroom, and teacher identifiers, module/objective/activity/exercise identifiers, timestamps, interaction duration, correctness, and work mode.
-
-Work modes are important because they encode instructional context rather than mere logging metadata. In Adaptiv'Math, attempts can occur in `zpdes`, `initial-test`, `adaptive-test`, or `playlist`, corresponding respectively to adaptive progression, earlier diagnostic phases, later adaptive placement phases, and teacher-defined activity sequences. In MIA 2nd, the dominant modes are `zpdes`, `adaptive-test`, and `playlist`, with smaller amounts of `duo` and `revision`. Combined with the hierarchy described above, these mode annotations make the dataset suitable for more than plain next-response prediction: they expose how performance unfolds under distinct instructional conditions.
 
-#### 3.3 Descriptive statistics
+\subsubsection{Exercise design}
+All exercises in Adaptiv’Math and MIA Seconde were designed by cognitive science researchers and pedagogical experts, grounded in contemporary findings from cognitive science. Their interaction formats (“gameplays”) are informed by UX research and streamlined design principles to support learning while minimizing distraction.\\
+Content is organized hierarchically: modules contain learning objectives, which are subdivided into activities composed of multiple exercises. Within each activity, exercises share the same structure, interaction design, and pedagogical goal, varying only in numerical parameters or surface features.\\
+In the present dataset, we share 4 the most commonly used modules representing > 90\% of usage [TO CHECK]: 
+\begin{itemize}
+    \item 2 modules of MIA : “Relearning number sense” (authored by André Knops, LaPsyDé, Paris-Cité University) \& "Data organization and management; functions" (authored by Valeria Giardino (Institut Jean Nicod – CNRS-ENS-EHES)
+    \item 2 modules of Adaptiv’Math: “Numbers and calculations” and “Arithmetic problem solving”  (authored by Emmanuel Sanders, Geneva University), the latter having 3 variations for 3 grades : CP, CE1, CE2. 
+\end{itemize}
 
-The released benchmark is multi-source but harmonized into a common interaction schema, which makes the two sources directly comparable at the attempt level while preserving their pedagogical structure. The main paper will focus on selected modules rather than the full raw inventory, because the goal is to define a controlled and reproducible benchmark slice whose educational scope remains easy to interpret.
+\textbf{The MIA Module “Relearning Number Sense”}, designed for high school students in a remediation context, comprises 10 objectives, 70 activities, and 1,045 exercises structured within a hierarchical framework. Grounded in a cognitive and developmental approach, the module focuses on strengthening mental representations of numbers through four core competencies—positioning, comparing, ordering, and calculating. Building on prerequisite knowledge (e.g., signed integers and powers of positive integers), the activities target key concepts from lower secondary curricula and systematically explore numerical representations while addressing well-documented cognitive biases (e.g., magnitude, linguistic, and integer biases). \\
 
-| Source | Modules included | Students | Attempts | Classrooms | Teachers | Objectives | Activities | Exercises | Time span | Work modes present |
-|---|---|---:|---:|---:|---:|---:|---:|---:|---|---|
-| Adaptiv'Math selected subset | `M1` + `M31`-`M33` | `29,006` | `6,205,511` | `4,755` | `TODO if reported in final table` | `65` | `296` | `6,468` | `2022-08-05` to `2025-11-20` | `adaptive-test`, `initial-test`, `playlist`, `zpdes` |
-| MIA selected subset | `M101` + `TODO(second MIA module)` | `TODO` | `TODO` | `TODO` | `TODO` | `TODO` | `TODO` | `TODO` | `TODO` | `adaptive-test`, `duo`, `playlist`, `revision`, `zpdes` |
+The module \textbf{"Data organization and management"} conceptualizes mathematics as a form of heterogeneous reasoning that combines intuitive perceptual skills with higher-level cognition through diverse representational artifacts (e.g., diagrams, graphs, formulas). It builds on students’ spatial intuitions to progressively develop expertise in graph interpretation, symbolic notation, and quantitative reasoning. The module contains 7 objectives, 48 Activities and 482 exercises.
 
-Drafting note. Before the second MIA module is frozen, the audited anchor module `M101` alone already contributes `16,819` students, `1,758,891` attempts, `2,017` classrooms, `1,145` teachers, `10` objectives, `70` activities, and `1,062` exercises over the period `2024-02-27` to `2026-04-14`.
 
-Even at the selected-scope level, the two sources remain complementary. Adaptiv'Math contributes a large multi-module benchmark slice spanning Module 1 and the 3X family, with four instructional modes and broad classroom coverage. MIA 2nd contributes a smaller but still substantial benchmark slice with compatible attempt-level structure and a different balance of work modes. This shared schema, combined with differences in source design, makes the benchmark large enough for modern modeling while keeping the pedagogical units readable at the level of modules, objectives, and activities.
+\textbf{Adaptiv’Math Modules 1 and 2}, designed for primary school students, comprise structured sets of exercises grounded in cognitive science and educational psychology. \textbf{Module 1 (“Numbers and Calculations”)} focuses on the progressive development of number sense through a hierarchical sequence of objectives, spanning from non-symbolic quantity processing to symbolic reasoning, arithmetic operations, and early multiplication; task difficulty is systematically controlled via interpretable parameters (e.g., numerical ratios, distances, and perceptual congruency), often introducing biases that require inhibitory control. \textbf{Module “Arithmetic Problem Solving”} targets arithmetic word problem solving, where learners must interpret a textual situation, map it to a mathematical structure, and compute a solution. It is grounded in conceptual change theories, aiming to help students overcome intuitive, experience-based reasoning. Exercises systematically vary the alignment between intuitive interpretations and formal problem structures through three analogy types—substitution (operation–situation mapping), scenario (object relationships), and simulation (operand ordering). Tasks cover both additive and multiplicative situations and are supported by visual representations (e.g., line diagrams, number boxes, rectangle models) to scaffold problem modeling. The module spans three grade levels (Grades 1–3, ages 6–9). Each level follows a consistent format while increasing in numerical complexity: from 10 objectives and 619 exercises at Grade 1, to 16 and 1,156 at Grade 2, and 19 and 1,589 at Grade 3 — enabling fine-grained analysis of students' evolving strategies and misconception.
 
-#### 3.4 Scope and usefulness
+@TODO : add visu of some gameplays in the annexe
 
-The value of the dataset is not limited to classical knowledge tracing. Because attempts are aligned with an explicit pedagogical hierarchy and annotated with instructional modes, the benchmark captures both performance traces and the educational structure in which those traces were produced. This makes it possible to study modeling questions that are closer to real classroom use, where the same student may appear in diagnostic, adaptive, or teacher-directed contexts rather than in a single flattened interaction sequence.
+\begin{table}[ht]
+\centering
+\caption{Comparison of ITS content: MIA vs.\ Adaptiv'Math}
+\label{tab:its-comparison}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lcc}
+\toprule
+ & \textbf{MIA} & \textbf{Adaptiv'Math} \\
+\midrule
+\textbf{Population}         & High school  & Primary school \\
+\textbf{Learning objective} & Remediation  & Training \\
+\midrule
+\multicolumn{3}{l}{\textbf{Module 1}} \\
+\quad Name       & Relearning number sense & Numbers and calculations \\
+\quad Objectives & 10      & 16 \\
+\quad Activities & 70      & 84 \\
+\quad Exercises  & 1{,}045 & 2{,}310 \\
+\midrule
+\multicolumn{3}{l}{\textbf{Module 2}} \\
+\quad Name       & \makecell[c]{Data organization \\ \& functions} & \makecell[c]{Arithmetic \\ problem solving} \\
+\quad Objectives & 7   & 45 \\
+\quad Activities & 48  & 163 \\
+\quad Exercises  & 482 & 3{,}364 \\
+\midrule
+\textbf{Total exercises} & \textbf{1{,}527} & \textbf{5{,}674} \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-The dataset also supports analysis at multiple levels of abstraction. At the finest level, models can predict correctness or response behavior on individual exercises. At higher levels, the same interaction data can be aggregated to activities, objectives, and modules to study progression, transfer, or cross-context behavior. The selected subset is therefore narrow enough to remain interpretable, but rich enough to support controlled comparisons across sources, work modes, and curricular levels.
+\subsubsection{Exercises format}
+Each exercise is stored as an individual JSON object, with schemas that are partially shared across interaction modes (\textit{gameplays}) and partially gameplay-specific. Common fields include the problem statement and instruction, while answer representations vary depending on the interaction type: for instance, numerical inputs are used for open-ended responses, whereas categorical indices are used for multiple-choice formats.\\
+To facilitate usage across modalities, we provide three aligned representations per exercise: (1) the raw JSON data with gameplay-dependent structure, (2) a normalized textual description of the problem statement and instruction generated via template-based rules specific to each gameplay (or a fallback generic template), and (3) a screenshot of the exercise interface. The JSON additionally specifies whether visual elements are present and whether they are essential to solving the task or purely illustrative, enabling both text-only and vision-language use cases.\\
+Each exercise includes the correct answer, candidate options when applicable (e.g., multiple-choice or drag-and-drop), the gameplay type, and associated feedback messages. Feedback is deterministic and depends on response correctness: explanatory feedback is provided for incorrect answers, and motivational feedback for correct answers.\\
+Exercises are mapped to a hierarchical prerequisite graph through unique ids. For each level, we provide textual descriptions of targeted skills, activity labels, and expert-defined “targeted difficulties”, which describe the intended cognitive and pedagogical challenges.\\
+Finally, exercises are connected to student learning trajectories via their identifiers, allowing reconstruction of sequences of interactions for downstream sequential modeling tasks.\\
 
-Candidate benchmark directions supported by this scope:
-- response or success prediction at the attempt level
-- work-mode-aware knowledge tracing
-- transfer across objectives within a module
-- transfer across modules
-- comparison of instructional contexts within a shared interaction schema
+\subsubsection{Parametric Graph}
 
-### Main-paper presentation plan for this section
+Exercises are structured into a hierarchical graph composed of modules, objectives, and activities. Each module is associated with a distinct directed graph, which is included in the dataset. While no explicit dependencies exist between modules—allowing flexible ordering defined by the teacher—they are typically presented sequentially in order of increasing difficulty within the application.
 
-Keep the main text balanced:
-- include one core statistics table
-- include one explanatory figure
-- move broader descriptive material to the appendix
+Within each module, the graph encodes prerequisite relationships between activities, thereby specifying the skill dependencies required to successfully complete associated exercises. This graph serves as the backbone of the ZPDES algorithm, enabling structured progression through the curriculum.
 
-Recommended figure:
-- preferred version: a two-panel figure
-  - left panel: hierarchy overview (`Module -> Objective -> Activity -> Exercise`)
-  - right panel: compact work-mode overview for Adaptiv'Math and MIA 2nd
-- fallback version if space is tight: keep only the hierarchy diagram in the main text and move the work-mode panel to the appendix
+The graph also defines the initial set of accessible activities and the conditions required to unlock or complete subsequent ones. In particular, a new activity is unlocked when a learner achieves a mean score of at least 0.75 over a sequence of exercises (with a constraint of consecutive successes), while an activity is considered mastered and closed at a higher threshold (0.9). These criteria operationalize progression and mastery at a fine-grained level.
 
-Suggested caption draft:
-- `Figure X: Structure of the released benchmark subset. Each interaction is an exercise-level attempt linked to a pedagogical hierarchy (module, objective, activity, exercise) and to an instructional context captured by the work mode. The benchmark combines two classroom-grounded sources under a shared attempt-level schema while preserving source-specific pedagogical settings.`
+Visual representations of these graphs are provided in Appendix XXX. Each visualization is a matrix with objectives as rows and activities as columns, where cell values encode requirements. For instance, in MIA Module 1, the first activity of Objectives 2 and 3 is open by default, and achieving a mean success rate $ \geq 0.75$ on these activities, enables access to the second activity within each objective.
 
-Material to reserve for appendix or supplementary material:
-- gameplay distribution tables
-- detailed work-mode frequency tables
-- per-module descriptive breakdowns
-- sequence-length or retry distributions
-- example exercise screenshots or gameplay-specific illustrations
+Finally, the initial exercises presented to a student are determined jointly by the graph structure and the outcome of the adaptive placement test.
 
----
+\subsubsection{Adaptive test}
 
-### 1.4 Evaluation Benchmark
+At the beginning of each module, students complete an adaptive placement test designed to estimate their mastery at the activity level. The test dynamically selects up to approximately 20 questions based on prior responses, maximizing diagnostic efficiency. Importantly, no feedback—neither correctness nor metacognitive cues—is provided during this phase, ensuring unbiased assessment.
 
-### Main point
+This adaptive initialization enables a personalized entry point into the curriculum: rather than starting uniformly, students are positioned at an appropriate level of difficulty. The resulting mastery estimates are used to initialize the ZPDES algorithm, which subsequently recommends exercises within the learner’s zone of proximal development. Notably, adaptive testing is available for all MIA students, while earlier versions of Adaptiv’Math (pre-2024) do not include this feature.
 
-This section should define what the dataset is meant to evaluate.
+\subsubsection{Learning Paths Collection}
 
-Important recommendation:
-- do **not** limit the benchmark to one classical KT task only
-- if possible, define a small family of tasks that showcases the dataset’s distinctive value
+During interaction with the platform, we log detailed traces at the exercise level, including exercise identifiers, associated module, objective, and activity. In contrast to many existing AIEd datasets [REFS], we provide fine-grained temporal data: timestamps corresponding to exercise display and answer validation by the student allow computation of response time, while the interval between answer submission and the next exercise display enables estimation of feedback reading time. These signals offer additional insight into student engagement and learning dynamics.
 
-### Candidate benchmark tasks
+The dataset also includes rich interaction features. We record the exact student responses—not only correctness—enabling analysis of error patterns and supporting downstream tasks such as error typology modeling or adaptive feedback generation. Additional gameplay-specific features are available for certain activities (e.g., the number of card flips in memory tasks), providing further behavioral signals used in adaptive learning.
 
-#### Task A. Standard next-response prediction
+We additionally track the number of attempts per exercise, the score obtained at each step, and overall progression metrics. The dataset distinguishes between two operational modes: the ZPDES adaptive mode (default) and a playlist mode used as a baseline in randomized controlled trials.
 
-Description:
-- predict whether the next interaction will be correct from the student’s prior history
+\subsubsection{\textbf{Anonymization Process}}
 
-Why include it:
-- directly comparable to the KT literature
-- necessary for comparison with XES3G5M and pyKT-style baselines
+The shared dataset is fully anonymized and contains no personally identifiable information. All identifiers (students, teachers, classrooms, sessions) are randomly generated and serve only to link interactions within the same session or group, without enabling re-identification.
 
-Potential baselines:
-- DKT
-- SAKT
-- AKT
-- simpleKT
-- qDKT
+Temporal data are normalized by converting all timestamps to a relative reference (T0), preserving durations (e.g., time on task, session length) while preventing inference of geographic location or time zone.
 
-#### Task B. Time-aware next-response prediction
+No demographic attributes (e.g., name, gender, socio-economic status) are included. Although student responses are provided, they are predominantly constrained to structured formats (e.g., multiple choice, drag-and-drop, numerical input), which minimizes the risk of unintended personal information leakage.
 
-Description:
-- same as Task A, but explicitly using duration and/or temporal gaps
 
-Why it is valuable:
-- your data has duration per interaction
-- XES3G5M explicitly lacks duration
 
-#### Task C. Mode-aware prediction
+\subsection{Processing}
+The released dataset is derived from the module subset introduced above and starts from raw interaction logs collected in Adaptiv'Math and MIA Seconde. Before release, these logs are harmonized into a shared attempt-level schema so that both sources expose the same core fields for student identity, exercise identity, timestamp, correctness, answer content, duration, and instructional mode.
 
-Description:
-- predict performance while conditioning on or transferring across work modes
+The release follows the anonymization procedure described above. Student, teacher, classroom, and session identifiers are pseudonymous and serve only to enable relational reconstruction within the dataset. No directly identifying personal information is included. In addition to the original anonymized interaction timestamp, we provide a session-relative timestamp representation that preserves within-session temporal structure while reducing sensitivity.
 
-Possible settings:
-- train pooled, evaluate by mode
-- train on `zpdes`, test on `adaptive-test`
-- estimate whether mode context improves prediction
+We release two attempt-level variants of the interaction data. The primary interaction table preserves the largest possible number of interactions and is intended as the main resource for downstream analyses. For the benchmark experiments reported in this paper, we additionally provide a stricter derived variant together with the preprocessing notebook used to construct it, so that filtering decisions remain transparent and reproducible. This filtered version removes students whose retained history consists only of \texttt{adaptive-test} interactions, students whose retained trajectory contains exercise identifiers absent from the released exercise table, and students with fewer than five attempts overall.
 
-#### Task D. Topology-aware progression modeling
+\subsection{Description}
+The main released interaction file contains 7,239,840 attempt-level interactions from 45,848 students over 7,845 distinct exercises observed in the retained trajectories. Adaptiv'Math contributes 24,358 students and 5,190,104 attempts, while MIA Seconde contributes 21,490 students and 2,049,736 attempts.
 
-Description:
-- use dependency graph / curriculum structure to predict progression or mastery transitions
+Each interaction record corresponds to a single student attempt on an exercise. The dataset stores anonymized identifiers for the student, exercise, module or playlist, and session, together with the interaction timestamp, the student response, correctness, response duration, and contextual information such as the instructional mode. Attempt indices make it possible to reconstruct repeated trials on the same exercise, while session-relative timestamps preserve the internal temporal structure of learning sequences.
 
-Why it is distinctive:
-- uses the explicit pedagogical graph rather than only KC adjacency
+The release also includes an exercise metadata table linking each exercise to its activity, objective, and module, together with gameplay type, pedagogical labels, and source platform. In total, the released scope contains 7,938 exercises. To capture the curricular structure underlying the interactions, we additionally provide a simplified activity-level dependency graph describing prerequisite and unlock relations between activities. This graph covers 6 modules, 78 objectives, and 409 activities.
 
-#### Task E. Cross-source generalization
+Finally, the filtered interaction variant used for the benchmark experiments reported in this paper contains 6,663,868 attempts from 36,821 students over 7,747 distinct exercises, corresponding to the removal of 9,027 students (19.69\%) and 575,972 attempts (7.96\%).
 
-Description:
-- train on `main`, evaluate on `mia`, or the reverse
+\subsection{Statistics}
+Table~\ref{tab:dataset_statistics} reports the main scale statistics of the released benchmark. The primary release contains 7{,}239{,}840 attempt-level interactions from 45{,}848 students and 7{,}845 observed exercises, while the filtered benchmark variant used in the experiments retains 6{,}663{,}868 interactions from 36{,}821 students and 7{,}747 observed exercises. Although the filtered variant removes 19.69\% of students, it removes only 7.96\% of attempts, indicating that the excluded trajectories are disproportionately short.
 
-Why it is valuable:
-- tests robustness under distribution shift
-- leverages the aligned schema
+\begin{table*}[t]
+\centering
+\caption{Core statistics for the released maths benchmark. Exercise counts correspond to exercises observed in the interaction logs; the released exercise metadata table contains 7{,}938 exercises in total.}
+\label{tab:dataset_statistics}
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{lrrrrrr>{\raggedright\arraybackslash}p{3.2cm}}
+\toprule
+Split & Students & Attempts & Obs. ex. & Mod. & Obj. & Act. & Work modes \\
+\midrule
+Adaptiv'Math & 24{,}358 & 5{,}190{,}104 & 6{,}299 & 4 & 61 & 291 & adaptive-test, zpdes \\
+MIA Seconde & 21{,}490 & 2{,}049{,}736 & 1{,}546 & 2 & 17 & 118 & adaptive-test, playlist, zpdes \\
+Combined release & 45{,}848 & 7{,}239{,}840 & 7{,}845 & 6 & 78 & 409 & adaptive-test, playlist, zpdes \\
+Filtered benchmark & 36{,}821 & 6{,}663{,}868 & 7{,}747 & 6 & 78 & 409 & adaptive-test, playlist, zpdes \\
+\bottomrule
+\end{tabular}
+\end{table*}
 
-#### Task F. Classroom-level forecasting / evaluation
+The benchmark is large but highly heterogeneous at both the student and exercise levels. In the main release, students generate 157.9 attempts on average, but the median trajectory length is 69 attempts, with a 95th percentile of 630 and a maximum of 5{,}431 attempts for a single student. At the exercise level, the median exercise receives 417 attempts, while the mean is 922.9 because usage is strongly concentrated on a subset of exercises. Overall correctness in the main release is 78.8\%.
 
-Description:
-- forecast class-level progression statistics or identify bottleneck structure
+Interaction durations are similarly heavy-tailed. The median logged response duration is 8.0 seconds, with an interquartile range from 3.9 to 18.4 seconds, a 95th percentile of 78.5 seconds, and a small number of extreme outliers. Figure~\ref{fig:dataset_distributions} summarizes these distributions. Across sources, Adaptiv'Math trajectories are longer and more accurate than MIA Seconde trajectories: the median number of attempts per student is 85 in Adaptiv'Math versus 59 in MIA Seconde, and correctness is 81.2\% versus 72.9\%. Median response duration is 7.3 seconds in Adaptiv'Math and 10.2 seconds in MIA Seconde, consistent with the different target populations and instructional settings of the two platforms.
 
-Why it is valuable:
-- difficult to study in typical KT benchmark datasets
+In the filtered benchmark, the median trajectory length increases to 91 attempts and overall correctness to 79.2\%, while the median response duration remains stable at 8.1 seconds. This confirms that the stricter benchmark preprocessing mainly removes short or weakly informative student histories while preserving the broad interaction profile of the full release.
 
-### Minimal benchmark if scope must stay narrow
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\linewidth]{figures/dataset_distributions.pdf}
+    \caption{Descriptive distributions for the released maths benchmark. Left: distribution of attempts per student, showing a long-tailed trajectory-length profile in both sources. Middle: correctness distribution by source, highlighting higher average correctness in Adaptiv'Math than in MIA Seconde. Right: response-duration distribution, reported on a compressed scale because a small number of extreme outliers coexist with a median interaction time of about 8 seconds.}
+    \label{fig:dataset_distributions}
+\end{figure*}
 
-If the paper needs a narrower scope, the minimum viable benchmark could be:
+\subsection{Release}
+\begin{itemize}
+    \item Licensing
+    \item Hosting
+\end{itemize}
 
-1. student-level next-response prediction
-2. duration-aware ablation
-3. cross-source evaluation
+\subsection{Scope and usefulness}
+The release of our dataset addresses the needs of two broad research communities. For the AI for education (AIED) community, it offers a large-scale, high-quality testbed for knowledge tracing and related tasks. A fundamental limitation of most existing benchmarks in this space is that exercises are either not released at all — reducing students' interaction sequences to anonymous item identifiers — or consist of simple, text-based questions with limited cognitive depth. In contrast, our dataset releases the full exercise content, which was designed by cognitive science researchers to be visual, novel, and cognitively rich, targeting genuine knowledge acquisition rather than surface pattern recognition. This makes our exercises substantially more complex and informative than what is typically available, and opens the door to content-aware models that can reason about what a student is actually being asked, rather than treating exercises as opaque tokens. Overall, our dataset allows questioning the limitations of classic KT models that ignore exercise content, and fosters the development of models able to leverage such rich and complex exercises.
 
-This would already differentiate the work from a plain KT dataset release.
+This shift toward content-aware modeling is further supported by the richness of the pedagogical metadata we release. Exercises are explicitly mapped to learning objectives and modules, which are themselves described through detailed natural language descriptions. This multi-level structure — from raw exercise content, to structured objective mappings, to free-text pedagogical descriptions — provides an unusually dense semantic scaffold that models can leverage to generalize across exercises, infer latent knowledge components, or ground predictions in interpretable educational concepts. Such metadata is rarely available in existing datasets, and almost never at this level of granularity. This also permits studying how existing and future KT models can leverage such pedagogical information.
 
-### Metrics to consider
+Beyond KT, we believe that the richness of our exercises along with their pedagogical descriptions, combined with a large-scale history of student curricula, will further advance the broader research topic of student modeling. Indeed, beyond KT, modeling students' future answers, misconceptions, or acquired concepts is a key challenge for the field.
 
-For student-level prediction:
-- AUC
-- accuracy
-- log loss / Brier score
-- calibration
+Besides AIED, the release of our dataset also closely aligns with the recent and growing interest in applying LLMs to educational purposes \cite{worden_foundationalassist_2026}. The complexity and visual nature of the exercises make them particularly challenging for LLMs, and Visual Language Models (VLMs) appear as natural candidates to describe such exercises or even directly model student behavior. While existing LLMs already seem to struggle at performing KT in zero-shot settings \cite{worden_foundationalassist_2026}, it remains an open question how effectively LLMs or VLMs can be leveraged on our dataset. Beyond student modeling, the detailed feedback provided to students after each exercise constitutes a rare source of grounded, domain-specific instructional text that can be used to study, train, or evaluate LLMs acting as tutors or educational assistants.
 
-For cross-source evaluation:
-- in-domain vs out-of-domain performance gap
+\section{Evaluating existing approaches on \DATASET}
+Evaluations to run:
+\begin{itemize}
+    \item Question the limit of classic KT models: evaluate PyKT approaches and LLMs or VLMs
+    \item About pedagogical information, create a graph and evaluate LLMs/VLMs and graph-based KT approaches??
+    \item About modeling more generally students: study if LLMs or VLMs are able to predict the students' answer (as in Foundational assist, study on multi-choice questions?)
+    \item 
+\end{itemize}
 
-For classroom/topology tasks:
-- task-specific metrics still need to be defined
 
-### Benchmark preprocessing section
+\subsection{Evaluation protocol}
+\begin{itemize}
+    \item Knowledge Components creation
+    \item Train/test split
+    \item Sequences and padding
+    \item Baselines (PyKT with HP tuning and LLMs)
+    \item AUC and accuracy reported
+\end{itemize}
 
-This section should explain:
-- starting point:
-  - raw attempt rows or `fact_attempt_core`
-- how sequences are built
-- how `question_id` and `skill_id` are defined
-- how mode/context is used
-- how train/dev/test splits are constructed
 
-### TODO
 
-- freeze the benchmark task list
-- decide whether the benchmark uses:
-  - raw data,
-  - normalized data,
-  - or both
-- define train/dev/test split protocol
-- pick baseline models
-- pick evaluation metrics
-- decide whether to include ablations:
-  - without duration
-  - without mode
-  - without topology
-  - without classroom context
+\subsection{Discussion}
 
----
+\small
+\bibliography{references}
 
-## Appendix Planning
+\newpage
+\input{checklist.tex}
 
-Potential appendix content:
-- example exercises from `main`
-- example exercises from `mia`
-- schema tables
-- dataset processing pipeline diagram
-- benchmark preprocessing details
-- additional dataset quality analyses
-- comparison table against XES3G5M and other KT datasets
-- examples of work-mode trajectories
-- examples of topology graphs
-
-TODO:
-- decide which appendix items are essential for reproducibility
-- decide what belongs in a supplementary zip/repo instead of the PDF
-
----
-
-## Positioning Notes Against XES3G5M
-
-This should become either:
-- a subsection in the introduction,
-- a paragraph in related work,
-- or a summary box for internal drafting.
-
-Current draft:
-
-- XES3G5M is a strong benchmark for KT with rich question/KC auxiliary information.
-- Our dataset family should be positioned less as “another KT benchmark” and more as a benchmark for **structured, intervention-aware, classroom-grounded educational modeling**.
-
-Key differences to emphasize:
-- work modes and instructional phases
-- classroom / teacher context
-- explicit curriculum hierarchy grounded in the product
-- duration per interaction
-- pedagogical topology
-- aligned multi-source benchmark design
-
-Avoid overclaiming:
-- XES is stronger on question-side auxiliary info packaging and benchmark polish
-- our contribution is stronger on educational context and structure
-
----
-
-## Immediate Next Writing Tasks
-
-1. Build a dataset comparison table:
-- XES3G5M
-- ASSISTments
-- EdNet
-- Junyi
-- our `main`
-- our `mia`
-
-2. Draft a 1-paragraph positioning statement against XES3G5M.
-
-3. Decide the benchmark scope:
-- KT-only
-- or KT + progression + transfer
-
-4. Freeze the exact names of the sources in the paper:
-- “Adaptiv'Math main”
-- “MIA”
-- or one family name plus subsets
-
-5. Build the first statistics table directly from the repo.
+\end{document}

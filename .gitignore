@@ -57,6 +57,7 @@ data_margot/
 data_MIA/
 XES3G5M/
 data_am_mia/
+exercises/
 
 # Local Codex assistant config
 AGENTS.md

@@ -34,6 +34,7 @@ from __future__ import annotations
 from datetime import datetime
 
 import polars as pl
+import pytest
 
 from visu2.derive import (
     build_agg_activity_daily_from_fact,
@@ -118,6 +119,7 @@ Examples
         "success_rate",
         "first_attempt_success_rate",
         "first_attempt_count",
+        "retry_before_success_rate",
     }.issubset(set(agg.columns))
 
 
@@ -148,6 +150,7 @@ Examples
             "playlist_or_module_id": ["p1", "p1", "p1"],
             "activity_id": ["a1", "a1", "a1"],
             "activity_label": ["Activity 1", "Activity 1", "Activity 1"],
+            "exercise_id": ["e1", "e1", "e2"],
             "objective_id": ["o1", "o1", "o1"],
             "objective_label": ["Objective 1", "Objective 1", "Objective 1"],
             "module_id": ["m1", "m1", "m1"],
@@ -165,6 +168,43 @@ Examples
     row = agg.to_dicts()[0]
     assert int(row["first_attempt_count"]) == 2
     assert float(row["first_attempt_success_rate"]) == 1.0
+
+
+def test_activity_agg_retry_before_success_rate_excludes_post_success_replays() -> None:
+    """Repeated attempts after a prior success should not count as unresolved retries."""
+    fact = pl.DataFrame(
+        {
+            "created_at": [
+                datetime(2025, 1, 1, 10, 0, 0),
+                datetime(2025, 1, 1, 10, 1, 0),
+                datetime(2025, 1, 1, 10, 2, 0),
+                datetime(2025, 1, 1, 10, 3, 0),
+            ],
+            "date_utc": [datetime(2025, 1, 1).date()] * 4,
+            "user_id": ["u1"] * 4,
+            "classroom_id": ["c1"] * 4,
+            "playlist_or_module_id": ["p1"] * 4,
+            "activity_id": ["a1"] * 4,
+            "activity_label": ["Activity 1"] * 4,
+            "exercise_id": ["e1"] * 4,
+            "objective_id": ["o1"] * 4,
+            "objective_label": ["Objective 1"] * 4,
+            "module_id": ["m1"] * 4,
+            "module_code": ["M1"] * 4,
+            "module_label": ["Module 1"] * 4,
+            "work_mode": ["zpdes"] * 4,
+            "data_correct": [False, False, True, True],
+            "data_duration": [10.0, 11.0, 12.0, 13.0],
+            "session_duration": [10.0, 11.0, 12.0, 13.0],
+            "attempt_number": [1, 2, 3, 4],
+        }
+    )
+
+    agg = build_agg_activity_daily_from_fact(fact)
+    row = agg.to_dicts()[0]
+
+    assert row["repeat_attempt_rate"] == pytest.approx(0.75)
+    assert row["retry_before_success_rate"] == pytest.approx(0.5)
 
 
 def test_objective_agg_shape() -> None:
@@ -346,6 +386,7 @@ Examples
         "first_attempt_success_rate",
         "first_attempt_count",
         "repeat_attempt_rate",
+        "retry_before_success_rate",
     }.issubset(set(agg.columns))
     assert (
         agg.group_by(["date_utc", "module_code", "objective_id", "activity_id", "exercise_id"])

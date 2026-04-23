@@ -184,7 +184,11 @@ def _build_one_source(
         print(f"Source '{source_id}' requires rebuild. {reuse_reason}")
         raw_inputs_changed = reuse_reason == "Raw source inputs changed since the last successful build."
         materialized_missing = reuse_reason.startswith("Materialized build input is missing:")
-        rebuild_all_tables = raw_inputs_changed or materialized_missing
+        manifest_schema_changed = (
+            reuse_reason.startswith("Derived manifest schema version")
+            or reuse_reason.startswith("Derived manifest cache version")
+        )
+        rebuild_all_tables = raw_inputs_changed or materialized_missing or manifest_schema_changed
         if partial_build and (raw_inputs_changed or materialized_missing):
             print(
                 "Targeted table builds require unchanged raw inputs and already-materialized local inputs. "

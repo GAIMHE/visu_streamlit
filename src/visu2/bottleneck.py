@@ -181,12 +181,22 @@ pd.DataFrame
     group_cols = [id_col, label_col, context_label_col, context_id_col]
     group_cols = list(dict.fromkeys(group_cols))
 
+    prepared = filtered_activity
+    if "retry_before_success_rate" not in prepared.columns:
+        prepared = prepared.with_columns(
+            pl.col("repeat_attempt_rate").alias("retry_before_success_rate")
+        )
+
     agg = (
-        filtered_activity.with_columns(
+        prepared.with_columns(
             (1 - pl.col("success_rate")).alias("failure_rate"),
-            ((1 - pl.col("success_rate")) * 0.7 + pl.col("repeat_attempt_rate") * 0.3).alias(
-                "bottleneck_score"
-            ),
+            pl.col("retry_before_success_rate").alias("bottleneck_retry_rate"),
+        )
+        .with_columns(
+            (
+                pl.col("failure_rate") * 0.7
+                + pl.col("bottleneck_retry_rate") * 0.3
+            ).alias("bottleneck_score"),
         )
         .filter(pl.col(id_col).is_not_null())
         .group_by(group_cols)
@@ -200,6 +210,14 @@ pd.DataFrame
             (
                 (pl.col("repeat_attempt_rate") * pl.col("attempts")).sum() / pl.col("attempts").sum()
             ).alias("repeat_attempt_rate"),
+            (
+                (pl.col("retry_before_success_rate") * pl.col("attempts")).sum()
+                / pl.col("attempts").sum()
+            ).alias("retry_before_success_rate"),
+            (
+                (pl.col("bottleneck_retry_rate") * pl.col("attempts")).sum()
+                / pl.col("attempts").sum()
+            ).alias("bottleneck_retry_rate"),
             pl.sum("attempts").alias("attempts"),
         )
         .filter(pl.col("attempts") >= min_attempts)
@@ -227,6 +245,8 @@ pd.DataFrame
                 "attempts",
                 "failure_rate",
                 "repeat_attempt_rate",
+                "retry_before_success_rate",
+                "bottleneck_retry_rate",
                 "bottleneck_score",
             ]
         )

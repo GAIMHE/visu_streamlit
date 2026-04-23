@@ -18,7 +18,7 @@ Functions
 from __future__ import annotations
 
 DERIVED_MANIFEST_VERSION = "1.0"
-DERIVED_SCHEMA_VERSION = "phase0_thin_slice_v11_batch_replay_elo"
+DERIVED_SCHEMA_VERSION = "phase0_thin_slice_v12_retry_before_success"
 ACTIVE_CANONICAL_MODULE_CODES = ("M1", "M31", "M32", "M33", "M41", "M42", "M43")
 
 EXPECTED_BASELINE = {
@@ -133,6 +133,7 @@ REQUIRED_AGG_COLUMNS = {
         "first_attempt_count",
         "median_duration",
         "repeat_attempt_rate",
+        "retry_before_success_rate",
         "avg_attempt_number",
     ],
     "agg_objective_daily": [
@@ -218,6 +219,7 @@ REQUIRED_AGG_COLUMNS = {
         "first_attempt_count",
         "median_duration",
         "repeat_attempt_rate",
+        "retry_before_success_rate",
         "avg_attempt_number",
     ],
     "agg_exercise_elo": [
@@ -422,6 +424,7 @@ RUNTIME_CORE_COLUMNS = {
         "success_rate",
         "median_duration",
         "repeat_attempt_rate",
+        "retry_before_success_rate",
         "avg_attempt_number",
     ],
     "agg_objective_daily": [
@@ -479,6 +482,7 @@ RUNTIME_CORE_COLUMNS = {
         "first_attempt_count",
         "median_duration",
         "repeat_attempt_rate",
+        "retry_before_success_rate",
         "avg_attempt_number",
     ],
     "agg_exercise_elo": [

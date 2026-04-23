@@ -653,9 +653,13 @@ def analyze_bottleneck_chart(frame: pl.DataFrame | pd.DataFrame | None) -> Figur
     table = _as_polars(frame)
     if table.height == 0:
         return _insufficient()
+    if "bottleneck_retry_rate" not in table.columns:
+        retry_source = "retry_before_success_rate" if "retry_before_success_rate" in table.columns else "repeat_attempt_rate"
+        table = table.with_columns(pl.col(retry_source).alias("bottleneck_retry_rate"))
     supported = table.filter(pl.col("attempts") >= RATE_MIN_OBSERVATIONS).with_columns(
         pl.col("failure_rate").cast(pl.Float64),
         pl.col("repeat_attempt_rate").cast(pl.Float64),
+        pl.col("bottleneck_retry_rate").cast(pl.Float64),
         pl.col("bottleneck_score").cast(pl.Float64),
         (pl.col("bottleneck_score") * pl.col("attempts")).cast(pl.Float64).alias("impact_score"),
     )
@@ -673,18 +677,18 @@ def analyze_bottleneck_chart(frame: pl.DataFrame | pd.DataFrame | None) -> Figur
     top_impact = impact_ranked.row(0, named=True)
     findings = [f"The strongest visible bottleneck candidate is {top['entity_label_raw']} with a combined score of {_format_num(_safe_float(top['bottleneck_score']), digits=2)} across {_format_num(top['attempts'])} attempts."]
     findings.append(
-        f"The highest raw-impact bottleneck is {top_impact['entity_label_raw']} with an impact score of {_format_num(_safe_float(top_impact['impact_score']), digits=1)}."
+        f"The highest volume-weighted bottleneck is {top_impact['entity_label_raw']} with an impact score of {_format_num(_safe_float(top_impact['impact_score']), digits=1)}. This combines the bottleneck score with the number of attempts."
     )
     failure = _safe_float(top['failure_rate']) or 0.0
-    repeat = _safe_float(top['repeat_attempt_rate']) or 0.0
-    if failure >= repeat + 0.10:
-        findings.append(f"For {top['entity_label_raw']}, the signal is mainly failure-driven ({_format_pct(failure)} failure vs {_format_pct(repeat)} repeat-attempt rate).")
+    retry_before_success = _safe_float(top['bottleneck_retry_rate']) or 0.0
+    if failure >= retry_before_success + 0.10:
+        findings.append(f"For {top['entity_label_raw']}, the signal is mainly failure-driven ({_format_pct(failure)} failure vs {_format_pct(retry_before_success)} retries before first success).")
         driver = 'difficulty'
-    elif repeat >= failure + 0.10:
-        findings.append(f"For {top['entity_label_raw']}, repeat attempts are unusually elevated ({_format_pct(repeat)}) relative to failure ({_format_pct(failure)}).")
+    elif retry_before_success >= failure + 0.10:
+        findings.append(f"For {top['entity_label_raw']}, retries before first success are unusually elevated ({_format_pct(retry_before_success)}) relative to failure ({_format_pct(failure)}).")
         driver = 'persistence'
     else:
-        findings.append(f"For {top['entity_label_raw']}, failure ({_format_pct(failure)}) and repeat attempts ({_format_pct(repeat)}) both contribute materially.")
+        findings.append(f"For {top['entity_label_raw']}, failure ({_format_pct(failure)}) and retries before first success ({_format_pct(retry_before_success)}) both contribute materially.")
         driver = 'mixed'
     total_score = float(impact_ranked['impact_score'].sum())
     top_three_share = float(impact_ranked.head(min(3, impact_ranked.height))['impact_score'].sum()) / total_score if total_score > 0 else 0.0
@@ -700,7 +704,7 @@ def analyze_bottleneck_chart(frame: pl.DataFrame | pd.DataFrame | None) -> Figur
         metric_fn=lambda row: f"impact {_format_num(_safe_float(row['impact_score']), digits=1)}",
     )
     if raw_text:
-        findings.append(f"Top raw-impact bottlenecks: {raw_text}.")
+        findings.append(f"Top volume-weighted bottlenecks: {raw_text}.")
     normalized_text = _top_rank_text(
         ranked,
         label_fn=lambda row: str(row["entity_label_raw"]),
@@ -709,15 +713,15 @@ def analyze_bottleneck_chart(frame: pl.DataFrame | pd.DataFrame | None) -> Figur
     if normalized_text:
         findings.append(f"Top normalized bottlenecks: {normalized_text}.")
     driver_rank = supported.with_columns(
-        (pl.col("failure_rate") - pl.col("repeat_attempt_rate")).abs().alias("driver_gap")
+        (pl.col("failure_rate") - pl.col("bottleneck_retry_rate")).abs().alias("driver_gap")
     ).sort(["driver_gap", "attempts", "entity_label_raw"], descending=[True, True, False])
     driver_text = _top_rank_text(
         driver_rank,
         label_fn=lambda row: str(row["entity_label_raw"]),
         metric_fn=lambda row: (
-            f"failure-led by {_format_pct((_safe_float(row['failure_rate']) or 0.0) - (_safe_float(row['repeat_attempt_rate']) or 0.0))}"
-            if (_safe_float(row["failure_rate"]) or 0.0) >= (_safe_float(row["repeat_attempt_rate"]) or 0.0)
-            else f"repeat-led by {_format_pct((_safe_float(row['repeat_attempt_rate']) or 0.0) - (_safe_float(row['failure_rate']) or 0.0))}"
+            f"failure-led by {_format_pct((_safe_float(row['failure_rate']) or 0.0) - (_safe_float(row['bottleneck_retry_rate']) or 0.0))}"
+            if (_safe_float(row["failure_rate"]) or 0.0) >= (_safe_float(row["bottleneck_retry_rate"]) or 0.0)
+            else f"retry-led by {_format_pct((_safe_float(row['bottleneck_retry_rate']) or 0.0) - (_safe_float(row['failure_rate']) or 0.0))}"
         ),
     )
     if driver_text:
@@ -725,9 +729,9 @@ def analyze_bottleneck_chart(frame: pl.DataFrame | pd.DataFrame | None) -> Figur
     if driver == 'difficulty' and spread == 'localized':
         interpretation = 'This looks more like a localized difficulty point than a general persistence pattern. A plausible explanation is that a small number of entities are genuinely hard in the current slice.'
     elif driver == 'persistence' and spread == 'broad':
-        interpretation = 'This looks more like a broad revisit pattern than a single failing choke point. A plausible explanation is that learners keep cycling through several entities before consolidating progress.'
+        interpretation = 'This looks more like a broad unresolved-retry pattern than a single failing choke point. A plausible explanation is that learners keep cycling through several entities before first succeeding.'
     else:
-        interpretation = 'The visible bottleneck pattern mixes failure and revisit behavior. A plausible explanation is that both intrinsic difficulty and repeated practice are contributing in the current scope.'
+        interpretation = 'The visible bottleneck pattern mixes failure and unresolved retry behavior. A plausible explanation is that both intrinsic difficulty and repeated pre-success attempts are contributing in the current scope.'
     return FigureAnalysis(findings=tuple(findings), interpretation=interpretation)
 
 def analyze_transition_chart(frame: pl.DataFrame | pd.DataFrame | None) -> FigureAnalysis:

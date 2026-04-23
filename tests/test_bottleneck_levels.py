@@ -88,6 +88,7 @@ pl.DataFrame
             "attempts": [120, 70, 90, 30, 55, 40, 80, 20],
             "success_rate": [0.40, 0.55, 0.52, 0.70, 0.65, 0.50, 0.45, 0.60],
             "repeat_attempt_rate": [0.25, 0.10, 0.15, 0.05, 0.07, 0.18, 0.20, 0.16],
+            "retry_before_success_rate": [0.18, 0.06, 0.12, 0.04, 0.05, 0.14, 0.16, 0.10],
             "unique_students": [50, 30, 40, 15, 25, 20, 35, 12],
             "median_duration": [20.0, 22.0, 18.0, 15.0, 14.0, 16.0, 17.0, 16.5],
             "avg_attempt_number": [1.2, 1.3, 1.15, 1.05, 1.1, 1.2, 1.25, 1.18],
@@ -249,3 +250,36 @@ def test_apply_bottleneck_filters_accepts_source_specific_module_scope() -> None
 
     assert filtered.height == 1
     assert filtered["module_code"].to_list() == ["M16"]
+
+
+def test_build_bottleneck_frame_scores_retry_before_first_success() -> None:
+    """The score should ignore repeats that happen after an earlier success."""
+    source = pl.DataFrame(
+        {
+            "date_utc": [date(2025, 1, 1), date(2025, 1, 1)],
+            "module_id": ["m1", "m1"],
+            "module_code": ["M1", "M1"],
+            "module_label": ["Module 1", "Module 1"],
+            "objective_id": ["o1", "o1"],
+            "objective_label": ["Objective 1", "Objective 1"],
+            "activity_id": ["after_success_replays", "unresolved_retries"],
+            "activity_label": ["After success replays", "Unresolved retries"],
+            "attempts": [100, 100],
+            "success_rate": [0.5, 0.5],
+            "repeat_attempt_rate": [0.9, 0.1],
+            "retry_before_success_rate": [0.0, 0.8],
+            "unique_students": [50, 50],
+            "median_duration": [20.0, 20.0],
+            "avg_attempt_number": [2.0, 2.0],
+        }
+    )
+
+    frame = build_bottleneck_frame(
+        filtered_activity=source,
+        level="Activity",
+        min_attempts=1,
+        top_n=2,
+    )
+
+    assert frame.iloc[0]["entity_id"] == "unresolved_retries"
+    assert frame.iloc[0]["bottleneck_retry_rate"] == 0.8

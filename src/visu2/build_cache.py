@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from .config import Settings
+from .contracts import DERIVED_SCHEMA_VERSION
 from .reporting import load_derived_manifest
 
 BUILD_CACHE_VERSION = 1
@@ -71,6 +72,8 @@ def can_reuse_derived_build(
         return False, "Derived manifest source id does not match the requested source."
     if manifest.get("cache_version") != BUILD_CACHE_VERSION:
         return False, "Derived manifest cache version does not match the current builder."
+    if manifest.get("schema_version") != DERIVED_SCHEMA_VERSION:
+        return False, "Derived manifest schema version does not match the current contracts."
 
     build_context = manifest.get("build_context") or {}
     if build_context.get("sample_rows") != sample_rows:

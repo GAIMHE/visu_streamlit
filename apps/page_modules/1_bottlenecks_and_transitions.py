@@ -248,6 +248,11 @@ def main() -> None:
             max_value=10_000,
             value=30,
             step=1,
+            help=(
+                "Minimum attempt volume required before an entity can appear in the bottleneck chart. "
+                "This filters low-volume candidates before the normalized score and volume-weighted impact "
+                "analysis are computed."
+            ),
         )
     )
     show_ids = bool(st.sidebar.checkbox("Show IDs in hover", value=False))
@@ -339,7 +344,7 @@ def main() -> None:
             x="failure_rate",
             y="entity_axis_label",
             orientation="h",
-            color="repeat_attempt_rate",
+            color="bottleneck_retry_rate",
             color_continuous_scale="YlOrRd",
             text="failure_text",
             custom_data=[
@@ -347,14 +352,18 @@ def main() -> None:
                 "level",
                 "attempts",
                 "failure_rate",
+                "bottleneck_retry_rate",
                 "repeat_attempt_rate",
                 "bottleneck_score",
             ],
-            title=f"Top {bottleneck_level.lower()} bottleneck candidates: failure rate with repeat-attempt intensity",
+            title=(
+                f"Top {bottleneck_level.lower()} bottleneck candidates: "
+                "failure rate with retries before first success"
+            ),
             labels={
                 "failure_rate": "Failure rate",
                 "entity_axis_label": f"{bottleneck_level} entity",
-                "repeat_attempt_rate": "Repeat attempt rate",
+                "bottleneck_retry_rate": "Retries before first success",
             },
         )
         fig_bottleneck.update_traces(
@@ -364,15 +373,16 @@ def main() -> None:
                 "Level: %{customdata[1]}<br>"
                 "Failure rate: %{x:.2%}<br>"
                 "Attempts: %{customdata[2]:,}<br>"
-                "Repeat attempt rate: %{customdata[4]:.2%}<br>"
-                "Combined bottleneck score: %{customdata[5]:.3f}<extra></extra>"
+                "Retries before first success: %{customdata[4]:.2%}<br>"
+                "All repeat attempts: %{customdata[5]:.2%}<br>"
+                "Combined bottleneck score: %{customdata[6]:.3f}<extra></extra>"
             ),
         )
         fig_bottleneck.update_layout(
             height=chart_height,
             margin={"l": 340, "r": 20, "t": 56, "b": 36},
             font={"size": 13},
-            coloraxis_colorbar={"title": "Repeat attempt rate"},
+            coloraxis_colorbar={"title": "Retries before first success"},
         )
         fig_bottleneck.update_xaxes(
             showgrid=True,
