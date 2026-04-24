@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
+
+import polars as pl
 
 from visu2.source_builders import (
     _build_maureen_catalog_and_raw,
@@ -11,7 +14,572 @@ from visu2.source_builders import (
     _build_multi_module_researcher_zpdes_rules,
     _build_single_module_researcher_catalog_and_raw,
     _build_single_module_researcher_zpdes_rules,
+    _neurips_catalog_payloads,
 )
+
+
+def test_neurips_catalog_payloads_resolve_duplicates_and_keep_unmapped_rows(tmp_path: Path) -> None:
+    m1_id = "63e98e5f-94e3-4630-9704-076882d6de38"
+    m31_id = "14fe4ca0-8fff-4c4a-bad2-6ef051eee349"
+    attempts_path = tmp_path / "maths_data.parquet"
+    exercises_path = tmp_path / "maths_exercises_table.csv"
+    dependencies_path = tmp_path / "maths_dependencies.json"
+
+    pl.DataFrame(
+        {
+            "user_id": ["u1", "u1", "u2", "u3", "u4", "u5"],
+            "playlist_or_module_id": [m1_id, m1_id, "playlist-1", m1_id, "missing-context", m1_id],
+            "exercise_id": [
+                "exercise-shared",
+                "exercise-shared",
+                "exercise-shared",
+                "exercise-dependency-only",
+                "exercise-unmapped",
+                "exercise-table-only",
+            ],
+            "created_at": [
+                datetime(2025, 1, 1, 9, 0, tzinfo=UTC),
+                datetime(2025, 1, 1, 9, 1, tzinfo=UTC),
+                datetime(2025, 1, 1, 9, 2, tzinfo=UTC),
+                datetime(2025, 1, 1, 9, 3, tzinfo=UTC),
+                datetime(2025, 1, 1, 9, 4, tzinfo=UTC),
+                datetime(2025, 1, 1, 9, 5, tzinfo=UTC),
+            ],
+            "data_correct": [True, False, True, True, False, True],
+            "work_mode": ["zpdes", "zpdes", "playlist", "zpdes", "zpdes", "zpdes"],
+            "data_answer": ["1", "2", "1", "3", "4", "5"],
+            "data_duration": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            "source": ["am", "am", "am", "am", "am", "am"],
+            "attempt_index": [1, 2, 1, 1, 1, 1],
+            "session_id": ["s1", "s1", "s2", "s3", "s4", "s5"],
+            "created_at_session_time": [
+                datetime(2025, 1, 1, 0, 0),
+                datetime(2025, 1, 1, 0, 1),
+                datetime(2025, 1, 1, 0, 2),
+                datetime(2025, 1, 1, 0, 3),
+                datetime(2025, 1, 1, 0, 4),
+                datetime(2025, 1, 1, 0, 5),
+            ],
+        }
+    ).write_parquet(attempts_path)
+
+    pl.DataFrame(
+        {
+            "exercise_id": ["exercise-shared", "exercise-shared", "exercise-other", "exercise-table-only"],
+            "gameplay_type": ["INPUT", "INPUT", "INPUT", "INPUT"],
+            "instruction": ["Shared in M1", "Shared in M31", "Other", "Table only"],
+            "question": ["Q1", "Q31", "Q2", "Q3"],
+            "feedback": ["{}", "{}", "{}", "{}"],
+            "module_id": [m1_id, m31_id, m1_id, m1_id],
+            "module_name": ["Numbers", "Problems level 1", "Numbers", "Numbers"],
+            "objective_id": ["objective-1", "objective-31", "objective-1", "objective-1"],
+            "objective_name": ["Objective 1", "Objective 31", "Objective 1", "Objective 1"],
+            "objective_targeted_difficulties": ["Long 1", "Long 31", "Long 1", "Long 1"],
+            "activity_id": ["activity-1", "activity-31", "activity-2", "activity-3"],
+            "activity_name": ["Activity 1", "Activity 31", "Activity 2", "Activity 3"],
+            "source": ["am", "am", "am", "am"],
+        }
+    ).write_csv(exercises_path)
+
+    dependencies_path.write_text(
+        json.dumps(
+            {
+                "modules": {
+                    m1_id: {
+                        "objective_ids": ["objective-1"],
+                        "objectives": {
+                            "objective-1": {
+                                "activity_ids": ["activity-1", "activity-2"],
+                                "activities": {
+                                    "activity-1": {
+                                        "exercise_ids": ["exercise-shared"],
+                                        "prerequisite_activity_ids": [],
+                                        "unlocks_activity_ids": ["activity-2"],
+                                    },
+                                    "activity-2": {
+                                        "exercise_ids": ["exercise-dependency-only"],
+                                        "prerequisite_activity_ids": ["activity-1"],
+                                        "unlocks_activity_ids": [],
+                                    },
+                                },
+                            }
+                        },
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    raw_attempts, catalog, rules, exercises_json, warnings = _neurips_catalog_payloads(
+        attempts_parquet_path=attempts_path,
+        exercises_csv_path=exercises_path,
+        dependencies_json_path=dependencies_path,
+        source_id="neurips",
+    )
+
+    shared_rows = raw_attempts.filter(pl.col("exercise_id") == "exercise-shared")
+    assert set(shared_rows["module_id"].to_list()) == {m1_id}
+    assert catalog["exercise_to_hierarchy"]["exercise-shared"]["module_id"] == m1_id
+    assert catalog["exercise_to_hierarchy"]["exercise-dependency-only"]["activity_id"] == "activity-2"
+    assert "exercise-unmapped" in catalog["orphans"]
+
+    unmapped = raw_attempts.filter(pl.col("exercise_id") == "exercise-unmapped").row(0, named=True)
+    assert unmapped["module_id"] is None
+    assert unmapped["objective_id"] is None
+    assert unmapped["activity_id"] is None
+    table_only = raw_attempts.filter(pl.col("exercise_id") == "exercise-table-only").row(0, named=True)
+    assert table_only["activity_id"] == "activity-3"
+
+    topology = rules["dependency_topology"]["M1"]
+    assert {node["node_code"] for node in topology["nodes"]} >= {"M1O1A1", "M1O1A2"}
+    assert "M1O1A3" not in {node["node_code"] for node in topology["nodes"]}
+    assert any(edge["from_node_code"] == "M1O1A1" and edge["to_node_code"] == "M1O1A2" for edge in topology["edges"])
+    assert any(item["id"] == "exercise-dependency-only" for item in exercises_json["exercises"])
+    assert any("duplicate exercise" in warning for warning in warnings)
+    assert any("without NeurIPS hierarchy" in warning for warning in warnings)
+
+
+def test_neurips_catalog_payloads_use_embedded_codes_from_unsorted_dependencies(
+    tmp_path: Path,
+) -> None:
+    m1_id = "63e98e5f-94e3-4630-9704-076882d6de38"
+    m101_id = "053df3ec-5501-4ad8-9917-a935bcf76740"
+    data_dir = tmp_path / "data_neurips"
+    data_dir.mkdir()
+    attempts_path = data_dir / "maths_data.parquet"
+    exercises_path = data_dir / "maths_exercises_table.csv"
+    dependencies_path = data_dir / "maths_dependencies.json"
+
+    pl.DataFrame(
+        {
+            "user_id": ["u-am", "u-am", "u-mia", "u-mia"],
+            "playlist_or_module_id": [m1_id, m1_id, m101_id, m101_id],
+            "exercise_id": ["am-ex-1", "am-ex-2", "mia-ex-1", "mia-ex-2"],
+            "created_at": [
+                datetime(2025, 1, 1, 9, 0, tzinfo=UTC),
+                datetime(2025, 1, 1, 9, 1, tzinfo=UTC),
+                datetime(2025, 1, 1, 9, 2, tzinfo=UTC),
+                datetime(2025, 1, 1, 9, 3, tzinfo=UTC),
+            ],
+            "data_correct": [True, True, True, True],
+            "work_mode": ["zpdes", "zpdes", "zpdes", "zpdes"],
+            "data_answer": ["1", "2", "3", "4"],
+            "data_duration": [1.0, 2.0, 3.0, 4.0],
+            "source": ["am", "am", "mia", "mia"],
+            "attempt_index": [1, 1, 1, 1],
+            "session_id": ["s-am", "s-am", "s-mia", "s-mia"],
+            "created_at_session_time": [
+                datetime(2025, 1, 1, 0, 0),
+                datetime(2025, 1, 1, 0, 1),
+                datetime(2025, 1, 1, 0, 2),
+                datetime(2025, 1, 1, 0, 3),
+            ],
+        }
+    ).write_parquet(attempts_path)
+
+    pl.DataFrame(
+        {
+            "exercise_id": ["am-ex-1", "am-ex-2", "mia-ex-1", "mia-ex-2"],
+            "gameplay_type": ["INPUT", "INPUT", "INPUT", "INPUT"],
+            "instruction": ["AM 1", "AM 2", "MIA 1", "MIA 2"],
+            "question": ["Q1", "Q2", "Q3", "Q4"],
+            "feedback": ["{}", "{}", "{}", "{}"],
+            "module_id": [m1_id, m1_id, m101_id, m101_id],
+            "module_name": ["AM M1", "AM M1", "MIA M101", "MIA M101"],
+            "objective_id": ["am-o-1", "am-o-2", "mia-o-1", "mia-o-2"],
+            "objective_name": ["AM O1", "AM O2", "MIA O1", "MIA O2"],
+            "objective_targeted_difficulties": ["", "", "", ""],
+            "activity_id": ["am-a-1", "am-a-2", "mia-a-1", "mia-a-2"],
+            "activity_name": ["AM A1", "AM A2", "MIA A1", "MIA A2"],
+            "source": ["am", "am", "mia", "mia"],
+        }
+    ).write_csv(exercises_path)
+
+    dependencies_path.write_text(
+        json.dumps(
+            {
+                "modules": {
+                    m1_id: {
+                        "code": "M1",
+                        "title": {"short": "AM M1 from dependencies", "long": "AM M1 from dependencies"},
+                        "objective_ids": ["am-o-2", "am-o-1"],
+                        "objectives": {
+                            "am-o-2": {
+                                "code": "M1O2",
+                                "title": {"short": "AM O2 from dependencies", "long": "AM O2 from dependencies"},
+                                "activity_ids": ["am-a-2"],
+                                "activities": {
+                                    "am-a-2": {
+                                        "code": "M1O2A1",
+                                        "title": {
+                                            "short": "AM A2 from dependencies",
+                                            "long": "AM A2 from dependencies",
+                                        },
+                                        "exercise_ids": ["am-ex-2"],
+                                        "prerequisite_activity_ids": ["am-a-1"],
+                                        "unlocks_activity_ids": [],
+                                    }
+                                },
+                            },
+                            "am-o-1": {
+                                "code": "M1O1",
+                                "title": {"short": "AM O1 from dependencies", "long": "AM O1 from dependencies"},
+                                "activity_ids": ["am-a-1"],
+                                "activities": {
+                                    "am-a-1": {
+                                        "code": "M1O1A1",
+                                        "title": {
+                                            "short": "AM A1 from dependencies",
+                                            "long": "AM A1 from dependencies",
+                                        },
+                                        "exercise_ids": ["am-ex-1"],
+                                        "prerequisite_activity_ids": [],
+                                        "unlocks_activity_ids": ["am-a-2"],
+                                    }
+                                },
+                            },
+                        },
+                    },
+                    m101_id: {
+                        "code": "M101",
+                        "title": {"short": "MIA M101 from dependencies", "long": "MIA M101 from dependencies"},
+                        "objective_ids": ["mia-o-2", "mia-o-1"],
+                        "objectives": {
+                            "mia-o-2": {
+                                "code": "M101O2",
+                                "title": {
+                                    "short": "MIA O2 from dependencies",
+                                    "long": "MIA O2 from dependencies",
+                                },
+                                "activity_ids": ["mia-a-2"],
+                                "activities": {
+                                    "mia-a-2": {
+                                        "code": "M101O2A1",
+                                        "title": {
+                                            "short": "MIA A2 from dependencies",
+                                            "long": "MIA A2 from dependencies",
+                                        },
+                                        "exercise_ids": ["mia-ex-2"],
+                                        "prerequisite_activity_ids": ["mia-a-1"],
+                                        "unlocks_activity_ids": [],
+                                    }
+                                },
+                            },
+                            "mia-o-1": {
+                                "code": "M101O1",
+                                "title": {
+                                    "short": "MIA O1 from dependencies",
+                                    "long": "MIA O1 from dependencies",
+                                },
+                                "activity_ids": ["mia-a-1"],
+                                "activities": {
+                                    "mia-a-1": {
+                                        "code": "M101O1A1",
+                                        "title": {
+                                            "short": "MIA A1 from dependencies",
+                                            "long": "MIA A1 from dependencies",
+                                        },
+                                        "exercise_ids": ["mia-ex-1"],
+                                        "prerequisite_activity_ids": [],
+                                        "unlocks_activity_ids": ["mia-a-2"],
+                                    }
+                                },
+                            },
+                        },
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "learning_catalog.json").write_text(
+        json.dumps(
+            {
+                "modules": [
+                    {
+                        "id": m1_id,
+                        "code": "M1",
+                        "objectives": [
+                            {
+                                "id": "am-o-1",
+                                "code": "M1O9",
+                                "activities": [{"id": "am-a-1", "code": "M1O9A1"}],
+                            },
+                            {
+                                "id": "am-o-2",
+                                "code": "M1O8",
+                                "activities": [{"id": "am-a-2", "code": "M1O8A1"}],
+                            },
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "data" / "zpdes_rules.json").write_text(
+        json.dumps(
+            {
+                "dependency_topology": {
+                    "M1": {
+                        "nodes": [
+                            {
+                                "node_id": "am-o-1",
+                                "node_code": "M1O1",
+                                "node_type": "objective",
+                                "label": "AM O1 from rules",
+                            },
+                            {
+                                "node_id": "am-a-1",
+                                "node_code": "M1O1A1",
+                                "node_type": "activity",
+                                "label": "AM A1 from rules",
+                            },
+                            {
+                                "node_id": "am-o-2",
+                                "node_code": "M1O2",
+                                "node_type": "objective",
+                                "label": "AM O2 from rules",
+                            },
+                            {
+                                "node_id": "am-a-2",
+                                "node_code": "M1O2A1",
+                                "node_type": "activity",
+                                "label": "AM A2 from rules",
+                            },
+                        ],
+                        "edges": [],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "data_MIA").mkdir()
+    (tmp_path / "data_MIA" / "config_mia.json").write_text(
+        json.dumps(
+            {
+                "config": {
+                    "module": {"m101": {"id": m101_id, "code": "M101"}},
+                    "objective": {
+                        "o1": {"id": "mia-o-1", "code": "M101O1"},
+                        "o2": {"id": "mia-o-2", "code": "M101O2"},
+                    },
+                    "activity": {
+                        "a1": {"id": "mia-a-1", "code": "M101O1A1"},
+                        "a2": {"id": "mia-a-2", "code": "M101O2A1"},
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    _, learning_catalog, zpdes_rules, _, warnings = _neurips_catalog_payloads(
+        attempts_parquet_path=attempts_path,
+        exercises_csv_path=exercises_path,
+        dependencies_json_path=dependencies_path,
+        source_id="neurips",
+    )
+
+    modules_by_code = {module["code"]: module for module in learning_catalog["modules"]}
+    assert [objective["code"] for objective in modules_by_code["M1"]["objectives"]] == ["M1O1", "M1O2"]
+    assert [objective["title"]["short"] for objective in modules_by_code["M1"]["objectives"]] == [
+        "AM O1 from dependencies",
+        "AM O2 from dependencies",
+    ]
+    assert [objective["code"] for objective in modules_by_code["M101"]["objectives"]] == ["M101O1", "M101O2"]
+    am_edges = {
+        (edge["from_node_code"], edge["to_node_code"])
+        for edge in zpdes_rules["dependency_topology"]["M1"]["edges"]
+    }
+    mia_edges = {
+        (edge["from_node_code"], edge["to_node_code"])
+        for edge in zpdes_rules["dependency_topology"]["M101"]["edges"]
+    }
+    assert ("M1O1A1", "M1O2A1") in am_edges
+    assert ("M101O1A1", "M101O2A1") in mia_edges
+    assert warnings == ()
+
+
+def test_neurips_dependency_edges_resolve_reused_activity_ids_per_module(tmp_path: Path) -> None:
+    m31_id = "14fe4ca0-8fff-4c4a-bad2-6ef051eee349"
+    m33_id = "27709aa2-b055-4ed3-ac73-8dca783b4afe"
+    shared_activity_id = "shared-activity-id"
+    m31_target_activity_id = "m31-target-activity-id"
+    m33_target_activity_id = "m33-target-activity-id"
+    data_dir = tmp_path / "data_neurips"
+    data_dir.mkdir()
+    attempts_path = data_dir / "maths_data.parquet"
+    exercises_path = data_dir / "maths_exercises_table.csv"
+    dependencies_path = data_dir / "maths_dependencies.json"
+
+    pl.DataFrame(
+        {
+            "user_id": ["u-m31", "u-m33"],
+            "playlist_or_module_id": [m31_id, m33_id],
+            "exercise_id": ["m31-target-ex", "m33-target-ex"],
+            "created_at": [
+                datetime(2025, 1, 1, 9, 0, tzinfo=UTC),
+                datetime(2025, 1, 1, 9, 1, tzinfo=UTC),
+            ],
+            "data_correct": [True, True],
+            "work_mode": ["zpdes", "zpdes"],
+            "data_answer": ["1", "2"],
+            "data_duration": [1.0, 2.0],
+            "source": ["am", "am"],
+            "attempt_index": [1, 1],
+            "session_id": ["s-m31", "s-m33"],
+            "created_at_session_time": [
+                datetime(2025, 1, 1, 0, 0),
+                datetime(2025, 1, 1, 0, 1),
+            ],
+        }
+    ).write_parquet(attempts_path)
+
+    pl.DataFrame(
+        {
+            "exercise_id": ["m31-shared-ex", "m31-target-ex", "m33-shared-ex", "m33-target-ex"],
+            "gameplay_type": ["INPUT", "INPUT", "INPUT", "INPUT"],
+            "instruction": ["M31 shared", "M31 target", "M33 shared", "M33 target"],
+            "question": ["Q1", "Q2", "Q3", "Q4"],
+            "feedback": ["{}", "{}", "{}", "{}"],
+            "module_id": [m31_id, m31_id, m33_id, m33_id],
+            "module_name": ["AM M31", "AM M31", "AM M33", "AM M33"],
+            "objective_id": ["m31-o-1", "m31-o-1", "m33-o-1", "m33-o-1"],
+            "objective_name": ["M31 O1", "M31 O1", "M33 O1", "M33 O1"],
+            "objective_targeted_difficulties": ["", "", "", ""],
+            "activity_id": [
+                shared_activity_id,
+                m31_target_activity_id,
+                shared_activity_id,
+                m33_target_activity_id,
+            ],
+            "activity_name": ["Shared", "M31 target", "Shared", "M33 target"],
+            "source": ["am", "am", "am", "am"],
+        }
+    ).write_csv(exercises_path)
+
+    dependencies_path.write_text(
+        json.dumps(
+            {
+                "modules": {
+                    m31_id: {
+                        "code": "M31",
+                        "objective_ids": ["m31-o-1"],
+                        "objectives": {
+                            "m31-o-1": {
+                                "code": "M31O1",
+                                "activity_ids": [shared_activity_id, m31_target_activity_id],
+                                "activities": {
+                                    shared_activity_id: {
+                                        "code": "M31O1A1",
+                                        "exercise_ids": ["m31-shared-ex"],
+                                        "prerequisite_activity_ids": [],
+                                        "unlocks_activity_ids": [m31_target_activity_id],
+                                    },
+                                    m31_target_activity_id: {
+                                        "code": "M31O1A2",
+                                        "exercise_ids": ["m31-target-ex"],
+                                        "prerequisite_activity_ids": [shared_activity_id],
+                                        "unlocks_activity_ids": [],
+                                    },
+                                },
+                            }
+                        },
+                    },
+                    m33_id: {
+                        "code": "M33",
+                        "objective_ids": ["m33-o-1"],
+                        "objectives": {
+                            "m33-o-1": {
+                                "code": "M33O1",
+                                "activity_ids": [shared_activity_id, m33_target_activity_id],
+                                "activities": {
+                                    shared_activity_id: {
+                                        "code": "M33O1A1",
+                                        "exercise_ids": ["m33-shared-ex"],
+                                        "prerequisite_activity_ids": [],
+                                        "unlocks_activity_ids": [m33_target_activity_id],
+                                    },
+                                    m33_target_activity_id: {
+                                        "code": "M33O1A2",
+                                        "exercise_ids": ["m33-target-ex"],
+                                        "prerequisite_activity_ids": [shared_activity_id],
+                                        "unlocks_activity_ids": [],
+                                    },
+                                },
+                            }
+                        },
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "learning_catalog.json").write_text(
+        json.dumps({"modules": [{"id": m31_id, "code": "M31"}, {"id": m33_id, "code": "M33"}]}),
+        encoding="utf-8",
+    )
+    (tmp_path / "data" / "zpdes_rules.json").write_text(
+        json.dumps(
+            {
+                "dependency_topology": {
+                    "M31": {
+                        "nodes": [
+                            {"node_id": "m31-o-1", "node_code": "M31O1", "node_type": "objective"},
+                            {"node_id": shared_activity_id, "node_code": "M31O1A1", "node_type": "activity"},
+                            {
+                                "node_id": m31_target_activity_id,
+                                "node_code": "M31O1A2",
+                                "node_type": "activity",
+                            },
+                        ],
+                        "edges": [],
+                    },
+                    "M33": {
+                        "nodes": [
+                            {"node_id": "m33-o-1", "node_code": "M33O1", "node_type": "objective"},
+                            {"node_id": shared_activity_id, "node_code": "M33O1A1", "node_type": "activity"},
+                            {
+                                "node_id": m33_target_activity_id,
+                                "node_code": "M33O1A2",
+                                "node_type": "activity",
+                            },
+                        ],
+                        "edges": [],
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    _, _, zpdes_rules, _, warnings = _neurips_catalog_payloads(
+        attempts_parquet_path=attempts_path,
+        exercises_csv_path=exercises_path,
+        dependencies_json_path=dependencies_path,
+        source_id="neurips",
+    )
+
+    m31_edges = {
+        (edge["from_node_code"], edge["to_node_code"])
+        for edge in zpdes_rules["dependency_topology"]["M31"]["edges"]
+    }
+    m33_edges = {
+        (edge["from_node_code"], edge["to_node_code"])
+        for edge in zpdes_rules["dependency_topology"]["M33"]["edges"]
+    }
+    assert ("M31O1A1", "M31O1A2") in m31_edges
+    assert ("M33O1A1", "M33O1A2") in m33_edges
+    assert all(from_code.startswith("M31") and to_code.startswith("M31") for from_code, to_code in m31_edges)
+    assert all(from_code.startswith("M33") and to_code.startswith("M33") for from_code, to_code in m33_edges)
+    assert warnings == ()
 
 
 def test_build_maureen_catalog_and_raw_uses_researcher_csv_and_preserves_classrooms(tmp_path: Path) -> None:

@@ -279,20 +279,15 @@ Existing examples:
 
 ```bash
 hf upload GAIMHE/Adaptiv_Math ./artifacts/sources/main . --repo-type dataset
-hf upload GAIMHE/M16 ./artifacts/sources/maureen_m16fr . --repo-type dataset
-```
-
-For MIA, use the repo that you want to dedicate to that runtime snapshot:
-
-```bash
-hf upload <your-mia-runtime-repo> ./artifacts/sources/mia_module1 . --repo-type dataset
+hf upload GAIMHE/M16 ./artifacts/sources/maureen_m16fr . --repo-type datase
+hf upload GAIMHE/MIA2nd ./artifacts/sources/mia_module1 . --repo-type dataset
 ```
 
 If the upload is large:
 
 ```bash
 hf upload-large-folder GAIMHE/Adaptiv_Math --repo-type dataset ./artifacts/sources/main
-hf upload-large-folder <your-mia-runtime-repo> --repo-type dataset ./artifacts/sources/mia_module1
+hf upload GAIMHE/Adaptiv_Math ./artifacts/sources/mia_module1 . --repo-type dataset
 hf upload-large-folder GAIMHE/M16 --repo-type dataset ./artifacts/sources/maureen_m16fr
 ```
 

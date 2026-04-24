@@ -426,6 +426,63 @@ def _dimmed_structural_edge_style(base_style: dict[str, object]) -> dict[str, ob
     return style
 
 
+def _collapse_cross_objective_activity_edges(
+    edge_rows: list[dict[str, object]],
+    node_rows: list[dict[str, object]] | None,
+) -> list[dict[str, object]]:
+    """Collapse activity-to-activity edges into one activity-to-objective display edge."""
+    if not node_rows:
+        return edge_rows
+
+    node_by_code = {str(row.get("node_code") or ""): row for row in node_rows}
+    objective_codes = {
+        str(row.get("node_code") or "")
+        for row in node_rows
+        if str(row.get("node_type") or "") == "objective"
+    }
+    collapsed: dict[tuple[str, str, str], dict[str, object]] = {}
+    passthrough: list[dict[str, object]] = []
+
+    for edge in edge_rows:
+        from_code = str(edge.get("from_node_code") or "")
+        to_code = str(edge.get("to_node_code") or "")
+        edge_type = str(edge.get("edge_type") or "activation")
+        from_node = node_by_code.get(from_code)
+        to_node = node_by_code.get(to_code)
+        from_objective = str((from_node or {}).get("objective_code") or "")
+        to_objective = str((to_node or {}).get("objective_code") or "")
+        should_collapse = (
+            edge_type != "deactivation"
+            and str((from_node or {}).get("node_type") or "") == "activity"
+            and str((to_node or {}).get("node_type") or "") == "activity"
+            and from_objective
+            and to_objective
+            and from_objective != to_objective
+            and to_objective in objective_codes
+        )
+        if not should_collapse:
+            display_edge = dict(edge)
+            display_edge["_raw_edge_pairs"] = {(from_code, to_code)}
+            passthrough.append(display_edge)
+            continue
+
+        key = (edge_type, from_code, to_objective)
+        raw_pair = (from_code, to_code)
+        if key not in collapsed:
+            display_edge = dict(edge)
+            display_edge["to_node_code"] = to_objective
+            display_edge["edge_id"] = f"{edge_type}:collapsed:{from_code}->{to_objective}"
+            display_edge["rule_text"] = "collapsed_cross_objective_activity_unlock"
+            display_edge["_raw_edge_pairs"] = {raw_pair}
+            collapsed[key] = display_edge
+        else:
+            raw_pairs = collapsed[key].setdefault("_raw_edge_pairs", set())
+            if isinstance(raw_pairs, set):
+                raw_pairs.add(raw_pair)
+
+    return [*passthrough, *collapsed.values()]
+
+
 def build_transition_layout(
     nodes: pl.DataFrame,
 ) -> dict[str, object]:
@@ -488,9 +545,10 @@ def add_structural_dependency_traces(
     curve_intra_objective_edges: bool,
     show_direction_arrows: bool = False,
     highlighted_edge_pairs: set[tuple[str, str]] | None = None,
+    node_rows: list[dict[str, object]] | None = None,
 ) -> None:
     """Add the shared structural dependency background to an existing figure."""
-    edge_rows = edges.to_dicts()
+    edge_rows = _collapse_cross_objective_activity_edges(edges.to_dicts(), node_rows)
     same_lane_edge_rank: dict[tuple[float, bool], int] = {}
     structural_legend_added = {key: False for key in STRUCTURAL_EDGE_LEGEND_LABELS}
 
@@ -505,7 +563,15 @@ def add_structural_dependency_traces(
         same_lane = abs(y0 - y1) < 1e-9
         use_curve = curve_intra_objective_edges and same_lane and abs(x1 - x0) > 0.45
         trace_key = _structural_trace_key(edge_type, same_lane)
-        is_related = highlighted_edge_pairs is None or (from_code, to_code) in highlighted_edge_pairs
+        raw_edge_pairs = edge.get("_raw_edge_pairs")
+        is_related = (
+            highlighted_edge_pairs is None
+            or (from_code, to_code) in highlighted_edge_pairs
+            or (
+                isinstance(raw_edge_pairs, set)
+                and any(pair in highlighted_edge_pairs for pair in raw_edge_pairs)
+            )
+        )
         if use_curve:
             rank_key = (round(y0, 2), is_related)
             rank = same_lane_edge_rank.get(rank_key, 0)
@@ -945,6 +1011,7 @@ def build_transition_efficiency_figure(
         curve_intra_objective_edges=curve_intra_objective_edges,
         show_direction_arrows=True,
         highlighted_edge_pairs=highlighted_edge_pairs,
+        node_rows=layout["node_rows"],
     )
 
     def _is_related(row: dict[str, object]) -> bool:

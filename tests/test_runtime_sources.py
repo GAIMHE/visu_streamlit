@@ -33,53 +33,69 @@ def test_get_settings_resolves_source_local_roots() -> None:
     main_settings = get_settings("main")
     maureen_settings = get_settings("maureen_m16fr")
     mia_settings = get_settings("mia_module1")
+    neurips_settings = get_settings("neurips")
     assert main_settings.source_id == "main"
     assert maureen_settings.source_id == "maureen_m16fr"
     assert mia_settings.source_id == "mia_module1"
+    assert neurips_settings.source_id == "neurips"
     assert main_settings.runtime_root != maureen_settings.runtime_root
     assert str(main_settings.runtime_root).endswith("artifacts\\sources\\main")
     assert str(maureen_settings.runtime_root).endswith("artifacts\\sources\\maureen_m16fr")
     assert str(mia_settings.runtime_root).endswith("artifacts\\sources\\mia_module1")
+    assert str(neurips_settings.runtime_root).endswith("artifacts\\sources\\neurips")
     assert str(main_settings.local_root).endswith("artifacts\\local\\main")
     assert str(maureen_settings.local_root).endswith("artifacts\\local\\maureen_m16fr")
     assert str(mia_settings.local_root).endswith("artifacts\\local\\mia_module1")
+    assert str(neurips_settings.local_root).endswith("artifacts\\local\\neurips")
     assert str(main_settings.legacy_root).endswith("artifacts\\legacy\\main")
     assert str(maureen_settings.legacy_root).endswith("artifacts\\legacy\\maureen_m16fr")
     assert str(mia_settings.legacy_root).endswith("artifacts\\legacy\\mia_module1")
+    assert str(neurips_settings.legacy_root).endswith("artifacts\\legacy\\neurips")
     assert main_settings.data_dir.parent == main_settings.runtime_root
     assert maureen_settings.data_dir.parent == maureen_settings.runtime_root
     assert mia_settings.data_dir.parent == mia_settings.runtime_root
+    assert neurips_settings.data_dir.parent == neurips_settings.runtime_root
 
 
 def test_runtime_relative_paths_are_source_scoped() -> None:
     main_paths = runtime_relative_paths_for_source("main")
     maureen_paths = runtime_relative_paths_for_source("maureen_m16fr")
     mia_paths = runtime_relative_paths_for_source("mia_module1")
+    neurips_paths = runtime_relative_paths_for_source("neurips")
     assert "artifacts/derived/zpdes_exercise_progression_events.parquet" in main_paths
     assert "artifacts/derived/zpdes_exercise_progression_events.parquet" not in maureen_paths
     assert "artifacts/derived/zpdes_exercise_progression_events.parquet" in mia_paths
+    assert "artifacts/derived/zpdes_exercise_progression_events.parquet" in neurips_paths
     assert "artifacts/derived/student_elo_events.parquet" in maureen_paths
     assert "artifacts/derived/student_elo_events.parquet" in mia_paths
+    assert "artifacts/derived/student_elo_events.parquet" in neurips_paths
     assert "artifacts/derived/student_elo_events_batch_replay.parquet" not in main_paths
     assert "artifacts/derived/student_elo_profiles_batch_replay.parquet" not in maureen_paths
     assert "artifacts/derived/student_elo_profiles_batch_replay.parquet" not in mia_paths
+    assert "artifacts/derived/student_elo_profiles_batch_replay.parquet" not in neurips_paths
     assert "artifacts/derived/classroom_mode_profiles.parquet" in main_paths
+    assert "artifacts/derived/classroom_mode_profiles.parquet" not in neurips_paths
     assert "data/exercises.json" not in main_paths
     assert "artifacts/reports/derived_manifest.json" not in main_paths
     assert "artifacts/derived/classroom_activity_summary_by_mode.parquet" not in maureen_paths
     assert "data/zpdes_rules.json" in mia_paths
+    assert "data/zpdes_rules.json" in neurips_paths
 
 
 def test_local_build_relative_paths_are_separate_from_runtime() -> None:
     main_paths = local_build_relative_paths_for_source("main")
     maureen_paths = local_build_relative_paths_for_source("maureen_m16fr")
     mia_paths = local_build_relative_paths_for_source("mia_module1")
+    neurips_paths = local_build_relative_paths_for_source("neurips")
     assert "data/student_interaction.parquet" in main_paths
     assert "data/exercises.json" in main_paths
     assert "data/zpdes_rules.json" not in main_paths
     assert "data/zpdes_rules.json" in maureen_paths
     assert "data/zpdes_rules.json" not in mia_paths
+    assert "data/zpdes_rules.json" not in neurips_paths
+    assert "data/student_interaction.parquet" in neurips_paths
     assert "data/exercises.json" in mia_paths
+    assert "data/exercises.json" in neurips_paths
     assert "artifacts/reports/consistency_report.json" in maureen_paths
     assert "artifacts/reports/derived_manifest.json" in main_paths
 
@@ -97,6 +113,7 @@ def test_visible_pages_hide_unsupported_maureen_views() -> None:
     main_pages = {page.page_id for page in visible_pages_for_source(get_runtime_source("main"))}
     maureen_pages = {page.page_id for page in visible_pages_for_source(get_runtime_source("maureen_m16fr"))}
     mia_pages = {page.page_id for page in visible_pages_for_source(get_runtime_source("mia_module1"))}
+    neurips_pages = {page.page_id for page in visible_pages_for_source(get_runtime_source("neurips"))}
     assert {
         "classroom_replay",
         "classroom_sankey",
@@ -112,15 +129,25 @@ def test_visible_pages_hide_unsupported_maureen_views() -> None:
     assert "zpdes_transition_efficiency" in mia_pages
     assert "m1_individual_path" not in mia_pages
     assert mia_pages == (maureen_pages | {"zpdes_transition_efficiency"})
+    assert neurips_pages == {
+        "overview",
+        "bottlenecks",
+        "matrix",
+        "zpdes_transition_efficiency",
+        "student_elo",
+        "student_objective_spider",
+    }
 
 
 def test_exact_min_student_attempt_filter_is_enabled_for_partial_sources_only() -> None:
     assert source_supports_exact_min_student_attempt_filter("main") is False
     assert source_supports_exact_min_student_attempt_filter("maureen_m16fr") is True
     assert source_supports_exact_min_student_attempt_filter("mia_module1") is True
+    assert source_supports_exact_min_student_attempt_filter("neurips") is True
 
 
 def test_classroom_all_data_option_is_enabled_for_partial_sources_only() -> None:
     assert source_supports_classroom_all_data_option("main") is False
     assert source_supports_classroom_all_data_option("maureen_m16fr") is True
     assert source_supports_classroom_all_data_option("mia_module1") is True
+    assert source_supports_classroom_all_data_option("neurips") is False

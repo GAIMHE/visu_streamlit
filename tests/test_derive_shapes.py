@@ -372,7 +372,7 @@ Examples
 """
     from visu2.config import get_settings
 
-    agg = build_agg_exercise_daily_from_fact(_sample_fact(), settings=get_settings())
+    agg = build_agg_exercise_daily_from_fact(_sample_fact(), settings=get_settings("main"))
     assert {
         "date_utc",
         "module_code",
@@ -413,7 +413,7 @@ Examples
 """
     from visu2.config import get_settings
 
-    agg = build_agg_exercise_elo_from_fact(_sample_fact(), settings=get_settings())
+    agg = build_agg_exercise_elo_from_fact(_sample_fact(), settings=get_settings("main"))
     assert {
         "exercise_id",
         "exercise_elo",
@@ -440,8 +440,8 @@ Examples
 """
     from visu2.config import get_settings
 
-    exercise_elo = build_agg_exercise_elo_from_fact(_sample_fact(), settings=get_settings())
-    agg = build_agg_activity_elo_from_exercise_elo(exercise_elo, settings=get_settings())
+    exercise_elo = build_agg_exercise_elo_from_fact(_sample_fact(), settings=get_settings("main"))
+    agg = build_agg_activity_elo_from_exercise_elo(exercise_elo, settings=get_settings("main"))
     assert {
         "activity_id",
         "activity_mean_exercise_elo",
@@ -455,7 +455,7 @@ def test_iterative_exercise_elo_shape_and_keys() -> None:
     """Test iterative exercise Elo shape and keys."""
     from visu2.config import get_settings
 
-    agg = build_agg_exercise_elo_iterative_from_fact(_sample_fact(), settings=get_settings())
+    agg = build_agg_exercise_elo_iterative_from_fact(_sample_fact(), settings=get_settings("main"))
     assert {
         "exercise_id",
         "exercise_elo",
@@ -483,7 +483,7 @@ Examples
 """
     from visu2.config import get_settings
 
-    exercise_elo = build_agg_exercise_elo_from_fact(_sample_fact(), settings=get_settings())
+    exercise_elo = build_agg_exercise_elo_from_fact(_sample_fact(), settings=get_settings("main"))
     events = build_student_elo_events_from_fact(_sample_fact(), exercise_elo)
     profiles = build_student_elo_profiles_from_events(events)
 
@@ -508,7 +508,7 @@ def test_batch_replay_student_elo_events_and_profiles_shape() -> None:
     """Test Batch Replay Elo events and profiles expose the same runtime shape."""
     from visu2.config import get_settings
 
-    exercise_elo = build_agg_exercise_elo_from_fact(_sample_fact(), settings=get_settings())
+    exercise_elo = build_agg_exercise_elo_from_fact(_sample_fact(), settings=get_settings("main"))
     events = build_student_elo_events_batch_replay_from_fact(_sample_fact(), exercise_elo)
     profiles = build_student_elo_profiles_batch_replay_from_events(events)
 

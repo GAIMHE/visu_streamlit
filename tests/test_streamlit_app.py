@@ -19,6 +19,7 @@ class _FakeSidebar:
         self._selectbox_return = selectbox_return
         self._radio_return = radio_return
         self.info_messages: list[str] = []
+        self.caption_messages: list[str] = []
 
     def selectbox(self, *args, **kwargs):
         return self._selectbox_return
@@ -29,21 +30,24 @@ class _FakeSidebar:
     def info(self, message: str) -> None:
         self.info_messages.append(message)
 
+    def caption(self, message: str) -> None:
+        self.caption_messages.append(message)
+
 
 def test_select_source_clears_cache_when_source_changes(monkeypatch) -> None:
-    sidebar = _FakeSidebar(selectbox_return="maureen_m16fr")
+    sidebar = _FakeSidebar()
     events: list[str] = []
 
     monkeypatch.setattr(streamlit_app.st, "sidebar", sidebar)
     monkeypatch.setattr(streamlit_app, "get_active_source_id", lambda: "main")
     monkeypatch.setattr(streamlit_app, "set_active_source_id", lambda source_id: events.append(f"set:{source_id}"))
     monkeypatch.setattr(streamlit_app, "_clear_page_data_cache", lambda: events.append("clear"))
-    monkeypatch.setattr(streamlit_app.st, "rerun", lambda: events.append("rerun"))
 
     selected = streamlit_app._select_source()
 
-    assert selected == "maureen_m16fr"
-    assert events == ["set:maureen_m16fr", "clear", "rerun"]
+    assert selected == "neurips"
+    assert events == ["set:neurips", "clear"]
+    assert sidebar.caption_messages == ["Dataset source: NeurIPS Maths [neurips]"]
 
 
 def test_select_page_clears_cache_when_page_changes(monkeypatch) -> None:

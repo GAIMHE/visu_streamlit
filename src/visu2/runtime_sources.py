@@ -17,6 +17,10 @@ MIA_RUNTIME_DATA_RELATIVE_PATHS: tuple[str, ...] = (
     *COMMON_RUNTIME_DATA_RELATIVE_PATHS,
     "data/zpdes_rules.json",
 )
+NEURIPS_RUNTIME_DATA_RELATIVE_PATHS: tuple[str, ...] = (
+    *COMMON_RUNTIME_DATA_RELATIVE_PATHS,
+    "data/zpdes_rules.json",
+)
 
 COMMON_LOCAL_BUILD_DATA_RELATIVE_PATHS: tuple[str, ...] = (
     "data/student_interaction.parquet",
@@ -30,6 +34,7 @@ MAUREEN_LOCAL_BUILD_DATA_RELATIVE_PATHS: tuple[str, ...] = (
     "data/zpdes_rules.json",
 )
 MIA_LOCAL_BUILD_DATA_RELATIVE_PATHS: tuple[str, ...] = COMMON_LOCAL_BUILD_DATA_RELATIVE_PATHS
+NEURIPS_LOCAL_BUILD_DATA_RELATIVE_PATHS: tuple[str, ...] = COMMON_LOCAL_BUILD_DATA_RELATIVE_PATHS
 
 COMMON_LOCAL_BUILD_REPORT_RELATIVE_PATHS: tuple[str, ...] = (
     "artifacts/reports/consistency_report.json",
@@ -92,6 +97,28 @@ MIA_REQUIRED_RUNTIME_DERIVED_TABLES: tuple[str, ...] = tuple(
     if table_name not in {"student_elo_events_batch_replay", "student_elo_profiles_batch_replay"}
 )
 
+NEURIPS_RUNTIME_DERIVED_TABLES: tuple[str, ...] = (
+    "fact_attempt_core",
+    "agg_activity_daily",
+    "agg_transition_edges",
+    "agg_exercise_daily",
+    "agg_exercise_elo",
+    "agg_exercise_elo_iterative",
+    "agg_activity_elo",
+    "student_elo_events",
+    "student_elo_profiles",
+    "student_elo_events_batch_replay",
+    "student_elo_profiles_batch_replay",
+    "student_elo_events_iterative",
+    "student_elo_profiles_iterative",
+    "zpdes_exercise_progression_events",
+)
+NEURIPS_REQUIRED_RUNTIME_DERIVED_TABLES: tuple[str, ...] = tuple(
+    table_name
+    for table_name in NEURIPS_RUNTIME_DERIVED_TABLES
+    if table_name not in {"student_elo_events_batch_replay", "student_elo_profiles_batch_replay"}
+)
+
 COMMON_LEGACY_DERIVED_TABLES: tuple[str, ...] = (
     "hierarchy_context_lookup",
     "classroom_activity_summary_by_mode",
@@ -109,6 +136,7 @@ MAIN_LEGACY_DERIVED_TABLES: tuple[str, ...] = (
 
 MAUREEN_LEGACY_DERIVED_TABLES: tuple[str, ...] = COMMON_LEGACY_DERIVED_TABLES
 MIA_LEGACY_DERIVED_TABLES: tuple[str, ...] = COMMON_LEGACY_DERIVED_TABLES
+NEURIPS_LEGACY_DERIVED_TABLES: tuple[str, ...] = COMMON_LEGACY_DERIVED_TABLES
 
 COMMON_LEGACY_REPORT_RELATIVE_PATHS: tuple[str, ...] = ("artifacts/reports/hierarchy_resolution_report.json",)
 
@@ -126,6 +154,7 @@ MAIN_LEGACY_CLEANUP_RELATIVE_PATHS: tuple[str, ...] = COMMON_LEGACY_CLEANUP_RELA
 
 MAUREEN_LEGACY_CLEANUP_RELATIVE_PATHS: tuple[str, ...] = COMMON_LEGACY_CLEANUP_RELATIVE_PATHS
 MIA_LEGACY_CLEANUP_RELATIVE_PATHS: tuple[str, ...] = COMMON_LEGACY_CLEANUP_RELATIVE_PATHS
+NEURIPS_LEGACY_CLEANUP_RELATIVE_PATHS: tuple[str, ...] = COMMON_LEGACY_CLEANUP_RELATIVE_PATHS
 
 ALL_PAGE_IDS: frozenset[str] = frozenset(
     {
@@ -332,13 +361,62 @@ RUNTIME_SOURCES: dict[str, RuntimeSourceSpec] = {
         ),
         legacy_cleanup_relative_paths=MIA_LEGACY_CLEANUP_RELATIVE_PATHS,
     ),
+    "neurips": RuntimeSourceSpec(
+        source_id="neurips",
+        label="NeurIPS Maths",
+        description=(
+            "NeurIPS maths dataset release built from Adaptiv'Math and MIA interaction logs, "
+            "exercise metadata, and simplified ZPDES dependency graphs."
+        ),
+        runtime_root_relative=Path("artifacts") / "sources" / "neurips",
+        local_root_relative=Path("artifacts") / "local" / "neurips",
+        legacy_root_relative=Path("artifacts") / "legacy" / "neurips",
+        build_profile="neurips_maths",
+        raw_inputs={
+            "parquet": Path("data_neurips") / "maths_data.parquet",
+            "exercises_csv": Path("data_neurips") / "maths_exercises_table.csv",
+            "dependencies_json": Path("data_neurips") / "maths_dependencies.json",
+        },
+        supported_pages=(
+            "overview",
+            "bottlenecks",
+            "matrix",
+            "zpdes_transition_efficiency",
+            "student_elo",
+            "student_objective_spider",
+        ),
+        capability_flags=frozenset(
+            {
+                CAPABILITY_HAS_DURATION_FIELDS,
+                CAPABILITY_HAS_ZPDES_TOPOLOGY,
+                CAPABILITY_HAS_EXERCISE_METADATA,
+                CAPABILITY_HAS_EXACT_MIN_STUDENT_ATTEMPT_FILTER,
+                CAPABILITY_HAS_PLAYLIST_DIMENSION,
+            }
+        ),
+        remote_config_key="neurips",
+        runtime_relative_paths=(
+            NEURIPS_RUNTIME_DATA_RELATIVE_PATHS
+            + _derived_runtime_relative_paths(NEURIPS_REQUIRED_RUNTIME_DERIVED_TABLES)
+        ),
+        runtime_derived_tables=NEURIPS_RUNTIME_DERIVED_TABLES,
+        local_build_relative_paths=(
+            NEURIPS_LOCAL_BUILD_DATA_RELATIVE_PATHS + COMMON_LOCAL_BUILD_REPORT_RELATIVE_PATHS
+        ),
+        legacy_derived_tables=NEURIPS_LEGACY_DERIVED_TABLES,
+        legacy_relative_paths=(
+            COMMON_LEGACY_REPORT_RELATIVE_PATHS
+            + _derived_runtime_relative_paths(NEURIPS_LEGACY_DERIVED_TABLES)
+        ),
+        legacy_cleanup_relative_paths=NEURIPS_LEGACY_CLEANUP_RELATIVE_PATHS,
+    ),
 }
 
-DEFAULT_SOURCE_ID = "main"
+DEFAULT_SOURCE_ID = "neurips"
 
 
 def get_runtime_source(source_id: str | None = None) -> RuntimeSourceSpec:
-    """Return the configured runtime source spec, defaulting to `main`."""
+    """Return the configured runtime source spec, defaulting to the app source."""
     normalized = str(source_id or DEFAULT_SOURCE_ID).strip() or DEFAULT_SOURCE_ID
     try:
         return RUNTIME_SOURCES[normalized]

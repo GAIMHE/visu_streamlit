@@ -30,6 +30,16 @@ UUID_RE = re.compile(
     r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 )
 
+NEURIPS_MODULE_CODE_BY_ID: dict[str, str] = {
+    "63e98e5f-94e3-4630-9704-076882d6de38": "M1",
+    "14fe4ca0-8fff-4c4a-bad2-6ef051eee349": "M31",
+    "8ff53d40-9b1f-44c8-8646-f699fed002e9": "M32",
+    "27709aa2-b055-4ed3-ac73-8dca783b4afe": "M33",
+    "053df3ec-5501-4ad8-9917-a935bcf76740": "M101",
+    "14321a7e-4ef7-4b6a-9ff8-99329e08d7a2": "M105",
+    "d840c0c0-3e48-11f1-8e68-975e7ffdd3c5": "M999",
+}
+
 _RESEARCHER_REQUIRED_HEADERS: tuple[str, ...] = (
     "UAI",
     "classroom_id",
@@ -2261,6 +2271,1074 @@ def _build_maureen_catalog_and_raw(
     return raw_attempts, learning_catalog, zpdes_rules, exercises_json, tuple(sorted(set(warnings)))
 
 
+def _first_non_empty(*values: object) -> str | None:
+    """Return the first non-empty text value from a candidate list."""
+    for value in values:
+        text = _clean_text(value)
+        if text:
+            return text
+    return None
+
+
+def _sorted_module_ids(module_ids: set[str], module_code_by_id: dict[str, str]) -> list[str]:
+    """Sort module IDs by their pedagogical code, then by ID for stability."""
+    return sorted(module_ids, key=lambda module_id: (_code_sort_key(module_code_by_id[module_id]), module_id))
+
+
+def _list_unique(values: list[str]) -> list[str]:
+    """Return values in first-seen order without duplicates."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+    return out
+
+
+def _add_neurips_dependency_code(code_by_id: dict[str, list[str]], identifier: str | None, code: str | None) -> None:
+    """Add one possible pedagogical code carried by the dependency JSON."""
+    if not identifier or not code:
+        return
+    code_by_id.setdefault(identifier, [])
+    if code not in code_by_id[identifier]:
+        code_by_id[identifier].append(code)
+
+
+def _load_neurips_dependency_codes(dependencies: dict[str, Any]) -> dict[str, list[str]]:
+    """Load pedagogical codes embedded in the self-contained dependency JSON."""
+    code_by_id: dict[str, list[str]] = {}
+    raw_modules = dependencies.get("modules")
+    raw_modules = raw_modules if isinstance(raw_modules, dict) else {}
+    for module_id, module_payload in raw_modules.items():
+        if not isinstance(module_payload, dict):
+            continue
+        _add_neurips_dependency_code(code_by_id, str(module_id), _clean_text(module_payload.get("code")))
+        objectives = module_payload.get("objectives")
+        objectives = objectives if isinstance(objectives, dict) else {}
+        for objective_id, objective_payload in objectives.items():
+            if not isinstance(objective_payload, dict):
+                continue
+            _add_neurips_dependency_code(
+                code_by_id,
+                str(objective_id),
+                _clean_text(objective_payload.get("code")),
+            )
+            activities = objective_payload.get("activities")
+            activities = activities if isinstance(activities, dict) else {}
+            for activity_id, activity_payload in activities.items():
+                if not isinstance(activity_payload, dict):
+                    continue
+                _add_neurips_dependency_code(
+                    code_by_id,
+                    str(activity_id),
+                    _clean_text(activity_payload.get("code")),
+                )
+
+    return code_by_id
+
+
+def _dependency_title_pair(payload: dict[str, Any]) -> tuple[str | None, str | None]:
+    """Return short/long titles embedded in one dependency JSON node."""
+    title = payload.get("title")
+    if isinstance(title, dict):
+        short = _first_non_empty(title.get("short"), title.get("name"), title.get("label"))
+        long = _first_non_empty(title.get("long"), title.get("description"), short)
+        return short, long
+    if isinstance(title, str):
+        clean_title = _clean_text(title)
+        return clean_title, clean_title
+    label = _first_non_empty(
+        payload.get("name"),
+        payload.get("label"),
+        payload.get("short_title"),
+        payload.get("long_title"),
+    )
+    long = _first_non_empty(payload.get("long_title"), payload.get("description"), label)
+    return label, long
+
+
+def _load_neurips_dependency_titles(dependencies: dict[str, Any]) -> dict[str, tuple[str | None, str | None]]:
+    """Load pedagogical titles embedded in the self-contained dependency JSON."""
+    titles_by_id: dict[str, tuple[str | None, str | None]] = {}
+    raw_modules = dependencies.get("modules")
+    raw_modules = raw_modules if isinstance(raw_modules, dict) else {}
+    for module_id, module_payload in raw_modules.items():
+        if not isinstance(module_payload, dict):
+            continue
+        titles_by_id[str(module_id)] = _dependency_title_pair(module_payload)
+        objectives = module_payload.get("objectives")
+        objectives = objectives if isinstance(objectives, dict) else {}
+        for objective_id, objective_payload in objectives.items():
+            if not isinstance(objective_payload, dict):
+                continue
+            titles_by_id[str(objective_id)] = _dependency_title_pair(objective_payload)
+            activities = objective_payload.get("activities")
+            activities = activities if isinstance(activities, dict) else {}
+            for activity_id, activity_payload in activities.items():
+                if not isinstance(activity_payload, dict):
+                    continue
+                titles_by_id[str(activity_id)] = _dependency_title_pair(activity_payload)
+
+    return titles_by_id
+
+
+def _position_by_first_seen(values: list[str]) -> dict[str, int]:
+    """Map each value to its first position in a repeated ordered list."""
+    positions: dict[str, int] = {}
+    for idx, value in enumerate(values):
+        positions.setdefault(value, idx)
+    return positions
+
+
+def _neurips_dependency_code(
+    identifier: str,
+    dependency_code_by_id: dict[str, list[str]],
+    *,
+    expected_prefix: str,
+) -> str | None:
+    """Return a dependency-embedded code only when it matches the expected prefix."""
+    codes = dependency_code_by_id.get(identifier) or []
+    matching_codes = [code for code in codes if code.startswith(expected_prefix)]
+    if not matching_codes:
+        return None
+    return matching_codes[-1]
+
+
+def _neurips_dependency_title(
+    identifier: str,
+    dependency_title_by_id: dict[str, tuple[str | None, str | None]],
+) -> tuple[str | None, str | None]:
+    """Return short/long titles embedded in the dependency JSON."""
+    return dependency_title_by_id.get(identifier, (None, None))
+
+
+def _load_neurips_exercise_table(path: Path) -> pl.DataFrame:
+    """Load the NeurIPS exercise table as normalized text columns."""
+    required = {
+        "exercise_id",
+        "gameplay_type",
+        "instruction",
+        "question",
+        "feedback",
+        "module_id",
+        "module_name",
+        "objective_id",
+        "objective_name",
+        "objective_targeted_difficulties",
+        "activity_id",
+        "activity_name",
+        "source",
+    }
+    frame = pl.read_csv(path, infer_schema_length=0)
+    missing = sorted(required - set(frame.columns))
+    if missing:
+        raise ValueError(f"NeurIPS exercise table is missing columns: {missing}")
+    return frame.with_columns(
+        [_optional_text_expr(column).alias(column) for column in sorted(required)]
+    )
+
+
+def _neurips_module_code_map(
+    exercise_rows: list[dict[str, Any]],
+    dependencies: dict[str, Any],
+) -> dict[str, str]:
+    """Return stable app-compatible module codes for NeurIPS modules."""
+    module_ids = {
+        str(row.get("module_id") or "").strip()
+        for row in exercise_rows
+        if str(row.get("module_id") or "").strip()
+    }
+    raw_modules = dependencies.get("modules")
+    if isinstance(raw_modules, dict):
+        module_ids.update(str(module_id) for module_id in raw_modules if str(module_id).strip())
+
+    code_by_id: dict[str, str] = {}
+    fallback_cursor = 900
+    for module_id in sorted(module_ids):
+        module_payload = raw_modules.get(module_id) if isinstance(raw_modules, dict) else None
+        dependency_code = _clean_text(module_payload.get("code")) if isinstance(module_payload, dict) else None
+        if dependency_code:
+            code_by_id[module_id] = dependency_code
+            continue
+        if module_id in NEURIPS_MODULE_CODE_BY_ID:
+            code_by_id[module_id] = NEURIPS_MODULE_CODE_BY_ID[module_id]
+            continue
+        while f"M{fallback_cursor}" in set(code_by_id.values()):
+            fallback_cursor += 1
+        code_by_id[module_id] = f"M{fallback_cursor}"
+        fallback_cursor += 1
+    return code_by_id
+
+
+def _neurips_candidate_rows(
+    exercise_rows: list[dict[str, Any]],
+    dependencies: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Build exercise-to-hierarchy candidates from the exercise CSV and dependency JSON."""
+    module_source_by_id: dict[str, str | None] = {}
+    module_name_by_id: dict[str, str | None] = {}
+    for row in exercise_rows:
+        module_id = _clean_text(row.get("module_id"))
+        if not module_id:
+            continue
+        module_source_by_id.setdefault(module_id, _clean_text(row.get("source")))
+        module_name_by_id.setdefault(module_id, _clean_text(row.get("module_name")))
+
+    rows: list[dict[str, Any]] = []
+    for row in exercise_rows:
+        exercise_id = _clean_text(row.get("exercise_id"))
+        module_id = _clean_text(row.get("module_id"))
+        objective_id = _clean_text(row.get("objective_id"))
+        activity_id = _clean_text(row.get("activity_id"))
+        if not exercise_id or not module_id or not objective_id or not activity_id:
+            continue
+        rows.append(
+            {
+                "exercise_id": exercise_id,
+                "module_id": module_id,
+                "objective_id": objective_id,
+                "activity_id": activity_id,
+                "source": _clean_text(row.get("source")),
+                "has_exercise_metadata": True,
+            }
+        )
+
+    raw_modules = dependencies.get("modules")
+    raw_modules = raw_modules if isinstance(raw_modules, dict) else {}
+    for module_id, module_payload in raw_modules.items():
+        if not isinstance(module_payload, dict):
+            continue
+        module_key = str(module_id)
+        objectives = module_payload.get("objectives")
+        objectives = objectives if isinstance(objectives, dict) else {}
+        for objective_id, objective_payload in objectives.items():
+            if not isinstance(objective_payload, dict):
+                continue
+            objective_key = str(objective_id)
+            activities = objective_payload.get("activities")
+            activities = activities if isinstance(activities, dict) else {}
+            for activity_id, activity_payload in activities.items():
+                if not isinstance(activity_payload, dict):
+                    continue
+                activity_key = str(activity_id)
+                for exercise_id in activity_payload.get("exercise_ids") or []:
+                    exercise_key = str(exercise_id or "").strip()
+                    if not exercise_key:
+                        continue
+                    rows.append(
+                        {
+                            "exercise_id": exercise_key,
+                            "module_id": module_key,
+                            "objective_id": objective_key,
+                            "activity_id": activity_key,
+                            "source": module_source_by_id.get(module_key),
+                            "has_exercise_metadata": False,
+                        }
+                    )
+
+    return [
+        dict(row)
+        for row in {
+            (
+                row["exercise_id"],
+                row["module_id"],
+                row["objective_id"],
+                row["activity_id"],
+                row.get("source"),
+                bool(row.get("has_exercise_metadata")),
+            ): row
+            for row in rows
+        }.values()
+    ]
+
+
+def _weighted_neurips_candidates(
+    attempts_parquet_path: Path,
+    candidate_rows: list[dict[str, Any]],
+    module_code_by_id: dict[str, str],
+) -> pl.DataFrame:
+    """Attach attempt counts used to resolve duplicate exercise mappings."""
+    if not candidate_rows:
+        return pl.DataFrame(
+            {
+                "exercise_id": [],
+                "module_id": [],
+                "objective_id": [],
+                "activity_id": [],
+                "source": [],
+                "has_exercise_metadata": [],
+                "candidate_context_attempts": [],
+                "candidate_source_attempts": [],
+                "candidate_total_attempts": [],
+                "module_code": [],
+            }
+        )
+
+    candidates = pl.DataFrame(candidate_rows).with_columns(
+        pl.col("has_exercise_metadata").cast(pl.Boolean),
+        pl.col("module_id").replace(module_code_by_id).alias("module_code"),
+    )
+    context_counts = (
+        pl.scan_parquet(attempts_parquet_path)
+        .select(["source", "playlist_or_module_id", "exercise_id"])
+        .group_by(["source", "playlist_or_module_id", "exercise_id"])
+        .agg(pl.len().alias("candidate_context_attempts"))
+        .collect()
+    )
+    source_counts = (
+        pl.scan_parquet(attempts_parquet_path)
+        .select(["source", "exercise_id"])
+        .group_by(["source", "exercise_id"])
+        .agg(pl.len().alias("candidate_source_attempts"))
+        .collect()
+    )
+    total_counts = (
+        pl.scan_parquet(attempts_parquet_path)
+        .select(["exercise_id"])
+        .group_by("exercise_id")
+        .agg(pl.len().alias("candidate_total_attempts"))
+        .collect()
+    )
+    return (
+        candidates.join(
+            context_counts,
+            left_on=["source", "module_id", "exercise_id"],
+            right_on=["source", "playlist_or_module_id", "exercise_id"],
+            how="left",
+        )
+        .join(source_counts, on=["source", "exercise_id"], how="left")
+        .join(total_counts, on="exercise_id", how="left")
+        .with_columns(
+            pl.col("candidate_context_attempts").fill_null(0),
+            pl.col("candidate_source_attempts").fill_null(0),
+            pl.col("candidate_total_attempts").fill_null(0),
+        )
+    )
+
+
+def _best_neurips_lookup(
+    candidates: pl.DataFrame,
+    *,
+    key_columns: tuple[str, ...],
+    suffix: str,
+) -> pl.DataFrame:
+    """Choose one best hierarchy candidate per lookup key."""
+    if candidates.height == 0:
+        schema = {column: pl.Utf8 for column in key_columns}
+        schema.update(
+            {
+                f"module_id_{suffix}": pl.Utf8,
+                f"objective_id_{suffix}": pl.Utf8,
+                f"activity_id_{suffix}": pl.Utf8,
+                f"module_code_{suffix}": pl.Utf8,
+            }
+        )
+        return pl.DataFrame(schema=schema)
+
+    rows = candidates.to_dicts()
+    rows.sort(
+        key=lambda row: (
+            *(str(row.get(column) or "") for column in key_columns),
+            -int(row.get("candidate_context_attempts") or 0),
+            -int(row.get("candidate_source_attempts") or 0),
+            -int(row.get("candidate_total_attempts") or 0),
+            -int(bool(row.get("has_exercise_metadata"))),
+            _code_sort_key(str(row.get("module_code") or "")),
+            str(row.get("objective_id") or ""),
+            str(row.get("activity_id") or ""),
+        )
+    )
+    seen: set[tuple[str, ...]] = set()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        key = tuple(str(row.get(column) or "") for column in key_columns)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(
+            {
+                **{column: row.get(column) for column in key_columns},
+                f"module_id_{suffix}": row.get("module_id"),
+                f"objective_id_{suffix}": row.get("objective_id"),
+                f"activity_id_{suffix}": row.get("activity_id"),
+                f"module_code_{suffix}": row.get("module_code"),
+            }
+        )
+    return pl.DataFrame(out)
+
+
+def _neurips_catalog_payloads(
+    *,
+    attempts_parquet_path: Path,
+    exercises_csv_path: Path,
+    dependencies_json_path: Path,
+    source_id: str,
+) -> tuple[pl.DataFrame, dict[str, Any], dict[str, Any], dict[str, Any], tuple[str, ...]]:
+    """Build NeurIPS normalized attempts plus app metadata payloads."""
+    exercise_frame = _load_neurips_exercise_table(exercises_csv_path)
+    exercise_rows = exercise_frame.to_dicts()
+    dependencies = json.loads(dependencies_json_path.read_text(encoding="utf-8"))
+    module_code_by_id = _neurips_module_code_map(exercise_rows, dependencies)
+    dependency_code_by_id = _load_neurips_dependency_codes(dependencies)
+    dependency_title_by_id = _load_neurips_dependency_titles(dependencies)
+    candidate_rows = _neurips_candidate_rows(exercise_rows, dependencies)
+    weighted_candidates = _weighted_neurips_candidates(
+        attempts_parquet_path,
+        candidate_rows,
+        module_code_by_id,
+    )
+
+    module_name_by_id: dict[str, str | None] = {}
+    module_source_by_id: dict[str, str | None] = {}
+    objective_name_by_id: dict[str, str | None] = {}
+    objective_long_by_id: dict[str, str | None] = {}
+    activity_name_by_id: dict[str, str | None] = {}
+    exercise_metadata_by_id: dict[str, dict[str, Any]] = {}
+
+    for row in exercise_rows:
+        module_id = _clean_text(row.get("module_id"))
+        objective_id = _clean_text(row.get("objective_id"))
+        activity_id = _clean_text(row.get("activity_id"))
+        exercise_id = _clean_text(row.get("exercise_id"))
+        if module_id:
+            module_name_by_id.setdefault(module_id, _clean_text(row.get("module_name")))
+            module_source_by_id.setdefault(module_id, _clean_text(row.get("source")))
+        if objective_id:
+            objective_name_by_id.setdefault(objective_id, _clean_text(row.get("objective_name")))
+            objective_long_by_id.setdefault(
+                objective_id,
+                _clean_text(row.get("objective_targeted_difficulties")),
+            )
+        if activity_id:
+            activity_name_by_id.setdefault(activity_id, _clean_text(row.get("activity_name")))
+        if exercise_id and exercise_id not in exercise_metadata_by_id:
+            exercise_metadata_by_id[exercise_id] = {
+                "id": exercise_id,
+                "type": _clean_text(row.get("gameplay_type")),
+                "instruction": _first_non_empty(row.get("instruction"), row.get("question")),
+                "question": _clean_text(row.get("question")),
+                "feedback": _clean_text(row.get("feedback")),
+                "source": _clean_text(row.get("source")),
+            }
+
+    raw_modules = dependencies.get("modules")
+    raw_modules = raw_modules if isinstance(raw_modules, dict) else {}
+    module_ids = set(module_code_by_id)
+
+    objective_ids_by_module: dict[str, list[str]] = defaultdict(list)
+    activity_ids_by_objective: dict[str, list[str]] = defaultdict(list)
+    exercise_ids_by_activity: dict[str, list[str]] = defaultdict(list)
+
+    for module_id, module_payload in raw_modules.items():
+        if not isinstance(module_payload, dict):
+            continue
+        module_key = str(module_id)
+        for objective_id in module_payload.get("objective_ids") or []:
+            objective_key = str(objective_id or "").strip()
+            if objective_key:
+                objective_ids_by_module[module_key].append(objective_key)
+        objectives = module_payload.get("objectives")
+        objectives = objectives if isinstance(objectives, dict) else {}
+        for objective_id, objective_payload in objectives.items():
+            if not isinstance(objective_payload, dict):
+                continue
+            objective_key = str(objective_id)
+            for activity_id in objective_payload.get("activity_ids") or []:
+                activity_key = str(activity_id or "").strip()
+                if activity_key:
+                    activity_ids_by_objective[objective_key].append(activity_key)
+            activities = objective_payload.get("activities")
+            activities = activities if isinstance(activities, dict) else {}
+            for activity_id, activity_payload in activities.items():
+                if not isinstance(activity_payload, dict):
+                    continue
+                activity_key = str(activity_id)
+                exercise_ids_by_activity[activity_key].extend(
+                    str(exercise_id)
+                    for exercise_id in (activity_payload.get("exercise_ids") or [])
+                    if str(exercise_id or "").strip()
+                )
+
+    for row in weighted_candidates.to_dicts():
+        module_id = _clean_text(row.get("module_id"))
+        objective_id = _clean_text(row.get("objective_id"))
+        activity_id = _clean_text(row.get("activity_id"))
+        exercise_id = _clean_text(row.get("exercise_id"))
+        if not module_id or not objective_id or not activity_id or not exercise_id:
+            continue
+        objective_ids_by_module[module_id].append(objective_id)
+        activity_ids_by_objective[objective_id].append(activity_id)
+        exercise_ids_by_activity[activity_id].append(exercise_id)
+        module_ids.add(module_id)
+
+    module_ids_ordered = _sorted_module_ids(module_ids, module_code_by_id)
+    objective_code_by_id: dict[str, str] = {}
+    activity_code_by_id: dict[str, str] = {}
+    modules_payload: list[dict[str, Any]] = []
+    id_label_index: dict[str, dict[str, Any]] = {}
+
+    for module_id in module_ids_ordered:
+        module_code = module_code_by_id[module_id]
+        dependency_module_short, dependency_module_long = _neurips_dependency_title(
+            module_id,
+            dependency_title_by_id,
+        )
+        module_label = dependency_module_short or module_name_by_id.get(module_id) or module_code
+        module_long = dependency_module_long or module_label
+        id_label_index[module_id] = {
+            "type": "module",
+            "code": module_code,
+            "short_title": module_label,
+            "long_title": module_long,
+            "sources": ["maths_exercises_table", "maths_dependencies"],
+        }
+        objective_entries: list[dict[str, Any]] = []
+        objective_ids = _list_unique(objective_ids_by_module.get(module_id, []))
+        objective_positions = _position_by_first_seen(objective_ids_by_module.get(module_id, []))
+        objective_ids = sorted(
+            objective_ids,
+            key=lambda objective_id: (
+                0
+                if (
+                    dependency_objective_code := _neurips_dependency_code(
+                        objective_id,
+                        dependency_code_by_id,
+                        expected_prefix=f"{module_code}O",
+                    )
+                )
+                else 1,
+                _code_sort_key(dependency_objective_code),
+                objective_positions.get(objective_id, 10**9),
+                objective_name_by_id.get(objective_id) or objective_id,
+            ),
+        )
+        for objective_idx, objective_id in enumerate(objective_ids, start=1):
+            objective_code = _neurips_dependency_code(
+                objective_id,
+                dependency_code_by_id,
+                expected_prefix=f"{module_code}O",
+            ) or f"{module_code}O{objective_idx}"
+            objective_code_by_id[objective_id] = objective_code
+            dependency_objective_short, dependency_objective_long = _neurips_dependency_title(
+                objective_id,
+                dependency_title_by_id,
+            )
+            objective_label = dependency_objective_short or objective_name_by_id.get(objective_id) or objective_code
+            objective_long = dependency_objective_long or objective_long_by_id.get(objective_id)
+            id_label_index[objective_id] = {
+                "type": "objective",
+                "code": objective_code,
+                "short_title": objective_label,
+                "long_title": objective_long,
+                "sources": ["maths_exercises_table", "maths_dependencies"],
+            }
+            activity_entries: list[dict[str, Any]] = []
+            activity_ids = _list_unique(activity_ids_by_objective.get(objective_id, []))
+            activity_positions = _position_by_first_seen(activity_ids_by_objective.get(objective_id, []))
+            activity_ids = sorted(
+                activity_ids,
+                key=lambda activity_id: (
+                    0
+                    if (
+                        dependency_activity_code := _neurips_dependency_code(
+                            activity_id,
+                            dependency_code_by_id,
+                            expected_prefix=f"{objective_code}A",
+                        )
+                    )
+                    else 1,
+                    _code_sort_key(dependency_activity_code),
+                    activity_positions.get(activity_id, 10**9),
+                    activity_name_by_id.get(activity_id) or activity_id,
+                ),
+            )
+            for activity_idx, activity_id in enumerate(activity_ids, start=1):
+                activity_code = _neurips_dependency_code(
+                    activity_id,
+                    dependency_code_by_id,
+                    expected_prefix=f"{objective_code}A",
+                ) or f"{objective_code}A{activity_idx}"
+                activity_code_by_id[activity_id] = activity_code
+                dependency_activity_short, dependency_activity_long = _neurips_dependency_title(
+                    activity_id,
+                    dependency_title_by_id,
+                )
+                activity_label = dependency_activity_short or activity_name_by_id.get(activity_id) or activity_code
+                activity_long = dependency_activity_long or activity_label
+                exercise_ids = _list_unique(exercise_ids_by_activity.get(activity_id, []))
+                id_label_index[activity_id] = {
+                    "type": "activity",
+                    "code": activity_code,
+                    "short_title": activity_label,
+                    "long_title": activity_long,
+                    "sources": ["maths_exercises_table", "maths_dependencies"],
+                }
+                activity_entries.append(
+                    {
+                        "id": activity_id,
+                        "code": activity_code,
+                        "title": {"short": activity_label, "long": activity_long},
+                        "exercise_ids": exercise_ids,
+                    }
+                )
+            objective_entries.append(
+                {
+                    "id": objective_id,
+                    "code": objective_code,
+                    "title": {"short": objective_label, "long": objective_long},
+                    "activities": activity_entries,
+                }
+            )
+        modules_payload.append(
+            {
+                "id": module_id,
+                "code": module_code,
+                "status": "visible",
+                "title": {"short": module_label, "long": module_long},
+                "source": module_source_by_id.get(module_id),
+                "objectives": objective_entries,
+            }
+        )
+
+    for exercise_id, metadata in exercise_metadata_by_id.items():
+        id_label_index[exercise_id] = {
+            "type": "exercise",
+            "code": None,
+            "short_title": _first_non_empty(metadata.get("instruction"), metadata.get("question"), exercise_id),
+            "long_title": _first_non_empty(metadata.get("question"), metadata.get("instruction")),
+            "sources": ["maths_exercises_table"],
+        }
+
+    canonical_lookup = _best_neurips_lookup(
+        weighted_candidates,
+        key_columns=("exercise_id",),
+        suffix="canonical",
+    )
+    exercise_to_hierarchy = {
+        str(row["exercise_id"]): {
+            "module_id": row["module_id_canonical"],
+            "objective_id": row["objective_id_canonical"],
+            "activity_id": row["activity_id_canonical"],
+        }
+        for row in canonical_lookup.to_dicts()
+        if row.get("exercise_id")
+        and row.get("module_id_canonical")
+        and row.get("objective_id_canonical")
+        and row.get("activity_id_canonical")
+    }
+
+    dependency_only_exercises = set(exercise_to_hierarchy) - set(exercise_metadata_by_id)
+    for exercise_id in sorted(dependency_only_exercises):
+        exercise_metadata_by_id[exercise_id] = {
+            "id": exercise_id,
+            "type": None,
+            "instruction": None,
+            "question": None,
+            "feedback": None,
+            "source": "maths_dependencies",
+        }
+        id_label_index[exercise_id] = {
+            "type": "exercise",
+            "code": None,
+            "short_title": exercise_id,
+            "long_title": None,
+            "sources": ["maths_dependencies"],
+        }
+
+    candidate_exercise_ids = set(exercise_to_hierarchy)
+    attempted_exercises = (
+        pl.scan_parquet(attempts_parquet_path)
+        .select(pl.col("exercise_id").cast(pl.Utf8))
+        .unique()
+        .collect()
+    )
+    unmapped_attempt_exercise_ids = sorted(
+        str(row["exercise_id"])
+        for row in attempted_exercises.to_dicts()
+        if row.get("exercise_id") not in candidate_exercise_ids
+    )
+
+    context_lookup = _best_neurips_lookup(
+        weighted_candidates.filter(pl.col("source").is_not_null()),
+        key_columns=("source", "module_id", "exercise_id"),
+        suffix="context",
+    ).rename({"module_id": "playlist_or_module_id"})
+    source_lookup = _best_neurips_lookup(
+        weighted_candidates.filter(pl.col("source").is_not_null()),
+        key_columns=("source", "exercise_id"),
+        suffix="source",
+    )
+
+    raw_attempts = (
+        pl.scan_parquet(attempts_parquet_path)
+        .with_columns(
+            _optional_text_expr("source").alias("source"),
+            _optional_text_expr("user_id").alias("user_id"),
+            _optional_text_expr("playlist_or_module_id").alias("playlist_or_module_id"),
+            _optional_text_expr("exercise_id").alias("exercise_id"),
+            _optional_text_expr("work_mode").alias("work_mode"),
+        )
+        .join(context_lookup.lazy(), on=["source", "playlist_or_module_id", "exercise_id"], how="left")
+        .join(source_lookup.lazy(), on=["source", "exercise_id"], how="left")
+        .join(canonical_lookup.lazy(), on="exercise_id", how="left")
+        .with_columns(
+            pl.coalesce(
+                [
+                    pl.col("module_id_context"),
+                    pl.col("module_id_source"),
+                    pl.col("module_id_canonical"),
+                ]
+            ).alias("module_id"),
+            pl.coalesce(
+                [
+                    pl.col("objective_id_context"),
+                    pl.col("objective_id_source"),
+                    pl.col("objective_id_canonical"),
+                ]
+            ).alias("objective_id"),
+            pl.coalesce(
+                [
+                    pl.col("activity_id_context"),
+                    pl.col("activity_id_source"),
+                    pl.col("activity_id_canonical"),
+                ]
+            ).alias("activity_id"),
+        )
+        .with_columns(
+            pl.lit(None, dtype=pl.Utf8).alias("variation"),
+            pl.lit(None, dtype=pl.Datetime("us", "UTC")).alias("login_time"),
+            pl.col("data_correct").cast(pl.Float64).alias("data_score"),
+            pl.col("data_correct").cast(pl.Boolean).alias("data_correct"),
+            pl.col("work_mode").alias("data_test_context"),
+            pl.lit(None, dtype=pl.Float64).alias("progression_score"),
+            pl.lit(None, dtype=pl.Float64).alias("initial_test_max_success"),
+            pl.lit(None, dtype=pl.Float64).alias("initial_test_weighted_max_success"),
+            pl.lit(None, dtype=pl.Float64).alias("initial_test_success_rate"),
+            pl.lit(None, dtype=pl.Float64).alias("finished_module_mean_score"),
+            pl.lit(None, dtype=pl.Float64).alias("finished_module_graphe_coverage_rate"),
+            pl.lit(None, dtype=pl.Boolean).alias("is_gar"),
+            pl.lit(None, dtype=pl.Utf8).alias("teacher_id"),
+            pl.lit(None, dtype=pl.Utf8).alias("classroom_id"),
+            pl.col("data_duration").cast(pl.Float64, strict=False).alias("data_duration"),
+            pl.lit(None, dtype=pl.Float64).alias("session_duration"),
+            pl.coalesce(
+                [
+                    pl.col("module_id_context").replace(module_name_by_id),
+                    pl.col("module_id_source").replace(module_name_by_id),
+                    pl.col("module_id_canonical").replace(module_name_by_id),
+                ]
+            ).alias("module_long_title"),
+        )
+        .sort(["user_id", "created_at", "exercise_id"])
+        .with_columns(
+            pl.coalesce(
+                [
+                    pl.col("attempt_index").cast(pl.Int64, strict=False),
+                    pl.col("exercise_id").cum_count().over(["user_id", "exercise_id"]).cast(pl.Int64),
+                ]
+            ).alias("attempt_number"),
+            pl.col("user_id").cum_count().over("user_id").alias("student_attempt_index"),
+        )
+        .select(
+            [
+                "user_id",
+                "variation",
+                "module_id",
+                "objective_id",
+                "activity_id",
+                "exercise_id",
+                "created_at",
+                "login_time",
+                "data_score",
+                "data_correct",
+                "work_mode",
+                "data_test_context",
+                "progression_score",
+                "initial_test_max_success",
+                "initial_test_weighted_max_success",
+                "initial_test_success_rate",
+                "finished_module_mean_score",
+                "finished_module_graphe_coverage_rate",
+                "is_gar",
+                "teacher_id",
+                "classroom_id",
+                "playlist_or_module_id",
+                "data_duration",
+                "session_duration",
+                "attempt_number",
+                "student_attempt_index",
+                "module_long_title",
+                "source",
+                "session_id",
+                "data_answer",
+            ]
+        )
+        .collect()
+    )
+
+    code_to_id: dict[str, str] = {}
+    id_to_codes: dict[str, list[str]] = defaultdict(list)
+    for identifier, entry in id_label_index.items():
+        code = _clean_text(entry.get("code"))
+        if not code:
+            continue
+        code_to_id[code] = identifier
+        id_to_codes[identifier].append(code)
+
+    dependency_topology: dict[str, dict[str, list[dict[str, Any]]]] = {}
+    unresolved_dependency_ids: set[str] = set()
+    for module in modules_payload:
+        module_code = str(module.get("code") or "")
+        if not module_code or module_code == "M999":
+            continue
+        module_id = str(module.get("id") or "")
+        raw_module = raw_modules.get(module_id, {})
+        raw_module_objectives = raw_module.get("objectives", {}) if isinstance(raw_module, dict) else {}
+        raw_module_objectives = raw_module_objectives if isinstance(raw_module_objectives, dict) else {}
+        module_activity_code_by_id = {
+            str(activity.get("id") or ""): str(activity.get("code") or "")
+            for objective_entry in module.get("objectives") or []
+            for activity in objective_entry.get("activities") or []
+            if str(activity.get("id") or "")
+            in raw_module_objectives.get(str(objective_entry.get("id")), {}).get("activities", {})
+        }
+        nodes: list[dict[str, Any]] = []
+        edges: list[dict[str, Any]] = []
+        edge_pairs: set[tuple[str, str]] = set()
+        for objective in module.get("objectives") or []:
+            raw_objective = raw_module_objectives.get(str(objective.get("id")), {})
+            if not isinstance(raw_objective, dict) or not raw_objective:
+                continue
+            raw_activities = raw_objective.get("activities")
+            raw_activities = raw_activities if isinstance(raw_activities, dict) else {}
+            objective_code = str(objective.get("code") or "")
+            nodes.append(
+                {
+                    "module_code": module_code,
+                    "node_id": objective["id"],
+                    "node_code": objective_code,
+                    "node_type": "objective",
+                    "label": (objective.get("title") or {}).get("short") or objective_code,
+                    "objective_code": objective_code,
+                    "activity_index": None,
+                    "init_open": False,
+                    "source_primary": "maths_dependencies",
+                    "source_enrichment": "learning_catalog",
+                    "is_ghost": False,
+                }
+            )
+            dependency_activities = [
+                activity
+                for activity in objective.get("activities") or []
+                if str(activity.get("id") or "") in raw_activities
+            ]
+            for activity_index, activity in enumerate(dependency_activities, start=1):
+                activity_code = str(activity.get("code") or "")
+                activity_id = str(activity.get("id") or "")
+                raw_activity = raw_activities.get(activity_id, {})
+                prerequisites = [
+                    str(value)
+                    for value in (raw_activity.get("prerequisite_activity_ids") or [])
+                    if str(value or "").strip()
+                ]
+                nodes.append(
+                    {
+                        "module_code": module_code,
+                        "node_id": activity_id,
+                        "node_code": activity_code,
+                        "node_type": "activity",
+                        "label": (activity.get("title") or {}).get("short") or activity_code,
+                        "objective_code": objective_code,
+                        "activity_index": activity_index,
+                        "init_open": not prerequisites,
+                        "source_primary": "maths_dependencies",
+                        "source_enrichment": "learning_catalog",
+                        "is_ghost": False,
+                    }
+                )
+                for prerequisite_id in prerequisites:
+                    from_code = module_activity_code_by_id.get(prerequisite_id)
+                    if not from_code:
+                        unresolved_dependency_ids.add(prerequisite_id)
+                        continue
+                    if (from_code, activity_code) in edge_pairs:
+                        continue
+                    edge_pairs.add((from_code, activity_code))
+                    edges.append(
+                        {
+                            "module_code": module_code,
+                            "edge_id": f"{module_code}:prerequisite:{from_code}->{activity_code}",
+                            "edge_type": "prerequisite",
+                            "from_node_code": from_code,
+                            "to_node_code": activity_code,
+                            "threshold_type": None,
+                            "threshold_value": None,
+                            "rule_text": None,
+                            "source_primary": "maths_dependencies",
+                            "source_enrichment": None,
+                            "enrich_lvl": None,
+                            "enrich_sr": None,
+                        }
+                    )
+                for unlocked_id in raw_activity.get("unlocks_activity_ids") or []:
+                    to_code = module_activity_code_by_id.get(str(unlocked_id))
+                    if not to_code:
+                        unresolved_dependency_ids.add(str(unlocked_id))
+                        continue
+                    if (activity_code, to_code) in edge_pairs:
+                        continue
+                    edge_pairs.add((activity_code, to_code))
+                    edges.append(
+                        {
+                            "module_code": module_code,
+                            "edge_id": f"{module_code}:unlock:{activity_code}->{to_code}",
+                            "edge_type": "unlock",
+                            "from_node_code": activity_code,
+                            "to_node_code": to_code,
+                            "threshold_type": None,
+                            "threshold_value": None,
+                            "rule_text": None,
+                            "source_primary": "maths_dependencies",
+                            "source_enrichment": None,
+                            "enrich_lvl": None,
+                            "enrich_sr": None,
+                        }
+                    )
+        if nodes or edges:
+            dependency_topology[module_code] = {"nodes": nodes, "edges": edges}
+
+    exercises_json = {
+        "exercises": [
+            {
+                **metadata,
+                "activities": [exercise_to_hierarchy[exercise_id]["activity_id"]]
+                if exercise_id in exercise_to_hierarchy
+                else [],
+                "objectives": [exercise_to_hierarchy[exercise_id]["objective_id"]]
+                if exercise_id in exercise_to_hierarchy
+                else [],
+                "modules": [exercise_to_hierarchy[exercise_id]["module_id"]]
+                if exercise_id in exercise_to_hierarchy
+                else [],
+            }
+            for exercise_id, metadata in sorted(exercise_metadata_by_id.items())
+        ]
+    }
+
+    duplicate_exercise_ids = (
+        exercise_frame.group_by("exercise_id")
+        .agg(pl.len().alias("rows"))
+        .filter(pl.col("rows") > 1)
+        .select("exercise_id")
+        .to_series()
+        .to_list()
+    )
+    learning_catalog = {
+        "meta": {
+            "generated_by": "visu2 neurips maths adapter",
+            "source_id": source_id,
+            "build_timestamp_utc": datetime.now(UTC).isoformat(),
+            "version": "neurips_maths_runtime_v1",
+            "source_files": [
+                str(attempts_parquet_path),
+                str(exercises_csv_path),
+                str(dependencies_json_path),
+            ],
+            "counts": {
+                "modules": len(modules_payload),
+                "objectives": len(objective_code_by_id),
+                "activities": len(activity_code_by_id),
+                "exercises_unique": len(exercise_to_hierarchy),
+            },
+        },
+        "conflicts": {
+            "coverage": {
+                "overlapping_activity_count": 0,
+                "primary_only_activity_count": len(activity_code_by_id),
+                "secondary_only_activity_count": 0,
+                "overlap_membership_disagreement_count": 0,
+            },
+            "missing_references": {
+                "missing_activity_ids_in_objectives": [],
+                "missing_objective_ids_in_modules": [],
+            },
+            "source_disagreements": {
+                "activity_exercise_membership_disagreements": [],
+                "id_label_disagreements": [],
+                "duplicate_exercise_ids": sorted(str(value) for value in duplicate_exercise_ids),
+            },
+            "secondary_mapping_candidates_for_orphans": {
+                "unique_count": 0,
+                "ambiguous_count": 0,
+            },
+        },
+        "orphans": unmapped_attempt_exercise_ids,
+        "id_label_index": id_label_index,
+        "modules": modules_payload,
+        "exercise_to_hierarchy": exercise_to_hierarchy,
+    }
+
+    zpdes_rules = {
+        "meta": {
+            "generated_by": "visu2 neurips maths adapter",
+            "source_id": source_id,
+            "build_timestamp_utc": datetime.now(UTC).isoformat(),
+            "version": "neurips_maths_zpdes_v1",
+            "source_files": [str(dependencies_json_path)],
+        },
+        "module_rules": [
+            {
+                "module_code": module["code"],
+                "module_id": module["id"],
+                "node_rules": [],
+            }
+            for module in modules_payload
+            if module.get("code") in dependency_topology
+        ],
+        "map_id_code": {
+            "code_to_id": code_to_id,
+            "id_to_codes": dict(id_to_codes),
+        },
+        "dependency_topology": dependency_topology,
+        "links_to_catalog": {
+            "rule_module_ids": [
+                str(module["id"])
+                for module in modules_payload
+                if module.get("code") in dependency_topology
+            ],
+        },
+        "unresolved_links": {
+            "rule_ids_missing_in_catalog": sorted(unresolved_dependency_ids),
+            "catalog_module_ids_missing_in_rules": [
+                str(module["id"])
+                for module in modules_payload
+                if module.get("code") not in dependency_topology and module.get("code") != "M999"
+            ],
+            "codes_with_multiple_ids": {},
+            "ids_with_multiple_codes": {},
+        },
+    }
+
+    warnings: list[str] = []
+    if unmapped_attempt_exercise_ids:
+        warnings.append(
+            f"Kept {len(unmapped_attempt_exercise_ids)} attempted exercise id(s) without NeurIPS hierarchy mapping."
+        )
+    if duplicate_exercise_ids:
+        warnings.append(
+            f"Resolved {len(duplicate_exercise_ids)} duplicate exercise id(s) with source/module and attempt-weighted precedence."
+        )
+    if unresolved_dependency_ids:
+        warnings.append(
+            f"Skipped {len(unresolved_dependency_ids)} dependency edge endpoint(s) missing from the catalog."
+        )
+
+    return raw_attempts, learning_catalog, zpdes_rules, exercises_json, tuple(sorted(set(warnings)))
+
+
 def materialize_source_runtime_inputs(settings: Settings) -> SourceMaterializationReport:
     """Materialize one source into runtime and local-build directories."""
     ensure_artifact_directories(settings)
@@ -2406,6 +3484,42 @@ def materialize_source_runtime_inputs(settings: Settings) -> SourceMaterializati
         return SourceMaterializationReport(
             source_id=settings.source_id,
             input_paths=tuple(input_paths),
+            warnings=warnings,
+        )
+
+    if source.build_profile == "neurips_maths":
+        attempts_parquet_path = settings.root_dir / source.raw_inputs["parquet"]
+        exercises_csv_path = settings.root_dir / source.raw_inputs["exercises_csv"]
+        dependencies_json_path = settings.root_dir / source.raw_inputs["dependencies_json"]
+        raw_attempts, learning_catalog, zpdes_rules, exercises_json, warnings = (
+            _neurips_catalog_payloads(
+                attempts_parquet_path=attempts_parquet_path,
+                exercises_csv_path=exercises_csv_path,
+                dependencies_json_path=dependencies_json_path,
+                source_id=settings.source_id,
+            )
+        )
+        raw_attempts.write_parquet(settings.parquet_path)
+        settings.learning_catalog_path.write_text(
+            json.dumps(learning_catalog, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        settings.zpdes_rules_path.write_text(
+            json.dumps(zpdes_rules, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        settings.exercises_json_path.write_text(
+            json.dumps(exercises_json, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        return SourceMaterializationReport(
+            source_id=settings.source_id,
+            input_paths=(
+                str(settings.parquet_path),
+                str(settings.learning_catalog_path),
+                str(settings.zpdes_rules_path),
+                str(settings.exercises_json_path),
+            ),
             warnings=warnings,
         )
 

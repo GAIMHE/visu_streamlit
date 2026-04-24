@@ -12,6 +12,7 @@ import polars as pl
 from visu2.config import Settings
 from visu2.derive import build_zpdes_exercise_progression_events_from_fact
 from visu2.zpdes_transition_efficiency import (
+    _collapse_cross_objective_activity_edges,
     _focus_ancestor_root_codes,
     _highlighted_edge_pairs_for_focus,
     _related_node_codes_for_focus,
@@ -149,6 +150,33 @@ def _edges() -> pl.DataFrame:
             "enrich_sr": [None, None, None],
         }
     )
+
+
+def test_cross_objective_activity_edges_collapse_to_objective_display_edge() -> None:
+    """Cross-objective fan-out should render as one arrow to the objective square."""
+    nodes = pl.DataFrame(
+        {
+            "node_code": ["M1O1", "M1O1A1", "M1O2", "M1O2A1", "M1O2A2"],
+            "node_type": ["objective", "activity", "objective", "activity", "activity"],
+            "objective_code": ["M1O1", "M1O1", "M1O2", "M1O2", "M1O2"],
+        }
+    ).to_dicts()
+    edges = [
+        {"edge_type": "activation", "from_node_code": "M1O1A1", "to_node_code": "M1O2A1"},
+        {"edge_type": "activation", "from_node_code": "M1O1A1", "to_node_code": "M1O2A2"},
+        {"edge_type": "activation", "from_node_code": "M1O2A1", "to_node_code": "M1O2A2"},
+    ]
+
+    collapsed = _collapse_cross_objective_activity_edges(edges, nodes)
+    display_pairs = {
+        (str(row["from_node_code"]), str(row["to_node_code"]))
+        for row in collapsed
+    }
+
+    assert ("M1O1A1", "M1O2") in display_pairs
+    assert ("M1O1A1", "M1O2A1") not in display_pairs
+    assert ("M1O1A1", "M1O2A2") not in display_pairs
+    assert ("M1O2A1", "M1O2A2") in display_pairs
 
 
 def _fact() -> pl.DataFrame:

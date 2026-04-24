@@ -61,7 +61,7 @@ def test_load_hf_repo_config_from_legacy_env() -> None:
         }
     )
     assert config is not None
-    assert config.source_id == "main"
+    assert config.source_id == "neurips"
     assert config.repo_id == "org/repo"
     assert config.revision == "v1"
     assert config.repo_type == "dataset"
@@ -111,6 +111,7 @@ def test_load_hf_repo_config_missing_required_values() -> None:
         load_hf_repo_config(environ={"VISU2_HF_REPO_ID": "org/repo"})
     with pytest.raises(ValueError):
         load_hf_repo_config(
+            source_id="main",
             environ={
                 "VISU2_HF_SOURCES_JSON": json.dumps({"main": {"repo_id": "org/repo"}}),
                 "HF_TOKEN": "token",

@@ -9,6 +9,7 @@ from visu2.build_cache import (
     can_reuse_derived_build,
 )
 from visu2.config import Settings
+from visu2.contracts import DERIVED_SCHEMA_VERSION
 
 
 def _build_settings(tmp_path: Path, *, source_id: str = "maureen_m16fr") -> Settings:
@@ -98,7 +99,7 @@ def test_can_reuse_derived_build_when_manifest_matches(tmp_path: Path) -> None:
     manifest = {
         "manifest_version": 1,
         "generated_at_utc": "2026-03-26T00:00:00+00:00",
-        "schema_version": 1,
+        "schema_version": DERIVED_SCHEMA_VERSION,
         "cache_version": BUILD_CACHE_VERSION,
         "source_id": settings.source_id,
         "source_input_snapshot": snapshot,
@@ -131,7 +132,7 @@ def test_can_reuse_derived_build_rejects_changed_inputs(tmp_path: Path) -> None:
     manifest = {
         "manifest_version": 1,
         "generated_at_utc": "2026-03-26T00:00:00+00:00",
-        "schema_version": 1,
+        "schema_version": DERIVED_SCHEMA_VERSION,
         "cache_version": BUILD_CACHE_VERSION,
         "source_id": settings.source_id,
         "source_input_snapshot": {

@@ -313,6 +313,7 @@ def build_m1_individual_path_figure(payload: dict[str, Any], frame_idx: int) -> 
         edge_rows,
         node_positions,
         curve_intra_objective_edges=True,
+        node_rows=[*objective_rows, *activity_rows],
     )
 
     objective_hover = (

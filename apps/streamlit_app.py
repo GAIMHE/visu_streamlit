@@ -31,7 +31,7 @@ from source_state import (
     set_active_source_id,
 )
 
-from visu2.runtime_sources import get_runtime_source, list_runtime_sources
+from visu2.runtime_sources import DEFAULT_SOURCE_ID, get_runtime_source
 
 st.set_page_config(
     page_title="Learning Analytics Explorer",
@@ -54,21 +54,11 @@ def _source_option_label(source_id: str) -> str:
 
 
 def _select_source() -> str:
-    source_specs = list_runtime_sources()
-    source_ids = [spec.source_id for spec in source_specs]
-    active_source_id = get_active_source_id()
-    if active_source_id not in source_ids:
-        active_source_id = source_ids[0]
-    selected_source = st.sidebar.selectbox(
-        "Dataset source",
-        options=source_ids,
-        index=source_ids.index(active_source_id),
-        format_func=_source_option_label,
-    )
-    if selected_source != active_source_id:
+    selected_source = DEFAULT_SOURCE_ID
+    if get_active_source_id() != selected_source:
         set_active_source_id(selected_source)
         _clear_page_data_cache()
-        st.rerun()
+    st.sidebar.caption(f"Dataset source: {_source_option_label(selected_source)}")
     return selected_source
 
 

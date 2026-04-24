@@ -188,7 +188,13 @@ def _build_one_source(
             reuse_reason.startswith("Derived manifest schema version")
             or reuse_reason.startswith("Derived manifest cache version")
         )
-        rebuild_all_tables = raw_inputs_changed or materialized_missing or manifest_schema_changed
+        sample_rows_changed = reuse_reason == "Derived manifest was built with a different sample_rows setting."
+        rebuild_all_tables = (
+            raw_inputs_changed
+            or materialized_missing
+            or manifest_schema_changed
+            or sample_rows_changed
+        )
         if partial_build and (raw_inputs_changed or materialized_missing):
             print(
                 "Targeted table builds require unchanged raw inputs and already-materialized local inputs. "
