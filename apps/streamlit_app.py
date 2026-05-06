@@ -50,7 +50,7 @@ def _clear_page_data_cache() -> None:
 
 def _source_option_label(source_id: str) -> str:
     source = get_runtime_source(source_id)
-    return f"{source.label} [{source.source_id}]"
+    return source.label
 
 
 def _select_source() -> str:
