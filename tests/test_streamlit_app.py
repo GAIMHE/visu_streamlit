@@ -51,7 +51,7 @@ def test_select_source_clears_cache_when_source_changes(monkeypatch) -> None:
 
     assert selected == "neurips"
     assert events == ["set:neurips", "clear"]
-    assert sidebar.caption_messages == ["Dataset source: MIAAM [neurips]"]
+    assert sidebar.caption_messages == ["Dataset source: MIAAM"]
 
 
 def test_select_page_clears_cache_when_page_changes(monkeypatch) -> None:
