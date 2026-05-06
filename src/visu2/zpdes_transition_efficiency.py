@@ -965,6 +965,7 @@ def build_transition_efficiency_figure(
     show_ids: bool,
     curve_intra_objective_edges: bool,
     focused_node_code: str | None = None,
+    structure_only: bool = False,
 ) -> go.Figure:
     """Build the static ZPDES transition-efficiency graph."""
     if nodes.height == 0:
@@ -1052,9 +1053,9 @@ def build_transition_efficiency_figure(
             go.Scatter(
                 x=[node_positions[str(row.get("node_code"))][0] for row in rows],
                 y=[node_positions[str(row.get("node_code"))][1] for row in rows],
-                mode="markers+text",
-                text=[truncate_text(row.get("label"), 36) for row in rows],
-                textposition="top center",
+                mode="markers" if structure_only else "markers+text",
+                text=None if structure_only else [truncate_text(row.get("label"), 36) for row in rows],
+                textposition=None if structure_only else "top center",
                 textfont={"size": 11, "color": text_color},
                 customdata=[
                     [str(row.get("node_code") or ""), str(row.get("node_type") or ""), str(row.get("label") or "")]
@@ -1092,7 +1093,7 @@ def build_transition_efficiency_figure(
         + ("ID: %{customdata[4]}<br>" if show_ids else "")
         + "Code: %{customdata[0]}<br>"
         + "Objective lane: %{customdata[5]}<br>"
-        + f"{metric_label}: %{{customdata[6]}}<br>"
+        + ("" if structure_only else f"{metric_label}: %{{customdata[6]}}<br>")
         + "Adaptive-test mode first-attempt success / events: %{customdata[7]} / %{customdata[8]}<br>"
         + "Initial-test mode first-attempt success / events: %{customdata[9]} / %{customdata[10]}<br>"
         + "Playlist mode first-attempt success / events: %{customdata[11]} / %{customdata[12]}<br>"
@@ -1115,18 +1116,21 @@ def build_transition_efficiency_figure(
         "size": 14,
         "symbol": ["diamond-open" if bool(row.get("is_ghost")) else "circle" for row in activity_rows],
         "line": {"width": 1.5, "color": "#1b1d22"},
-        "color": [
+        "showscale": False if structure_only else True,
+    }
+    if structure_only:
+        activity_marker["color"] = "#2f8f5b"
+    else:
+        activity_marker["color"] = [
             float(row.get("transition_metric_value"))
             if row.get("transition_metric_value") is not None
             and not _is_missing(row.get("transition_metric_value"))
             else float("nan")
             for row in activity_rows
-        ],
-        "colorscale": colorscale,
-        "showscale": True,
-        "colorbar": {"title": metric_label, "x": 1.04, "y": 0.5, "len": 0.78, "thickness": 16},
-    }
-    if cmin is not None and cmax is not None:
+        ]
+        activity_marker["colorscale"] = colorscale
+        activity_marker["colorbar"] = {"title": metric_label, "x": 1.04, "y": 0.5, "len": 0.78, "thickness": 16}
+    if not structure_only and cmin is not None and cmax is not None:
         activity_marker["cmin"] = cmin
         activity_marker["cmax"] = cmax
 
@@ -1187,16 +1191,17 @@ def build_transition_efficiency_figure(
 
     if active_activity_rows:
         active_marker = dict(activity_marker)
-        active_marker["showscale"] = not focused_activity_rows
+        active_marker["showscale"] = False if structure_only else not focused_activity_rows
         active_marker["symbol"] = [
             "diamond-open" if bool(row.get("is_ghost")) else "circle" for row in active_activity_rows
         ]
-        active_marker["color"] = [
-            float(row.get("transition_metric_value"))
-            if row.get("transition_metric_value") is not None and not _is_missing(row.get("transition_metric_value"))
-            else float("nan")
-            for row in active_activity_rows
-        ]
+        if not structure_only:
+            active_marker["color"] = [
+                float(row.get("transition_metric_value"))
+                if row.get("transition_metric_value") is not None and not _is_missing(row.get("transition_metric_value"))
+                else float("nan")
+                for row in active_activity_rows
+            ]
         fig.add_trace(
             go.Scatter(
                 x=[node_positions[str(row.get("node_code"))][0] for row in active_activity_rows],
@@ -1211,18 +1216,19 @@ def build_transition_efficiency_figure(
 
     if focused_activity_rows:
         focused_marker = dict(activity_marker)
-        focused_marker["showscale"] = True
+        focused_marker["showscale"] = False if structure_only else True
         focused_marker["size"] = 18
         focused_marker["line"] = {"width": 2.5, "color": "#11151d"}
         focused_marker["symbol"] = [
             "diamond-open" if bool(row.get("is_ghost")) else "circle" for row in focused_activity_rows
         ]
-        focused_marker["color"] = [
-            float(row.get("transition_metric_value"))
-            if row.get("transition_metric_value") is not None and not _is_missing(row.get("transition_metric_value"))
-            else float("nan")
-            for row in focused_activity_rows
-        ]
+        if not structure_only:
+            focused_marker["color"] = [
+                float(row.get("transition_metric_value"))
+                if row.get("transition_metric_value") is not None and not _is_missing(row.get("transition_metric_value"))
+                else float("nan")
+                for row in focused_activity_rows
+            ]
         fig.add_trace(
             go.Scatter(
                 x=[node_positions[str(row.get("node_code"))][0] for row in focused_activity_rows],
@@ -1244,6 +1250,7 @@ def build_transition_efficiency_figure(
         dragmode=False,
         plot_bgcolor="rgba(255,255,255,0.65)",
         paper_bgcolor="rgba(0,0,0,0)",
+        legend_title_text="",
         legend={
             "orientation": "h",
             "x": 0.0,

@@ -113,7 +113,7 @@ def test_neurips_catalog_payloads_resolve_duplicates_and_keep_unmapped_rows(tmp_
 
     raw_attempts, catalog, rules, exercises_json, warnings = _neurips_catalog_payloads(
         attempts_parquet_path=attempts_path,
-        exercises_csv_path=exercises_path,
+        exercises_table_path=exercises_path,
         dependencies_json_path=dependencies_path,
         source_id="neurips",
     )
@@ -138,6 +138,99 @@ def test_neurips_catalog_payloads_resolve_duplicates_and_keep_unmapped_rows(tmp_
     assert any(item["id"] == "exercise-dependency-only" for item in exercises_json["exercises"])
     assert any("duplicate exercise" in warning for warning in warnings)
     assert any("without NeurIPS hierarchy" in warning for warning in warnings)
+
+
+def test_neurips_catalog_payloads_accept_parquet_content_and_preserve_classrooms(
+    tmp_path: Path,
+) -> None:
+    m1_id = "63e98e5f-94e3-4630-9704-076882d6de38"
+    attempts_path = tmp_path / "maths_data_filtered.parquet"
+    exercises_path = tmp_path / "maths_exercises_table.parquet"
+    dependencies_path = tmp_path / "maths_dependencies.json"
+
+    pl.DataFrame(
+        {
+            "user_id": ["u1", "u2"],
+            "classroom_id": ["class-a", "class-b"],
+            "playlist_or_module_id": [m1_id, m1_id],
+            "exercise_id": ["exercise-1", "exercise-1"],
+            "created_at": [
+                datetime(2025, 1, 1, 9, 0, tzinfo=UTC),
+                datetime(2025, 1, 1, 9, 1, tzinfo=UTC),
+            ],
+            "data_correct": [True, False],
+            "work_mode": ["zpdes", "zpdes"],
+            "data_answer": ["1", "2"],
+            "data_duration": [1.0, 2.0],
+            "source": ["am", "am"],
+            "attempt_index": [1, 1],
+            "session_id": ["s1", "s2"],
+        }
+    ).write_parquet(attempts_path)
+
+    pl.DataFrame(
+        {
+            "exercise_id": ["exercise-1"],
+            "gameplay_type": ["INPUT"],
+            "content": [
+                {
+                    "instruction": "Instruction from content",
+                    "question": "Question from content",
+                    "feedback": {"correct": "OK", "incorrect": "Try again"},
+                }
+            ],
+            "module_id": [m1_id],
+            "module_name": ["Numbers"],
+            "objective_id": ["objective-1"],
+            "objective_name": ["Objective 1"],
+            "objective_targeted_difficulties": ["Long 1"],
+            "activity_id": ["activity-1"],
+            "activity_name": ["Activity 1"],
+            "source": ["am"],
+        }
+    ).write_parquet(exercises_path)
+
+    dependencies_path.write_text(
+        json.dumps(
+            {
+                "modules": {
+                    m1_id: {
+                        "code": "M1",
+                        "objective_ids": ["objective-1"],
+                        "objectives": {
+                            "objective-1": {
+                                "code": "M1O1",
+                                "activity_ids": ["activity-1"],
+                                "activities": {
+                                    "activity-1": {
+                                        "code": "M1O1A1",
+                                        "exercise_ids": ["exercise-1"],
+                                        "prerequisite_activity_ids": [],
+                                        "unlocks_activity_ids": [],
+                                    }
+                                },
+                            }
+                        },
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    raw_attempts, _catalog, _rules, exercises_json, warnings = _neurips_catalog_payloads(
+        attempts_parquet_path=attempts_path,
+        exercises_table_path=exercises_path,
+        dependencies_json_path=dependencies_path,
+        source_id="neurips",
+    )
+
+    assert raw_attempts["classroom_id"].to_list() == ["class-a", "class-b"]
+    exercise = exercises_json["exercises"][0]
+    assert exercise["instruction"] == "Instruction from content"
+    assert exercise["question"] == "Question from content"
+    assert '"correct": "OK"' in exercise["feedback"]
+    assert warnings == ()
 
 
 def test_neurips_catalog_payloads_use_embedded_codes_from_unsorted_dependencies(
@@ -380,7 +473,7 @@ def test_neurips_catalog_payloads_use_embedded_codes_from_unsorted_dependencies(
 
     _, learning_catalog, zpdes_rules, _, warnings = _neurips_catalog_payloads(
         attempts_parquet_path=attempts_path,
-        exercises_csv_path=exercises_path,
+        exercises_table_path=exercises_path,
         dependencies_json_path=dependencies_path,
         source_id="neurips",
     )
@@ -562,7 +655,7 @@ def test_neurips_dependency_edges_resolve_reused_activity_ids_per_module(tmp_pat
 
     _, _, zpdes_rules, _, warnings = _neurips_catalog_payloads(
         attempts_parquet_path=attempts_path,
-        exercises_csv_path=exercises_path,
+        exercises_table_path=exercises_path,
         dependencies_json_path=dependencies_path,
         source_id="neurips",
     )

@@ -74,7 +74,7 @@ def test_runtime_relative_paths_are_source_scoped() -> None:
     assert "artifacts/derived/student_elo_profiles_batch_replay.parquet" not in mia_paths
     assert "artifacts/derived/student_elo_profiles_batch_replay.parquet" not in neurips_paths
     assert "artifacts/derived/classroom_mode_profiles.parquet" in main_paths
-    assert "artifacts/derived/classroom_mode_profiles.parquet" not in neurips_paths
+    assert "artifacts/derived/classroom_mode_profiles.parquet" in neurips_paths
     assert "data/exercises.json" not in main_paths
     assert "artifacts/reports/derived_manifest.json" not in main_paths
     assert "artifacts/derived/classroom_activity_summary_by_mode.parquet" not in maureen_paths
@@ -131,10 +131,13 @@ def test_visible_pages_hide_unsupported_maureen_views() -> None:
     assert mia_pages == (maureen_pages | {"zpdes_transition_efficiency"})
     assert neurips_pages == {
         "overview",
+        "student_interaction_distribution",
+        "gameplay_distribution",
         "bottlenecks",
         "matrix",
         "zpdes_transition_efficiency",
         "student_elo",
+        "classroom_sankey",
         "student_objective_spider",
     }
 

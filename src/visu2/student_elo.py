@@ -811,7 +811,7 @@ go.Figure
 
     fig.update_layout(
         title=f"{system_label or 'Student Elo'} module-local replay up to local attempt {cutoff}",
-        xaxis_title="Student-local attempt ordinal",
+        xaxis_title="Attempt number",
         yaxis_title="Student Elo",
         height=540,
         margin={"l": 56, "r": 24, "t": 72, "b": 56},
@@ -962,7 +962,7 @@ def build_student_elo_comparison_figure(
 
     fig.update_layout(
         title=f"Student Elo comparison up to local attempt {cutoff}",
-        xaxis_title="Student-local attempt ordinal",
+        xaxis_title="Attempt number",
         yaxis_title="Student Elo",
         height=560,
         margin={"l": 56, "r": 24, "t": 72, "b": 56},

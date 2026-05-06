@@ -51,6 +51,7 @@ def _parquet_columns(path: Path) -> list[str]:
 @st.cache_data(show_spinner=False)
 def _load_activity_daily_summary(path: Path) -> dict[str, object]:
     """Load only the summary needed from activity-daily aggregates."""
+    columns = set(_parquet_columns(path))
     summary_row = (
         pl.scan_parquet(path)
         .select(
@@ -62,17 +63,39 @@ def _load_activity_daily_summary(path: Path) -> dict[str, object]:
         .collect()
         .to_dicts()[0]
     )
-    module_codes = (
+    module_columns = ["module_code"]
+    if "module_label" in columns:
+        module_columns.append("module_label")
+    module_rows = (
         pl.scan_parquet(path)
-        .select(pl.col("module_code").drop_nulls().unique().sort())
-        .collect()["module_code"]
-        .to_list()
+        .select(module_columns)
+        .drop_nulls("module_code")
+        .unique()
+        .sort("module_code")
+        .collect()
+        .to_dicts()
     )
+    module_codes: list[str] = []
+    module_labels: dict[str, str] = {}
+    for row in module_rows:
+        module_code = str(row.get("module_code") or "").strip()
+        if not module_code:
+            continue
+        module_codes.append(module_code)
+        module_label = str(row.get("module_label") or "").strip()
+        module_labels[module_code] = module_label or module_code
     return {
         "min_date": summary_row.get("min_date"),
         "max_date": summary_row.get("max_date"),
-        "module_codes": [str(code) for code in module_codes if str(code or "").strip()],
+        "module_codes": module_codes,
+        "module_labels": module_labels,
     }
+
+
+def _format_module_option(module_label: str | None, module_code: str) -> str:
+    """Format module choices consistently with the Objective-Activity Matrix page."""
+    label = str(module_label or "").strip() or module_code
+    return f"{label} [{module_code}]"
 
 
 @st.cache_data(show_spinner=False)
@@ -285,7 +308,8 @@ div, p, label {
 """,
         unsafe_allow_html=True,
     )
-    settings = get_settings(get_active_source_id())
+    source_id = get_active_source_id()
+    settings = get_settings(source_id)
     activity_path = settings.artifacts_derived_dir / "agg_activity_daily.parquet"
     activity_elo_path = settings.artifacts_derived_dir / "agg_activity_elo.parquet"
     arrival_path = settings.artifacts_derived_dir / "zpdes_exercise_progression_events.parquet"
@@ -363,9 +387,45 @@ div, p, label {
     )
     start_date = population_filters.start_date
     end_date = population_filters.end_date
-    selected_module = st.sidebar.selectbox("Module", module_codes, index=0)
+    module_label_by_code = activity_summary.get("module_labels")
+    module_label_by_code = module_label_by_code if isinstance(module_label_by_code, dict) else {}
+    module_options_map = {
+        _format_module_option(
+            str(module_label_by_code.get(module_code) or "").strip(),
+            module_code,
+        ): module_code
+        for module_code in module_codes
+    }
+    module_options = list(module_options_map.keys())
+    module_select_key = f"{source_id}_zpdes_transition_module"
+    if st.session_state.get(module_select_key) not in module_options:
+        st.session_state.pop(module_select_key, None)
+    selected_module_label = st.sidebar.radio(
+        "Module",
+        module_options,
+        index=0,
+        key=module_select_key,
+    )
+    selected_module = module_options_map[selected_module_label]
 
-    metric_label = st.sidebar.selectbox("Activity coloring", list(NODE_METRIC_OPTIONS.keys()), index=0)
+    structure_only = bool(
+        st.sidebar.toggle(
+            "Structure only",
+            value=False,
+            help=(
+                "Hide objective labels and draw activity nodes with a fixed color instead of "
+                "encoding a performance metric."
+            ),
+        )
+    )
+    metric_label = st.sidebar.selectbox(
+        "Activity coloring",
+        list(NODE_METRIC_OPTIONS.keys()),
+        index=0,
+        disabled=structure_only,
+    )
+    if structure_only:
+        st.sidebar.caption("Activity colors are fixed in structure-only mode.")
     metric = NODE_METRIC_OPTIONS[metric_label]
     selected_work_mode = "zpdes"
     later_attempt_threshold = int(
@@ -452,10 +512,22 @@ div, p, label {
         },
         key=objective_sort_key,
     )
+    objective_select_key = f"{source_id}_zpdes_transition_objectives::{selected_module}"
+    stored_objectives = st.session_state.get(objective_select_key)
+    if isinstance(stored_objectives, list):
+        valid_selected_objectives = [
+            objective for objective in stored_objectives if objective in objective_options
+        ]
+        if valid_selected_objectives != stored_objectives:
+            if valid_selected_objectives:
+                st.session_state[objective_select_key] = valid_selected_objectives
+            else:
+                st.session_state.pop(objective_select_key, None)
     selected_objectives = st.sidebar.multiselect(
         "Objectives in module",
         options=objective_options,
         default=objective_options,
+        key=objective_select_key,
     )
     if not selected_objectives:
         st.info("Select at least one objective to render the graph.")
@@ -501,11 +573,12 @@ div, p, label {
         show_ids=show_ids,
         curve_intra_objective_edges=True,
         focused_node_code=focused_node_code if isinstance(focused_node_code, str) else None,
+        structure_only=structure_only,
     )
     event = st.plotly_chart(
         figure,
         width="stretch",
-        key="zpdes_transition_efficiency_graph",
+        key=f"zpdes_transition_efficiency_graph::{source_id}::{selected_module}",
         on_select="rerun",
         selection_mode=("points",),
         config=build_plotly_chart_config(

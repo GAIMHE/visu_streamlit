@@ -886,6 +886,7 @@ def test_build_transition_efficiency_figure_uses_semantic_legend_labels() -> Non
     assert "Intra-objective unlocking" in legend_names
     assert "Inter-objective unlocking" in legend_names
     assert "Deactivation" in legend_names
+    assert figure.layout.legend.title.text == ""
 
 
 def test_build_transition_efficiency_figure_renders_single_metric_colorbar() -> None:
@@ -905,6 +906,42 @@ def test_build_transition_efficiency_figure_renders_single_metric_colorbar() -> 
     assert traces_with_scale[0].marker.colorbar.x > 1.0
     assert figure.layout.legend.orientation == "h"
     assert figure.layout.legend.y > 1.0
+
+
+def test_build_transition_efficiency_figure_structure_only_hides_metric_encoding() -> None:
+    """Structure-only mode should remove objective text and metric color scaling."""
+    figure = build_transition_efficiency_figure(
+        nodes=_nodes(),
+        edges=_edges(),
+        metric="first_attempt_success_rate",
+        metric_label="First-attempt success",
+        later_attempt_threshold=1,
+        show_ids=False,
+        curve_intra_objective_edges=True,
+        structure_only=True,
+    )
+
+    objective_traces = [
+        trace
+        for trace in figure.data
+        if getattr(getattr(trace, "marker", None), "symbol", None) == "square"
+    ]
+    assert objective_traces
+    assert all(trace.mode == "markers" for trace in objective_traces)
+    assert all(trace.text is None for trace in objective_traces)
+    assert not [
+        trace
+        for trace in figure.data
+        if bool(getattr(getattr(trace, "marker", None), "showscale", False))
+    ]
+    fixed_activity_colors = [
+        trace.marker.color
+        for trace in figure.data
+        if trace.mode == "markers"
+        and getattr(trace.marker, "symbol", None) != "square"
+        and trace.marker.color == "#2f8f5b"
+    ]
+    assert fixed_activity_colors
 
 
 def test_build_transition_efficiency_figure_dims_unrelated_structural_edges_on_focus() -> None:

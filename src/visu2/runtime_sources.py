@@ -99,6 +99,7 @@ MIA_REQUIRED_RUNTIME_DERIVED_TABLES: tuple[str, ...] = tuple(
 
 NEURIPS_RUNTIME_DERIVED_TABLES: tuple[str, ...] = (
     "fact_attempt_core",
+    "classroom_mode_profiles",
     "agg_activity_daily",
     "agg_transition_edges",
     "agg_exercise_daily",
@@ -159,6 +160,8 @@ NEURIPS_LEGACY_CLEANUP_RELATIVE_PATHS: tuple[str, ...] = COMMON_LEGACY_CLEANUP_R
 ALL_PAGE_IDS: frozenset[str] = frozenset(
     {
         "overview",
+        "student_interaction_distribution",
+        "gameplay_distribution",
         "bottlenecks",
         "matrix",
         "zpdes_transition_efficiency",
@@ -363,30 +366,34 @@ RUNTIME_SOURCES: dict[str, RuntimeSourceSpec] = {
     ),
     "neurips": RuntimeSourceSpec(
         source_id="neurips",
-        label="NeurIPS Maths",
+        label="MIAAM",
         description=(
-            "NeurIPS maths dataset release built from Adaptiv'Math and MIA interaction logs, "
-            "exercise metadata, and simplified ZPDES dependency graphs."
+            "MIAAM maths dataset release built from Adaptiv'Math and MIA interaction logs, "
+            "exercise metadata, simplified ZPDES dependency graphs, and classroom identifiers."
         ),
         runtime_root_relative=Path("artifacts") / "sources" / "neurips",
         local_root_relative=Path("artifacts") / "local" / "neurips",
         legacy_root_relative=Path("artifacts") / "legacy" / "neurips",
         build_profile="neurips_maths",
         raw_inputs={
-            "parquet": Path("data_neurips") / "maths_data.parquet",
-            "exercises_csv": Path("data_neurips") / "maths_exercises_table.csv",
-            "dependencies_json": Path("data_neurips") / "maths_dependencies.json",
+            "parquet": Path("data_miaam") / "maths_data_filtered.parquet",
+            "exercises_table": Path("data_miaam") / "maths_exercises_table.parquet",
+            "dependencies_json": Path("data_miaam") / "maths_dependencies.json",
         },
         supported_pages=(
             "overview",
+            "student_interaction_distribution",
+            "gameplay_distribution",
             "bottlenecks",
             "matrix",
             "zpdes_transition_efficiency",
             "student_elo",
+            "classroom_sankey",
             "student_objective_spider",
         ),
         capability_flags=frozenset(
             {
+                CAPABILITY_HAS_CLASSROOMS,
                 CAPABILITY_HAS_DURATION_FIELDS,
                 CAPABILITY_HAS_ZPDES_TOPOLOGY,
                 CAPABILITY_HAS_EXERCISE_METADATA,

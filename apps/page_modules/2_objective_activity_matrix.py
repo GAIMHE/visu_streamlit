@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import sys
 from datetime import date
+from math import isfinite
 from pathlib import Path
 
 import plotly.graph_objects as go
@@ -92,6 +93,126 @@ MATRIX_COHORT_OPTIONS = {
     "ZPDES mode": "zpdes",
     "Playlist mode": "playlist",
 }
+
+LOST_EXERCISES_LABEL = "lost exercises"
+MATRIX_CELL_DARK_TEXT = "#111111"
+MATRIX_CELL_LIGHT_TEXT = "#FFFFFF"
+MATRIX_CELL_LIGHT_TEXT_THRESHOLD = 0.56
+
+
+def _finite_matrix_values(z_values: object) -> list[float]:
+    values: list[float] = []
+    if not isinstance(z_values, list):
+        return values
+    for row in z_values:
+        if not isinstance(row, list):
+            continue
+        for value in row:
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                continue
+            if isfinite(number):
+                values.append(number)
+    return values
+
+
+def _matrix_text_color_grid(
+    z_values: object,
+    *,
+    z_min: float | None,
+    z_max: float | None,
+) -> list[list[str]]:
+    """Return per-cell text colors that preserve contrast against the heatmap fill."""
+    if not isinstance(z_values, list):
+        return []
+
+    finite_values = _finite_matrix_values(z_values)
+    if not finite_values and (z_min is None or z_max is None):
+        return [
+            [MATRIX_CELL_DARK_TEXT for _ in row]
+            for row in z_values
+            if isinstance(row, list)
+        ]
+
+    lower = float(z_min) if z_min is not None else min(finite_values)
+    upper = float(z_max) if z_max is not None else max(finite_values)
+    if not isfinite(lower) or not isfinite(upper) or upper <= lower:
+        return [
+            [MATRIX_CELL_DARK_TEXT for _ in row]
+            for row in z_values
+            if isinstance(row, list)
+        ]
+
+    color_grid: list[list[str]] = []
+    for row in z_values:
+        if not isinstance(row, list):
+            continue
+        color_row: list[str] = []
+        for value in row:
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                color_row.append(MATRIX_CELL_DARK_TEXT)
+                continue
+            normalized = (number - lower) / (upper - lower)
+            color_row.append(
+                MATRIX_CELL_LIGHT_TEXT
+                if normalized >= MATRIX_CELL_LIGHT_TEXT_THRESHOLD
+                else MATRIX_CELL_DARK_TEXT
+            )
+        color_grid.append(color_row)
+    return color_grid
+
+
+def _matrix_text_layer_points(
+    *,
+    x_labels: list[object],
+    y_labels: list[str],
+    text_grid: object,
+    color_grid: list[list[str]],
+) -> dict[str, list[str]]:
+    """Flatten matrix text and contrast colors into a Plotly text trace payload."""
+    points = {"x": [], "y": [], "text": [], "colors": []}
+    if not isinstance(text_grid, list):
+        return points
+    for row_idx, y_label in enumerate(y_labels):
+        if row_idx >= len(text_grid) or not isinstance(text_grid[row_idx], list):
+            continue
+        for col_idx, x_label in enumerate(x_labels):
+            if col_idx >= len(text_grid[row_idx]):
+                continue
+            text = "" if text_grid[row_idx][col_idx] is None else str(text_grid[row_idx][col_idx])
+            if not text.strip():
+                continue
+            points["x"].append(str(x_label))
+            points["y"].append(str(y_label))
+            points["text"].append(text)
+            if row_idx < len(color_grid) and col_idx < len(color_grid[row_idx]):
+                points["colors"].append(color_grid[row_idx][col_idx])
+            else:
+                points["colors"].append(MATRIX_CELL_DARK_TEXT)
+    return points
+
+
+def _is_lost_exercises_expr(column_name: str) -> pl.Expr:
+    """Return a case-insensitive expression matching the synthetic lost-exercises bucket."""
+    return pl.col(column_name).cast(pl.Utf8, strict=False).str.strip_chars().str.to_lowercase() == LOST_EXERCISES_LABEL
+
+
+def _exclude_lost_exercises(frame: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame | pl.LazyFrame:
+    """Hide synthetic Lost exercises hierarchy rows from the matrix page."""
+    columns = set(frame.collect_schema().names()) if isinstance(frame, pl.LazyFrame) else set(frame.columns)
+    filters: list[pl.Expr] = []
+    for column_name in ("module_label", "objective_label", "activity_label"):
+        if column_name in columns:
+            filters.append(~_is_lost_exercises_expr(column_name).fill_null(False))
+    if not filters:
+        return frame
+    keep_expr = filters[0]
+    for filter_expr in filters[1:]:
+        keep_expr = keep_expr & filter_expr
+    return frame.filter(keep_expr)
 
 
 @st.cache_data(show_spinner=False)
@@ -205,6 +326,7 @@ def load_exact_matrix_sources(
         activity_id=None,
     )
     fact_query = apply_min_student_attempts_filter(fact_query, min_student_attempts)
+    fact_query = _exclude_lost_exercises(fact_query)
     fact_slice = collect_lazy(fact_query)
     if fact_slice.height == 0:
         return collect_lazy(fact_query.limit(0)), pl.DataFrame(), pl.DataFrame()
@@ -496,6 +618,7 @@ div, p, label {
         st.stop()
 
     activity, missing_labels = _ensure_label_columns(activity_raw)
+    activity = _exclude_lost_exercises(activity)
     summary_payload = load_catalog_payload(catalog_path)
     has_first_attempt_columns = {
         "first_attempt_success_rate",
@@ -581,6 +704,8 @@ div, p, label {
             )
             st.markdown("- " + "\n- ".join(f"`{col}`" for col in missing_exercise_core))
             st.code("uv run python scripts/build_derived.py --strict-checks")
+        else:
+            exercise_daily = _exclude_lost_exercises(exercise_daily)
     has_exercise_balanced_metric = exercise_daily_status == "ok"
     if not has_exercise_balanced_metric:
         if has_fact_matrix_source:
@@ -616,6 +741,8 @@ div, p, label {
             )
             st.markdown("- " + "\n- ".join(f"`{col}`" for col in missing_activity_elo_core))
             st.code("uv run python scripts/build_derived.py --strict-checks")
+        else:
+            activity_elo = _exclude_lost_exercises(activity_elo)
 
     if not exercise_elo_path.exists():
         exercise_elo_status = "missing"
@@ -631,6 +758,8 @@ div, p, label {
             )
             st.markdown("- " + "\n- ".join(f"`{col}`" for col in missing_exercise_elo_core))
             st.code("uv run python scripts/build_derived.py --strict-checks")
+        else:
+            exercise_elo = _exclude_lost_exercises(exercise_elo)
 
     has_activity_elo_metric = activity_elo_status == "ok" and exercise_elo_status == "ok"
     if not has_activity_elo_metric:
@@ -640,9 +769,14 @@ div, p, label {
         )
 
     st.sidebar.header("Matrix Controls")
-    selected_module_label = st.sidebar.selectbox(
+    module_options = list(module_options_map.keys())
+    module_select_key = f"{settings.source_id}_matrix_module"
+    if st.session_state.get(module_select_key) not in module_options:
+        st.session_state.pop(module_select_key, None)
+    selected_module_label = st.sidebar.radio(
         "Module",
-        options=list(module_options_map.keys()),
+        options=module_options,
+        key=module_select_key,
     )
     selected_module_code = module_options_map[selected_module_label]
     selected_module_display = module_code_to_display.get(selected_module_code, selected_module_code)
@@ -717,7 +851,7 @@ div, p, label {
     show_ids_in_hover = bool(st.sidebar.checkbox("Show IDs in hover", value=False))
 
     exact_fact_source: pl.DataFrame | pl.LazyFrame | None = (
-        pl.scan_parquet(fact_path) if has_fact_matrix_source else None
+        _exclude_lost_exercises(pl.scan_parquet(fact_path)) if has_fact_matrix_source else None
     )
     activity_source = activity
     exercise_source = exercise_daily
@@ -944,12 +1078,32 @@ div, p, label {
         heatmap_kwargs["zmin"] = z_min
     if z_max is not None:
         heatmap_kwargs["zmax"] = z_max
-    heatmap_kwargs["text"] = metric_text_grid
-    heatmap_kwargs["texttemplate"] = "%{text}"
-    heatmap_kwargs["textfont"] = {"size": 11, "color": "#111"}
+    text_color_grid = _matrix_text_color_grid(
+        payload["z_values"],
+        z_min=z_min,
+        z_max=z_max,
+    )
+    text_points = _matrix_text_layer_points(
+        x_labels=payload["x_labels"],
+        y_labels=y_axis_labels,
+        text_grid=metric_text_grid,
+        color_grid=text_color_grid,
+    )
 
     fig = go.Figure()
     fig.add_trace(go.Heatmap(**heatmap_kwargs))
+    if text_points["x"]:
+        fig.add_trace(
+            go.Scatter(
+                x=text_points["x"],
+                y=text_points["y"],
+                mode="text",
+                text=text_points["text"],
+                textfont={"size": 11, "color": text_points["colors"]},
+                hoverinfo="skip",
+                showlegend=False,
+            )
+        )
     # Transparent click layer to keep reliable point selection while preserving
     # the original heatmap visual style.
     fig.add_trace(
@@ -978,7 +1132,7 @@ div, p, label {
     )
     fig.update_layout(
         title=f"{selected_module_display} - {selected_metric_display} by objective/activity position",
-        xaxis_title="Activity position inside each objective (A1..An)",
+        xaxis_title="Activities",
         yaxis_title="Objectives",
         height=figure_height,
         margin={"l": left_margin, "r": 24, "t": 70, "b": 70},
@@ -1014,7 +1168,7 @@ div, p, label {
 
     event = st.plotly_chart(
         fig,
-        key="objective_activity_matrix",
+        key=f"objective_activity_matrix::{settings.source_id}::{selected_module_code}",
         width='stretch',
         on_select="rerun",
         selection_mode=("points",),

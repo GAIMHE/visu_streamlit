@@ -53,6 +53,20 @@ def test_m1_individual_path_page_bootstraps_light_assets_only() -> None:
     assert page.remote_query_paths == ("artifacts/derived/fact_attempt_core.parquet",)
 
 
+def test_student_interaction_distribution_bootstraps_fact_only() -> None:
+    page = PAGE_SPEC_BY_ID["student_interaction_distribution"]
+
+    assert page.bootstrap_runtime_paths == ("artifacts/derived/fact_attempt_core.parquet",)
+    assert page.remote_query_paths == ()
+
+
+def test_gameplay_distribution_bootstraps_exercise_daily_only() -> None:
+    page = PAGE_SPEC_BY_ID["gameplay_distribution"]
+
+    assert page.bootstrap_runtime_paths == ("artifacts/derived/agg_exercise_daily.parquet",)
+    assert page.remote_query_paths == ()
+
+
 def test_classroom_pages_bootstrap_only_selector_artifacts() -> None:
     replay = PAGE_SPEC_BY_ID["classroom_replay"]
     sankey = PAGE_SPEC_BY_ID["classroom_sankey"]

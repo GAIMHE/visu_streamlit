@@ -39,6 +39,20 @@ PAGE_SPECS: tuple[PageSpec, ...] = (
         ),
     ),
     PageSpec(
+        page_id="student_interaction_distribution",
+        label="Student Interaction Distribution",
+        icon=":bar_chart:",
+        module_path="page_modules.9_student_interaction_distribution",
+        bootstrap_runtime_paths=("artifacts/derived/fact_attempt_core.parquet",),
+    ),
+    PageSpec(
+        page_id="gameplay_distribution",
+        label="Gameplay Distribution",
+        icon=":bar_chart:",
+        module_path="page_modules.10_gameplay_distribution",
+        bootstrap_runtime_paths=("artifacts/derived/agg_exercise_daily.parquet",),
+    ),
+    PageSpec(
         page_id="bottlenecks",
         label="Bottlenecks and Transitions",
         icon=":twisted_rightwards_arrows:",

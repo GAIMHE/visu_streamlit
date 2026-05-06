@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import csv
 import json
 import re
@@ -2415,14 +2416,35 @@ def _neurips_dependency_title(
     return dependency_title_by_id.get(identifier, (None, None))
 
 
+def _parse_neurips_content_payload(value: object) -> dict[str, Any]:
+    """Parse a MIAAM exercise content payload into a plain dictionary."""
+    if isinstance(value, dict):
+        return value
+    text = str(value or "").strip()
+    if not text:
+        return {}
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        try:
+            parsed = ast.literal_eval(text)
+        except (ValueError, SyntaxError):
+            return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _content_field(payload: dict[str, Any], field_name: str) -> str | None:
+    value = payload.get(field_name)
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False)
+    return _clean_text(value)
+
+
 def _load_neurips_exercise_table(path: Path) -> pl.DataFrame:
-    """Load the NeurIPS exercise table as normalized text columns."""
-    required = {
+    """Load the MIAAM/NeurIPS exercise table as normalized text columns."""
+    base_required = {
         "exercise_id",
         "gameplay_type",
-        "instruction",
-        "question",
-        "feedback",
         "module_id",
         "module_name",
         "objective_id",
@@ -2432,10 +2454,40 @@ def _load_neurips_exercise_table(path: Path) -> pl.DataFrame:
         "activity_name",
         "source",
     }
-    frame = pl.read_csv(path, infer_schema_length=0)
-    missing = sorted(required - set(frame.columns))
+    text_required = {"instruction", "question", "feedback"}
+    if path.suffix.lower() == ".parquet":
+        frame = pl.read_parquet(path)
+    else:
+        frame = pl.read_csv(path, infer_schema_length=0)
+    missing = sorted(base_required - set(frame.columns))
     if missing:
         raise ValueError(f"NeurIPS exercise table is missing columns: {missing}")
+    if not text_required.issubset(frame.columns):
+        if "content" not in frame.columns:
+            missing_text = sorted(text_required - set(frame.columns))
+            raise ValueError(f"NeurIPS exercise table is missing columns: {missing_text}")
+        content_payloads = [
+            _parse_neurips_content_payload(value)
+            for value in frame.select("content").to_series().to_list()
+        ]
+        frame = frame.with_columns(
+            pl.Series(
+                "instruction",
+                [_content_field(payload, "instruction") for payload in content_payloads],
+                dtype=pl.Utf8,
+            ),
+            pl.Series(
+                "question",
+                [_content_field(payload, "question") for payload in content_payloads],
+                dtype=pl.Utf8,
+            ),
+            pl.Series(
+                "feedback",
+                [_content_field(payload, "feedback") for payload in content_payloads],
+                dtype=pl.Utf8,
+            ),
+        )
+    required = base_required | text_required
     return frame.with_columns(
         [_optional_text_expr(column).alias(column) for column in sorted(required)]
     )
@@ -2477,7 +2529,7 @@ def _neurips_candidate_rows(
     exercise_rows: list[dict[str, Any]],
     dependencies: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    """Build exercise-to-hierarchy candidates from the exercise CSV and dependency JSON."""
+    """Build exercise-to-hierarchy candidates from the exercise table and dependency JSON."""
     module_source_by_id: dict[str, str | None] = {}
     module_name_by_id: dict[str, str | None] = {}
     for row in exercise_rows:
@@ -2673,12 +2725,12 @@ def _best_neurips_lookup(
 def _neurips_catalog_payloads(
     *,
     attempts_parquet_path: Path,
-    exercises_csv_path: Path,
+    exercises_table_path: Path,
     dependencies_json_path: Path,
     source_id: str,
 ) -> tuple[pl.DataFrame, dict[str, Any], dict[str, Any], dict[str, Any], tuple[str, ...]]:
-    """Build NeurIPS normalized attempts plus app metadata payloads."""
-    exercise_frame = _load_neurips_exercise_table(exercises_csv_path)
+    """Build MIAAM/NeurIPS normalized attempts plus app metadata payloads."""
+    exercise_frame = _load_neurips_exercise_table(exercises_table_path)
     exercise_rows = exercise_frame.to_dicts()
     dependencies = json.loads(dependencies_json_path.read_text(encoding="utf-8"))
     module_code_by_id = _neurips_module_code_map(exercise_rows, dependencies)
@@ -2972,6 +3024,13 @@ def _neurips_catalog_payloads(
         suffix="source",
     )
 
+    attempt_columns = set(pl.scan_parquet(attempts_parquet_path).collect_schema().names())
+    classroom_id_expr = (
+        _optional_text_expr("classroom_id")
+        if "classroom_id" in attempt_columns
+        else pl.lit(None, dtype=pl.Utf8)
+    )
+
     raw_attempts = (
         pl.scan_parquet(attempts_parquet_path)
         .with_columns(
@@ -3021,7 +3080,7 @@ def _neurips_catalog_payloads(
             pl.lit(None, dtype=pl.Float64).alias("finished_module_graphe_coverage_rate"),
             pl.lit(None, dtype=pl.Boolean).alias("is_gar"),
             pl.lit(None, dtype=pl.Utf8).alias("teacher_id"),
-            pl.lit(None, dtype=pl.Utf8).alias("classroom_id"),
+            classroom_id_expr.alias("classroom_id"),
             pl.col("data_duration").cast(pl.Float64, strict=False).alias("data_duration"),
             pl.lit(None, dtype=pl.Float64).alias("session_duration"),
             pl.coalesce(
@@ -3244,7 +3303,7 @@ def _neurips_catalog_payloads(
             "version": "neurips_maths_runtime_v1",
             "source_files": [
                 str(attempts_parquet_path),
-                str(exercises_csv_path),
+                str(exercises_table_path),
                 str(dependencies_json_path),
             ],
             "counts": {
@@ -3489,12 +3548,12 @@ def materialize_source_runtime_inputs(settings: Settings) -> SourceMaterializati
 
     if source.build_profile == "neurips_maths":
         attempts_parquet_path = settings.root_dir / source.raw_inputs["parquet"]
-        exercises_csv_path = settings.root_dir / source.raw_inputs["exercises_csv"]
+        exercises_table_path = settings.root_dir / source.raw_inputs["exercises_table"]
         dependencies_json_path = settings.root_dir / source.raw_inputs["dependencies_json"]
         raw_attempts, learning_catalog, zpdes_rules, exercises_json, warnings = (
             _neurips_catalog_payloads(
                 attempts_parquet_path=attempts_parquet_path,
-                exercises_csv_path=exercises_csv_path,
+                exercises_table_path=exercises_table_path,
                 dependencies_json_path=dependencies_json_path,
                 source_id=settings.source_id,
             )

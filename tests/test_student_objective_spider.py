@@ -277,6 +277,9 @@ def test_build_student_objective_spider_figure_has_two_traces_and_percent_axis(t
     assert figure.data[1].name == "Success rate"
     assert list(figure.data[0].theta) == ["M1O1", "M1O2", "M1O3"]
     assert list(figure.layout.polar.radialaxis.range) == [0, 100]
+    assert figure.layout.title.text == "Numbers"
+    assert figure.layout.legend.y == 1.0
+    assert "u1" not in figure.layout.title.text
     assert figure.data[0].customdata[0][1] == 2
     assert figure.data[0].customdata[0][2] == 3
     assert figure.data[1].r[2] is None

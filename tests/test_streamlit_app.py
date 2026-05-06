@@ -20,6 +20,7 @@ class _FakeSidebar:
         self._radio_return = radio_return
         self.info_messages: list[str] = []
         self.caption_messages: list[str] = []
+        self.title_messages: list[str] = []
 
     def selectbox(self, *args, **kwargs):
         return self._selectbox_return
@@ -32,6 +33,9 @@ class _FakeSidebar:
 
     def caption(self, message: str) -> None:
         self.caption_messages.append(message)
+
+    def title(self, message: str) -> None:
+        self.title_messages.append(message)
 
 
 def test_select_source_clears_cache_when_source_changes(monkeypatch) -> None:
@@ -47,7 +51,7 @@ def test_select_source_clears_cache_when_source_changes(monkeypatch) -> None:
 
     assert selected == "neurips"
     assert events == ["set:neurips", "clear"]
-    assert sidebar.caption_messages == ["Dataset source: NeurIPS Maths [neurips]"]
+    assert sidebar.caption_messages == ["Dataset source: MIAAM [neurips]"]
 
 
 def test_select_page_clears_cache_when_page_changes(monkeypatch) -> None:
@@ -70,4 +74,25 @@ def test_select_page_clears_cache_when_page_changes(monkeypatch) -> None:
 
     assert selected == "matrix"
     assert events == ["set:matrix", "clear", "rerun"]
+
+
+def test_main_does_not_render_plot_appearance_controls(monkeypatch) -> None:
+    sidebar = _FakeSidebar()
+    events: list[str] = []
+
+    monkeypatch.setattr(streamlit_app.st, "sidebar", sidebar)
+    monkeypatch.setattr(streamlit_app, "render_dashboard_style", lambda: events.append("dashboard-style"))
+    monkeypatch.setattr(streamlit_app, "_select_source", lambda: "neurips")
+    monkeypatch.setattr(streamlit_app, "_select_page", lambda source_id: "overview")
+    monkeypatch.setattr(
+        streamlit_app,
+        "_render_page",
+        lambda source_id, page: events.append(f"render:{source_id}:{page.page_id}"),
+    )
+
+    streamlit_app.main()
+
+    assert not hasattr(streamlit_app, "render_plotly_style_controls")
+    assert sidebar.title_messages == ["Learning Analytics"]
+    assert events == ["dashboard-style", "render:neurips:overview"]
 

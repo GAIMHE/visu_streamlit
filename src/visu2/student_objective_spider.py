@@ -356,8 +356,8 @@ def build_student_objective_spider_figure(
             font={"family": "IBM Plex Sans, Arial, sans-serif", "size": 15, "color": "#4D4A46"},
         )
         figure.update_layout(
-            paper_bgcolor="#FBF8F2",
-            plot_bgcolor="#FBF8F2",
+            paper_bgcolor="#FFFFFF",
+            plot_bgcolor="#FFFFFF",
             font={"family": "IBM Plex Sans, Arial, sans-serif", "size": 14, "color": "#1E1B18"},
             margin={"l": 40, "r": 40, "t": 80, "b": 40},
         )
@@ -432,27 +432,27 @@ def build_student_objective_spider_figure(
     )
     figure.update_layout(
         title={
-            "text": f"{student_id} · {module_display}",
+            "text": module_display,
             "x": 0.02,
             "xanchor": "left",
             "font": {"family": "Fraunces, Georgia, serif", "size": 22, "color": "#1E1B18"},
         },
-        paper_bgcolor="#FBF8F2",
-        plot_bgcolor="#FBF8F2",
+        paper_bgcolor="#FFFFFF",
+        plot_bgcolor="#FFFFFF",
         font={"family": "IBM Plex Sans, Arial, sans-serif", "size": 14, "color": "#1E1B18"},
         margin={"l": 48, "r": 48, "t": 88, "b": 36},
         legend={
             "orientation": "h",
             "yanchor": "bottom",
-            "y": 1.08,
+            "y": 1.0,
             "xanchor": "left",
             "x": 0.02,
-            "bgcolor": "rgba(251, 248, 242, 0.85)",
+            "bgcolor": "rgba(255, 255, 255, 0.90)",
             "bordercolor": "rgba(53, 45, 34, 0.08)",
             "borderwidth": 1,
         },
         polar={
-            "bgcolor": "#FBF8F2",
+            "bgcolor": "#FFFFFF",
             "radialaxis": {
                 "visible": True,
                 "range": [0, 100],
