@@ -59,6 +59,7 @@ XES3G5M/
 data_am_mia/
 data_neurips/
 exercises/
+data_miaam/
 
 # Local Codex assistant config
 AGENTS.md
