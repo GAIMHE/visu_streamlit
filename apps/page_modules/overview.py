@@ -210,6 +210,64 @@ def _build_overview_kpi_analysis(
     return analyze_overview_kpis(**compatible_base_kwargs, **compatible_retry_kwargs)
 
 
+def _render_overview_intro() -> None:
+    """Render the short explanatory introduction at the top of the overview."""
+    st.markdown(
+        """
+<style>
+.overview-intro {
+  max-width: 980px;
+  margin: 0.35rem 0 1.35rem;
+  padding-left: 1.1rem;
+  border-left: 4px solid #1e7a52;
+}
+.overview-intro h2 {
+  margin: 0 0 0.45rem;
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 1.6rem;
+  line-height: 1.2;
+}
+.overview-intro h3 {
+  margin: 1rem 0 0.4rem;
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 1.18rem;
+}
+.overview-intro p {
+  margin: 0;
+  color: rgba(23, 34, 27, 0.78);
+  font-size: 1rem;
+  line-height: 1.58;
+}
+.overview-intro .overview-control-note {
+  margin-top: 0.85rem;
+  color: rgba(23, 34, 27, 0.70);
+  font-weight: 600;
+}
+</style>
+<section class="overview-intro">
+  <h2>From classroom traces to readable learning trajectories.</h2>
+  <p>
+    This app turns interaction logs from adaptive learning environments into a small set of
+    descriptive views for exploring participation, curriculum coverage, bottlenecks, transitions,
+    student trajectories, classroom progression, and Elo-based difficulty signals.
+  </p>
+  <h3>What the app is for</h3>
+  <p>
+    The app is designed for exploratory learning analytics work: finding where learners spend time,
+    where success drops, how students move through activities, and how those movements differ across
+    individual and classroom scales. The figures are descriptive, so they help locate patterns and
+    questions to investigate rather than proving causal effects by themselves.
+  </p>
+  <p class="overview-control-note">
+    Most plots can be controlled both from controls near the plot area and from the filters in the
+    left sidebar.
+  </p>
+</section>
+""",
+        unsafe_allow_html=True,
+    )
+
+
 def main() -> None:
     """Render the simplified overview page."""
     render_dashboard_style()
@@ -264,6 +322,7 @@ def main() -> None:
     ).to_dicts()[0]["mean_distinct_exercises_per_student"]
 
     st.title("Learning Analytics Overview")
+    _render_overview_intro()
 
     c1, c2, c3 = st.columns(3)
     c1.metric("Attempts", f"{int(kpi['attempts']):,}")
