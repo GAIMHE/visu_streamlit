@@ -244,7 +244,7 @@ def _build_one_source(
                 continue
 
             legacy_path = legacy_derived_dir / f"{table_name}.parquet"
-            if source.source_id == "main" and sample_rows is None and legacy_path.exists():
+            if source.source_id == "am" and sample_rows is None and legacy_path.exists():
                 dst_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(legacy_path, dst_path)
                 outputs[table_name] = dst_path

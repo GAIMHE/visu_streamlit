@@ -404,13 +404,13 @@ for each (student, module):
 The corresponding export script is:
 
 ```bash
-python scripts/export_adaptive_test_elo.py --source mia_module1
+python scripts/export_adaptive_test_elo.py --source mia
 ```
 
 Strict initial-placement version:
 
 ```bash
-python scripts/export_adaptive_test_elo.py --source mia_module1 --only-before-practice
+python scripts/export_adaptive_test_elo.py --source mia --only-before-practice
 ```
 
 The strict version uses only adaptive-test attempts that occur before the first
@@ -418,8 +418,8 @@ The strict version uses only adaptive-test attempts that occur before the first
 
 Output files:
 
-- `artifacts/reports/mia_module1_adaptive_test_elo_all.csv`
-- `artifacts/reports/mia_module1_adaptive_test_elo_before_practice.csv`
+- `artifacts/reports/mia_adaptive_test_elo_all.csv`
+- `artifacts/reports/mia_adaptive_test_elo_before_practice.csv`
 
 Main columns:
 
@@ -440,7 +440,7 @@ Main columns:
 
 Recommended use:
 
-- use `mia_module1_adaptive_test_elo_before_practice.csv`;
+- use `mia_adaptive_test_elo_before_practice.csv`;
 - optionally filter to `has_same_module_practice = true`;
 - optionally require a minimum number of adaptive-test Elo attempts, for example
   `adaptive_test_elo_attempts >= 5`.

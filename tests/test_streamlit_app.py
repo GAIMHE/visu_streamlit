@@ -35,7 +35,7 @@ def test_select_source_clears_cache_when_source_changes(monkeypatch) -> None:
     events: list[str] = []
 
     monkeypatch.setattr(streamlit_app.st, "sidebar", sidebar)
-    monkeypatch.setattr(streamlit_app, "get_active_source_id", lambda: "main")
+    monkeypatch.setattr(streamlit_app, "get_active_source_id", lambda: "am")
     monkeypatch.setattr(streamlit_app, "set_active_source_id", lambda source_id: events.append(f"set:{source_id}"))
     monkeypatch.setattr(streamlit_app, "_clear_page_data_cache", lambda: events.append("clear"))
     monkeypatch.setattr(streamlit_app.st, "rerun", lambda: events.append("rerun"))
@@ -47,7 +47,7 @@ def test_select_source_clears_cache_when_source_changes(monkeypatch) -> None:
 
 
 def test_select_page_clears_cache_when_page_changes(monkeypatch) -> None:
-    source = get_runtime_source("main")
+    source = get_runtime_source("am")
     pages = visible_pages_for_source(source)
     visible_ids = [page.page_id for page in pages]
     assert "overview" in visible_ids
@@ -62,7 +62,7 @@ def test_select_page_clears_cache_when_page_changes(monkeypatch) -> None:
     monkeypatch.setattr(streamlit_app, "_clear_page_data_cache", lambda: events.append("clear"))
     monkeypatch.setattr(streamlit_app.st, "rerun", lambda: events.append("rerun"))
 
-    selected = streamlit_app._select_page("main")
+    selected = streamlit_app._select_page("am")
 
     assert selected == "matrix"
     assert events == ["set:matrix", "clear", "rerun"]

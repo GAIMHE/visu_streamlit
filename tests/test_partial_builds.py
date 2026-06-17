@@ -9,7 +9,7 @@ from visu2.config import Settings
 from visu2.derive import write_derived_tables
 
 
-def _build_settings(tmp_path: Path, *, source_id: str = "main") -> Settings:
+def _build_settings(tmp_path: Path, *, source_id: str = "am") -> Settings:
     runtime_root = tmp_path / "artifacts" / "sources" / source_id
     local_root = tmp_path / "artifacts" / "local" / source_id
     legacy_root = tmp_path / "artifacts" / "legacy" / source_id
@@ -55,7 +55,7 @@ def test_partial_batch_replay_build_reuses_existing_runtime_dependencies(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    settings = _build_settings(tmp_path, source_id="main")
+    settings = _build_settings(tmp_path, source_id="am")
 
     fact = pl.DataFrame(
         {

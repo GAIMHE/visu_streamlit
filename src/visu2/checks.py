@@ -450,7 +450,7 @@ dict[str, Any]
         "exercises_count": len(exercise_ids),
     }
 
-    if settings.source_id == "main":
+    if settings.source_id == "am":
         checks_list = [
             _assert_equal("parquet_rows", row_counts["parquet_rows"], EXPECTED_BASELINE["parquet_rows"]),
             _assert_equal(

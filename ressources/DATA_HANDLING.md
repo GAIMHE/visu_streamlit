@@ -22,10 +22,10 @@ This repo is not limited to one dataset.
 
 The current source-aware app supports:
 
-- `main`
+- `am`
   - the large Adaptiv'Math mathematics source
   - raw attempts come from `data/adaptiv_math_history.parquet`
-- `mia_module1`
+- `mia`
   - a MIA researcher export now spanning multiple modules
   - raw attempts come from `data_MIA/986-neurips-mia_20260415_100024.csv`
   - extra structure comes from `data_MIA/config_mia.json`
@@ -40,7 +40,7 @@ The goal of the pipeline is to normalize these source-specific inputs into a sha
 
 ## 2. Main shared files and source-specific inputs
 
-For the `main` source, the canonical raw/reference set is built around four files:
+For the `am` source, the canonical raw/reference set is built around four files:
 
 - `data/adaptiv_math_history.parquet`
   - raw attempt history
@@ -54,7 +54,7 @@ For the `main` source, the canonical raw/reference set is built around four file
 - `data/exercises.json`
   - exercise content and interaction metadata
 
-For `mia_module1` and `maureen_m16fr`, the raw inputs differ, but the derived pipeline still tries to produce the same app-facing structure.
+For `mia` and `maureen_m16fr`, the raw inputs differ, but the derived pipeline still tries to produce the same app-facing structure.
 
 At runtime, the app usually does **not** read the raw inputs directly.
 It reads source-local derived folders under:
@@ -83,11 +83,11 @@ In practice:
 - rule and dependency information comes from ZPDES rules when available
 - exercise instructions and types come from exercise metadata when available
 
-For the `main` source, the canonical hierarchy reference is:
+For the `am` source, the canonical hierarchy reference is:
 
 - `learning_catalog.json`
 
-For `mia_module1` and `maureen_m16fr`, the pipeline first converts source-specific inputs into a compatible runtime view.
+For `mia` and `maureen_m16fr`, the pipeline first converts source-specific inputs into a compatible runtime view.
 
 ---
 
@@ -199,8 +199,8 @@ uv run python scripts/build_derived.py --strict-checks
 If you want to rebuild one source explicitly:
 
 ```bash
-uv run python scripts/build_derived.py --source main --strict-checks
-uv run python scripts/build_derived.py --source mia_module1 --strict-checks
+uv run python scripts/build_derived.py --source am --strict-checks
+uv run python scripts/build_derived.py --source mia --strict-checks
 uv run python scripts/build_derived.py --source maureen_m16fr --strict-checks
 ```
 
@@ -242,17 +242,17 @@ The runtime upload is source-aware.
 
 Each dataset source has its own built runtime folder:
 
-- `artifacts/sources/main/`
-- `artifacts/sources/mia_module1/`
+- `artifacts/sources/am/`
+- `artifacts/sources/mia/`
 - `artifacts/sources/maureen_m16fr/`
 
 Local-only files live outside the runtime upload tree:
 
-- `artifacts/local/main/`
-- `artifacts/local/mia_module1/`
+- `artifacts/local/am/`
+- `artifacts/local/mia/`
 - `artifacts/local/maureen_m16fr/`
-- `artifacts/legacy/main/`
-- `artifacts/legacy/mia_module1/`
+- `artifacts/legacy/am/`
+- `artifacts/legacy/mia/`
 - `artifacts/legacy/maureen_m16fr/`
 
 Each Hugging Face dataset repository should receive the **contents** of one source folder at the repo root.
@@ -262,8 +262,8 @@ Each Hugging Face dataset repository should receive the **contents** of one sour
 1. rebuild locally
 
 ```bash
-uv run python scripts/build_derived.py --source main --strict-checks
-uv run python scripts/build_derived.py --source mia_module1 --strict-checks
+uv run python scripts/build_derived.py --source am --strict-checks
+uv run python scripts/build_derived.py --source mia --strict-checks
 uv run python scripts/build_derived.py --source maureen_m16fr --strict-checks
 ```
 
@@ -278,21 +278,21 @@ hf auth login
 Existing examples:
 
 ```bash
-hf upload GAIMHE/Adaptiv_Math ./artifacts/sources/main . --repo-type dataset
+hf upload GAIMHE/Adaptiv_Math ./artifacts/sources/am . --repo-type dataset
 hf upload GAIMHE/M16 ./artifacts/sources/maureen_m16fr . --repo-type dataset
 ```
 
 For MIA, use the repo that you want to dedicate to that runtime snapshot:
 
 ```bash
-hf upload <your-mia-runtime-repo> ./artifacts/sources/mia_module1 . --repo-type dataset
+hf upload <your-mia-runtime-repo> ./artifacts/sources/mia . --repo-type dataset
 ```
 
 If the upload is large:
 
 ```bash
-hf upload-large-folder GAIMHE/Adaptiv_Math --repo-type dataset ./artifacts/sources/main
-hf upload-large-folder <your-mia-runtime-repo> --repo-type dataset ./artifacts/sources/mia_module1
+hf upload-large-folder GAIMHE/Adaptiv_Math --repo-type dataset ./artifacts/sources/am
+hf upload-large-folder <your-mia-runtime-repo> --repo-type dataset ./artifacts/sources/mia
 hf upload-large-folder GAIMHE/M16 --repo-type dataset ./artifacts/sources/maureen_m16fr
 ```
 
@@ -306,8 +306,8 @@ Do **not** upload the whole project root.
 
 Upload only one source runtime folder at a time, for example:
 
-- `./artifacts/sources/main`
-- `./artifacts/sources/mia_module1`
+- `./artifacts/sources/am`
+- `./artifacts/sources/mia`
 - `./artifacts/sources/maureen_m16fr`
 
 The target Hugging Face repo root should contain:
@@ -327,11 +327,11 @@ Set `VISU2_HF_SOURCES_JSON` to something like:
 
 ```json
 {
-  "main": {
+  "am": {
     "repo_id": "GAIMHE/Adaptiv_Math",
     "revision": "main"
   },
-  "mia_module1": {
+  "mia": {
     "repo_id": "<your-mia-runtime-repo>",
     "revision": "main"
   },
@@ -353,15 +353,15 @@ HF_TOKEN=...
 If you want to force a rebuild before upload:
 
 ```bash
-uv run python scripts/build_derived.py --source main --strict-checks --force
-uv run python scripts/build_derived.py --source mia_module1 --strict-checks --force
+uv run python scripts/build_derived.py --source am --strict-checks --force
+uv run python scripts/build_derived.py --source mia --strict-checks --force
 uv run python scripts/build_derived.py --source maureen_m16fr --strict-checks --force
 ```
 
 If you changed only a few derived tables and the raw inputs did **not** change, prefer a targeted build:
 
 ```bash
-uv run python scripts/build_derived.py --source main --tables student_elo_events_batch_replay,student_elo_profiles_batch_replay --skip-checks
+uv run python scripts/build_derived.py --source am --tables student_elo_events_batch_replay,student_elo_profiles_batch_replay --skip-checks
 ```
 
 Notes:

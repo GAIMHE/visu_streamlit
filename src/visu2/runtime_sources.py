@@ -190,17 +190,17 @@ class RuntimeSourceSpec:
 
 
 RUNTIME_SOURCES: dict[str, RuntimeSourceSpec] = {
-    "main": RuntimeSourceSpec(
-        source_id="main",
-        label="Adaptiv'Math Main",
+    "am": RuntimeSourceSpec(
+        source_id="am",
+        label="Adaptiv'Math",
         description=(
             "Full classroom-scale Adaptiv'Math dataset with the lean runtime surface "
             "required by the active Streamlit application."
         ),
-        runtime_root_relative=Path("artifacts") / "sources" / "main",
-        local_root_relative=Path("artifacts") / "local" / "main",
-        legacy_root_relative=Path("artifacts") / "legacy" / "main",
-        build_profile="main",
+        runtime_root_relative=Path("artifacts") / "sources" / "am",
+        local_root_relative=Path("artifacts") / "local" / "am",
+        legacy_root_relative=Path("artifacts") / "legacy" / "am",
+        build_profile="am",
         raw_inputs={
             "parquet": Path("data") / "adaptiv_math_history.parquet",
             "learning_catalog": Path("data") / "learning_catalog.json",
@@ -217,7 +217,7 @@ RUNTIME_SOURCES: dict[str, RuntimeSourceSpec] = {
                 CAPABILITY_HAS_EXERCISE_METADATA,
             }
         ),
-        remote_config_key="main",
+        remote_config_key="am",
         runtime_relative_paths=(
             MAIN_RUNTIME_DATA_RELATIVE_PATHS
             + _derived_runtime_relative_paths(MAIN_REQUIRED_RUNTIME_DERIVED_TABLES)
@@ -282,16 +282,16 @@ RUNTIME_SOURCES: dict[str, RuntimeSourceSpec] = {
         ),
         legacy_cleanup_relative_paths=MAUREEN_LEGACY_CLEANUP_RELATIVE_PATHS,
     ),
-    "mia_module1": RuntimeSourceSpec(
-        source_id="mia_module1",
+    "mia": RuntimeSourceSpec(
+        source_id="mia",
         label="MIA",
         description=(
             "Multi-module remediation dataset adapted from a researcher export, "
             "with a config-enriched catalog, inferred ZPDES topology, and a shared runtime surface."
         ),
-        runtime_root_relative=Path("artifacts") / "sources" / "mia_module1",
-        local_root_relative=Path("artifacts") / "local" / "mia_module1",
-        legacy_root_relative=Path("artifacts") / "legacy" / "mia_module1",
+        runtime_root_relative=Path("artifacts") / "sources" / "mia",
+        local_root_relative=Path("artifacts") / "local" / "mia",
+        legacy_root_relative=Path("artifacts") / "legacy" / "mia",
         build_profile="multi_module_researcher",
         raw_inputs={
             "attempts_csv": Path("data_MIA") / "986-neurips-mia_20260415_100024.csv",
@@ -316,7 +316,7 @@ RUNTIME_SOURCES: dict[str, RuntimeSourceSpec] = {
                 CAPABILITY_HAS_ZPDES_TOPOLOGY,
             }
         ),
-        remote_config_key="mia_module1",
+        remote_config_key="mia",
         runtime_relative_paths=(
             MIA_RUNTIME_DATA_RELATIVE_PATHS
             + _derived_runtime_relative_paths(MIA_REQUIRED_RUNTIME_DERIVED_TABLES)
@@ -334,11 +334,11 @@ RUNTIME_SOURCES: dict[str, RuntimeSourceSpec] = {
     ),
 }
 
-DEFAULT_SOURCE_ID = "main"
+DEFAULT_SOURCE_ID = "am"
 
 
 def get_runtime_source(source_id: str | None = None) -> RuntimeSourceSpec:
-    """Return the configured runtime source spec, defaulting to `main`."""
+    """Return the configured runtime source spec, defaulting to Adaptiv'Math."""
     normalized = str(source_id or DEFAULT_SOURCE_ID).strip() or DEFAULT_SOURCE_ID
     try:
         return RUNTIME_SOURCES[normalized]

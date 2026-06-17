@@ -58,7 +58,7 @@ from visu2.work_mode_transitions import (
 
 OVERVIEW_RUNTIME_TABLES: tuple[str, ...] = ("fact_attempt_core",)
 SOURCE_RETRY_SUMMARY_BY_ID: dict[str, dict[str, float]] = {
-    "main": {
+    "am": {
         "retry_attempt_rate": 0.131,
         "retry_after_success_share": 0.674,
         "retry_after_failure_share": 0.326,
@@ -329,7 +329,7 @@ def main() -> None:
     c2.metric("Unique Students", f"{int(kpi['unique_students']):,}")
     c3.metric("Unique Exercises", f"{int(kpi['unique_exercises']):,}")
 
-    if settings.source_id == "main":
+    if settings.source_id == "am":
         st.markdown(
             "The Adaptiv'Math dataset contains interaction traces from a large-scale adaptive digital "
             "math learning environment used in real classrooms.\n\n"

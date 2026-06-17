@@ -15,7 +15,7 @@ from visu2.hf_sync import (
 )
 
 
-def _build_settings(tmp_path, *, source_id: str = "main") -> Settings:
+def _build_settings(tmp_path, *, source_id: str = "am") -> Settings:
     runtime_root = tmp_path / source_id
     data_dir = runtime_root / "data"
     artifacts_dir = runtime_root / "artifacts"
@@ -61,7 +61,7 @@ def test_load_hf_repo_config_from_legacy_env() -> None:
         }
     )
     assert config is not None
-    assert config.source_id == "main"
+    assert config.source_id == "am"
     assert config.repo_id == "org/repo"
     assert config.revision == "v1"
     assert config.repo_type == "dataset"
@@ -75,7 +75,7 @@ def test_load_hf_repo_config_from_multisource_json() -> None:
         environ={
             "VISU2_HF_SOURCES_JSON": json.dumps(
                 {
-                    "main": {"repo_id": "org/main", "revision": "main-v1"},
+                    "am": {"repo_id": "org/am", "revision": "am-v1"},
                     "maureen_m16fr": {
                         "repo_id": "org/maureen",
                         "revision": "m16-v1",
@@ -98,7 +98,7 @@ def test_load_hf_repo_config_returns_none_without_matching_source() -> None:
         source_id="maureen_m16fr",
         environ={
             "VISU2_HF_SOURCES_JSON": json.dumps(
-                {"main": {"repo_id": "org/main", "revision": "main-v1"}}
+                {"am": {"repo_id": "org/am", "revision": "am-v1"}}
             ),
             "HF_TOKEN": "token",
         },
@@ -112,7 +112,7 @@ def test_load_hf_repo_config_missing_required_values() -> None:
     with pytest.raises(ValueError):
         load_hf_repo_config(
             environ={
-                "VISU2_HF_SOURCES_JSON": json.dumps({"main": {"repo_id": "org/repo"}}),
+                "VISU2_HF_SOURCES_JSON": json.dumps({"am": {"repo_id": "org/repo"}}),
                 "HF_TOKEN": "token",
             }
         )
@@ -125,7 +125,7 @@ def test_load_hf_repo_config_returns_none_without_any_repo_config() -> None:
 def test_ensure_runtime_assets_from_hf_success(tmp_path, monkeypatch) -> None:
     settings = _build_settings(tmp_path)
     config = HFRepoConfig(
-        source_id="main",
+        source_id="am",
         repo_id="org/repo",
         revision="v1",
         repo_type="dataset",
@@ -176,9 +176,9 @@ def test_ensure_runtime_assets_from_hf_respects_required_paths_subset(tmp_path, 
 def test_ensure_runtime_assets_from_hf_skips_download_for_explicit_empty_subset(
     tmp_path, monkeypatch
 ) -> None:
-    settings = _build_settings(tmp_path, source_id="main")
+    settings = _build_settings(tmp_path, source_id="am")
     config = HFRepoConfig(
-        source_id="main",
+        source_id="am",
         repo_id="org/repo",
         revision="v1",
         repo_type="dataset",
@@ -201,7 +201,7 @@ def test_ensure_runtime_assets_from_hf_skips_download_for_explicit_empty_subset(
 def test_ensure_runtime_assets_from_hf_raises_on_missing_files(tmp_path, monkeypatch) -> None:
     settings = _build_settings(tmp_path)
     config = HFRepoConfig(
-        source_id="main",
+        source_id="am",
         repo_id="org/repo",
         revision="v1",
         repo_type="dataset",

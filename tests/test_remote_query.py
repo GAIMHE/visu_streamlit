@@ -19,7 +19,7 @@ from visu2.remote_query import (
 )
 
 
-def _build_settings(tmp_path, *, source_id: str = "main") -> Settings:
+def _build_settings(tmp_path, *, source_id: str = "am") -> Settings:
     runtime_root = tmp_path / source_id
     data_dir = runtime_root / "data"
     artifacts_dir = runtime_root / "artifacts"

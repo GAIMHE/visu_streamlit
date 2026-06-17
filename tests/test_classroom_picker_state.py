@@ -37,7 +37,7 @@ def test_initialize_classroom_picker_state_seeds_query_context_once() -> None:
     initialize_classroom_picker_state(
         state,
         context_key="context_key",
-        current_context=("main", "zpdes"),
+        current_context=("am", "zpdes"),
         target_key="target_key",
         manual_key="manual_key",
         selectbox_key="selectbox_key",
@@ -48,7 +48,7 @@ def test_initialize_classroom_picker_state_seeds_query_context_once() -> None:
         max_students=40,
     )
 
-    assert state["context_key"] == ("main", "zpdes")
+    assert state["context_key"] == ("am", "zpdes")
     assert state["target_key"] == 24
     assert state["preferred_key"] == "c2"
     assert "manual_key" not in state
@@ -61,7 +61,7 @@ def test_initialize_classroom_picker_state_seeds_query_context_once() -> None:
     initialize_classroom_picker_state(
         state,
         context_key="context_key",
-        current_context=("main", "zpdes"),
+        current_context=("am", "zpdes"),
         target_key="target_key",
         manual_key="manual_key",
         selectbox_key="selectbox_key",

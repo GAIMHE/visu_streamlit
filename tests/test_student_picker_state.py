@@ -31,7 +31,7 @@ def test_initialize_student_picker_state_seeds_query_context_once() -> None:
     initialize_student_picker_state(
         state,
         context_key="context_key",
-        current_context=("main", "Sequential Replay Elo"),
+        current_context=("am", "Sequential Replay Elo"),
         target_key="target_key",
         manual_key="manual_key",
         preferred_key="preferred_key",
@@ -41,7 +41,7 @@ def test_initialize_student_picker_state_seeds_query_context_once() -> None:
         max_attempts=300,
     )
 
-    assert state["context_key"] == ("main", "Sequential Replay Elo")
+    assert state["context_key"] == ("am", "Sequential Replay Elo")
     assert state["target_key"] == 120
     assert state["preferred_key"] == "u2"
     assert "manual_key" not in state
@@ -52,7 +52,7 @@ def test_initialize_student_picker_state_seeds_query_context_once() -> None:
     initialize_student_picker_state(
         state,
         context_key="context_key",
-        current_context=("main", "Sequential Replay Elo"),
+        current_context=("am", "Sequential Replay Elo"),
         target_key="target_key",
         manual_key="manual_key",
         preferred_key="preferred_key",

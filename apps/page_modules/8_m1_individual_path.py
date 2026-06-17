@@ -115,8 +115,8 @@ div, p, label {
         unsafe_allow_html=True,
     )
     settings = get_settings(get_active_source_id())
-    if settings.source_id != "main":
-        st.info("Module 1 Individual Path is only available for the main source.")
+    if settings.source_id != "am":
+        st.info("Module 1 Individual Path is only available for the Adaptiv'Math source.")
         st.stop()
 
     profiles_path = settings.artifacts_derived_dir / "student_elo_profiles.parquet"

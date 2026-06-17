@@ -86,7 +86,7 @@ def test_build_single_module_researcher_catalog_and_raw_synthesizes_catalog(tmp_
     raw_attempts, learning_catalog, exercises_json, warnings = (
         _build_single_module_researcher_catalog_and_raw(
             attempts_path,
-            source_id="mia_module1",
+            source_id="mia",
         )
     )
 
@@ -199,7 +199,7 @@ def test_build_single_module_researcher_catalog_and_raw_prefers_config_labels(tm
     raw_attempts, learning_catalog, exercises_json, warnings = (
         _build_single_module_researcher_catalog_and_raw(
             attempts_path,
-            source_id="mia_module1",
+            source_id="mia",
             config_json_path=config_path,
         )
     )
@@ -324,7 +324,7 @@ def test_build_single_module_researcher_zpdes_rules_uses_module_config_graph(tmp
     )
 
     zpdes_rules, warnings = _build_single_module_researcher_zpdes_rules(
-        source_id="mia_module1",
+        source_id="mia",
         module_id="module-101",
         learning_catalog=learning_catalog,
         config_json_path=config_path,
@@ -426,7 +426,7 @@ def test_build_multi_module_researcher_catalog_and_rules_supports_playlist_rows(
 
     raw_attempts, learning_catalog, exercises_json, warnings = _build_multi_module_researcher_catalog_and_raw(
         attempts_path,
-        source_id="mia_module1",
+        source_id="mia",
         config_json_path=config_path,
     )
 
@@ -444,7 +444,7 @@ def test_build_multi_module_researcher_catalog_and_rules_supports_playlist_rows(
     assert exercises_json["exercises"][1]["modules"] == ["module-2"]
 
     zpdes_rules, zpdes_warnings = _build_multi_module_researcher_zpdes_rules(
-        source_id="mia_module1",
+        source_id="mia",
         learning_catalog=learning_catalog,
         config_json_path=config_path,
     )

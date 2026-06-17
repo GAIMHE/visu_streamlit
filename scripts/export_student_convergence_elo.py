@@ -50,8 +50,8 @@ def main() -> int:
     )
     parser.add_argument(
         "--source",
-        default="mia_module1",
-        help="Runtime source id. Defaults to mia_module1.",
+        default="mia",
+        help="Runtime source id. Defaults to mia.",
     )
     parser.add_argument(
         "--convergence-attempt",

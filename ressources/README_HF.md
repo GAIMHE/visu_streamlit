@@ -158,7 +158,7 @@ Expected deployment pattern:
 
 Runtime subset used by the current app:
 - `data/learning_catalog.json`
-- `data/zpdes_rules.json` for the `main` source only
+- `data/zpdes_rules.json` for the `am` source only
 - runtime derived tables under `artifacts/derived/` such as:
   - `fact_attempt_core.parquet`
   - `agg_activity_daily.parquet`
@@ -172,7 +172,7 @@ Runtime subset used by the current app:
   - `student_elo_profiles_iterative.parquet`
   - `student_elo_events.parquet`
   - `student_elo_events_iterative.parquet`
-  - `zpdes_exercise_progression_events.parquet` for the `main` source only
+  - `zpdes_exercise_progression_events.parquet` for the `am` source only
 
 Not required at deployed runtime:
 - `data/adaptiv_math_history.parquet`

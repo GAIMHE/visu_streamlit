@@ -29,7 +29,7 @@ def test_bootstrap_optional_runtime_assets_returns_failed_result_without_stoppin
     )
 
     result = runtime_bootstrap.bootstrap_optional_runtime_assets(
-        "main",
+        "am",
         required_paths=("artifacts/derived/student_elo_profiles_batch_replay.parquet",),
     )
 
@@ -48,7 +48,7 @@ def test_bootstrap_optional_runtime_assets_reuses_cached_sync_for_subset(monkeyp
         lambda secrets: None,
     )
     config = HFRepoConfig(
-        source_id="main",
+        source_id="am",
         repo_id="org/repo",
         revision="v1",
         repo_type="dataset",
@@ -80,12 +80,12 @@ def test_bootstrap_optional_runtime_assets_reuses_cached_sync_for_subset(monkeyp
     monkeypatch.setattr(runtime_bootstrap, "_cached_runtime_sync", fake_cached_sync)
 
     result = runtime_bootstrap.bootstrap_optional_runtime_assets(
-        "main",
+        "am",
         required_paths=("artifacts/derived/student_elo_profiles_batch_replay.parquet",),
     )
 
     assert result.mode == "synced"
-    assert captured["source_id"] == "main"
+    assert captured["source_id"] == "am"
     assert captured["config"] == config
     assert captured["required_paths"] == (
         "artifacts/derived/student_elo_profiles_batch_replay.parquet",
@@ -100,7 +100,7 @@ def test_bootstrap_runtime_assets_preserves_explicit_empty_required_paths(monkey
         lambda secrets: None,
     )
     config = HFRepoConfig(
-        source_id="main",
+        source_id="am",
         repo_id="org/repo",
         revision="v1",
         repo_type="dataset",
@@ -127,9 +127,9 @@ def test_bootstrap_runtime_assets_preserves_explicit_empty_required_paths(monkey
 
     monkeypatch.setattr(runtime_bootstrap, "_cached_runtime_sync", fake_cached_sync)
 
-    result = runtime_bootstrap.bootstrap_runtime_assets("main", required_paths=())
+    result = runtime_bootstrap.bootstrap_runtime_assets("am", required_paths=())
 
     assert result.mode == "synced"
-    assert captured["source_id"] == "main"
+    assert captured["source_id"] == "am"
     assert captured["config"] == config
     assert captured["required_paths"] == ()

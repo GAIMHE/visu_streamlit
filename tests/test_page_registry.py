@@ -65,6 +65,6 @@ def test_classroom_pages_bootstrap_only_selector_artifacts() -> None:
 
 
 def test_default_page_id_for_source_uses_first_visible_page() -> None:
-    assert default_page_id_for_source(get_runtime_source("main")) == "overview"
+    assert default_page_id_for_source(get_runtime_source("am")) == "overview"
     assert default_page_id_for_source(get_runtime_source("maureen_m16fr")) == "overview"
-    assert default_page_id_for_source(get_runtime_source("mia_module1")) == "overview"
+    assert default_page_id_for_source(get_runtime_source("mia")) == "overview"

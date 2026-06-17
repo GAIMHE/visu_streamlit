@@ -28,8 +28,8 @@ class Settings:
     consistency_report_path: Path
     derived_manifest_path: Path
     runtime_root_dir: Path | None = None
-    source_id: str = "main"
-    source_label: str = "Adaptiv'Math Main"
+    source_id: str = "am"
+    source_label: str = "Adaptiv'Math"
     source_description: str = ""
     local_root_dir: Path | None = None
     legacy_root_dir: Path | None = None

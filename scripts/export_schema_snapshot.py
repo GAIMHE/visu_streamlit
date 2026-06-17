@@ -6,7 +6,7 @@ documentation maintenance and drift detection.
 
 Examples
 --------
-Generate the default snapshot under ``artifacts/legacy/main/artifacts/reports``:
+Generate the default snapshot under ``artifacts/legacy/am/artifacts/reports``:
 
 >>> uv run python scripts/export_schema_snapshot.py
 

@@ -72,7 +72,7 @@ def test_build_overview_kpi_analysis_tolerates_legacy_signature(
     monkeypatch.setattr(overview_module, "analyze_overview_kpis", legacy_analyze_overview_kpis)
 
     result = _build_overview_kpi_analysis(
-        source_id="main",
+        source_id="am",
         attempts=10,
         unique_students=2,
         unique_exercises=3,

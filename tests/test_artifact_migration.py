@@ -42,8 +42,8 @@ def _build_settings(tmp_path: Path, *, source_id: str) -> Settings:
 
 
 def test_migrate_source_artifacts_moves_local_and_legacy_files(tmp_path: Path) -> None:
-    settings = _build_settings(tmp_path, source_id="main")
-    source = get_runtime_source("main")
+    settings = _build_settings(tmp_path, source_id="am")
+    source = get_runtime_source("am")
     runtime_root = settings.runtime_root
 
     local_runtime_path = runtime_root / "data" / "student_interaction.parquet"
@@ -82,8 +82,8 @@ def test_migrate_source_artifacts_is_idempotent(tmp_path: Path) -> None:
 
 
 def test_migrate_source_artifacts_removes_identical_runtime_duplicates(tmp_path: Path) -> None:
-    settings = _build_settings(tmp_path, source_id="main")
-    source = get_runtime_source("main")
+    settings = _build_settings(tmp_path, source_id="am")
+    source = get_runtime_source("am")
 
     runtime_duplicate = settings.runtime_root / "data" / "student_interaction.parquet"
     local_target = settings.local_root / "data" / "student_interaction.parquet"

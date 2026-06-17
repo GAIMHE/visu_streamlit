@@ -2266,7 +2266,7 @@ def materialize_source_runtime_inputs(settings: Settings) -> SourceMaterializati
     ensure_artifact_directories(settings)
     source = get_runtime_source(settings.source_id)
 
-    if source.build_profile == "main":
+    if source.build_profile == "am":
         copied_paths: list[str] = []
         raw_parquet_src = settings.root_dir / source.raw_inputs["parquet"]
         learning_catalog_src = settings.root_dir / source.raw_inputs["learning_catalog"]
