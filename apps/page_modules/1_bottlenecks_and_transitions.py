@@ -191,6 +191,16 @@ def _source_module_scope(activity: pl.DataFrame) -> tuple[str, ...]:
     return tuple(code for code in module_series.to_list() if str(code).strip())
 
 
+def _with_bottleneck_axis_columns(frame: pd.DataFrame) -> pd.DataFrame:
+    """Add unique internal axis keys and human-readable labels without visible IDs."""
+    out = frame.copy()
+    out["entity_axis_key"] = out["entity_id"].fillna("").map(str)
+    out["entity_axis_label"] = out["entity_label_raw"].map(
+        lambda value: format_axis_label(str(value), max_chars=72)
+    )
+    return out
+
+
 def main() -> None:
     """Render the bottleneck and transition analysis page."""
     render_dashboard_style()
@@ -313,21 +323,7 @@ def main() -> None:
             f"No bottleneck rows after filters in source module scope ({canonical_scope})."
         )
     else:
-        bottleneck_df["entity_axis_label"] = bottleneck_df["entity_plot_label"].map(
-            lambda value: format_axis_label(str(value), max_chars=72)
-        )
-        axis_collision_count = (
-            bottleneck_df.groupby("entity_axis_label")["entity_id"].transform("size").astype(int)
-        )
-        bottleneck_df["entity_axis_label"] = [
-            label if int(collision_count) <= 1 else f"{label} #{str(entity_id)[:8]}"
-            for label, collision_count, entity_id in zip(
-                bottleneck_df["entity_axis_label"],
-                axis_collision_count,
-                bottleneck_df["entity_id"],
-                strict=False,
-            )
-        ]
+        bottleneck_df = _with_bottleneck_axis_columns(bottleneck_df)
         bottleneck_df["entity_hover"] = [
             compose_hover_label(label, entity_id, show_ids)
             for label, entity_id in zip(
@@ -339,10 +335,11 @@ def main() -> None:
         bottleneck_df["failure_text"] = bottleneck_df["failure_rate"].map(lambda value: f"{value:.0%}")
         chart_rows = len(bottleneck_df.index)
         chart_height = max(420, 30 * chart_rows)
+        chart_data = bottleneck_df.sort_values("failure_rate", ascending=True)
         fig_bottleneck = px.bar(
-            bottleneck_df.sort_values("failure_rate", ascending=True),
+            chart_data,
             x="failure_rate",
-            y="entity_axis_label",
+            y="entity_axis_key",
             orientation="h",
             color="bottleneck_retry_rate",
             color_continuous_scale="YlOrRd",
@@ -362,7 +359,6 @@ def main() -> None:
             ),
             labels={
                 "failure_rate": "Failure rate",
-                "entity_axis_label": f"{bottleneck_level} entity",
                 "bottleneck_retry_rate": "Retries before first success",
             },
         )
@@ -389,7 +385,13 @@ def main() -> None:
             gridcolor="rgba(23,34,27,0.14)",
             tickformat=".0%",
         )
-        fig_bottleneck.update_yaxes(showgrid=False)
+        fig_bottleneck.update_yaxes(
+            showgrid=False,
+            title_text=None,
+            tickmode="array",
+            tickvals=chart_data["entity_axis_key"].tolist(),
+            ticktext=chart_data["entity_axis_label"].tolist(),
+        )
         st.plotly_chart(
             fig_bottleneck,
             width="stretch",

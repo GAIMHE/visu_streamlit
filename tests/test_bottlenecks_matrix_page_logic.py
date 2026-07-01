@@ -56,6 +56,24 @@ def test_annotate_transition_edges_with_source_objective_share() -> None:
     assert rows["a3"]["source_objective_attempt_share"] == 0.2
 
 
+def test_bottleneck_axis_labels_hide_ids_while_keys_remain_unique() -> None:
+    long_label = (
+        "Ranger des nombres décimaux relatifs dont certains peuvent être en écriture fractionnaire"
+    )
+    frame = pd.DataFrame(
+        {
+            "entity_id": ["06693911-first", "06693911-second"],
+            "entity_label_raw": [long_label, long_label],
+        }
+    )
+
+    result = bottlenecks_module._with_bottleneck_axis_columns(frame)
+
+    assert result["entity_axis_key"].is_unique
+    assert result["entity_axis_label"].nunique() == 1
+    assert all("06693911" not in label for label in result["entity_axis_label"])
+
+
 def test_rename_drilldown_display_columns_marks_median_duration_unit() -> None:
     frame = pl.DataFrame(
         {
