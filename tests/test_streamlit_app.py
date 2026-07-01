@@ -19,8 +19,10 @@ class _FakeSidebar:
         self._selectbox_return = selectbox_return
         self._radio_return = radio_return
         self.info_messages: list[str] = []
+        self.selectbox_calls: list[tuple[tuple, dict]] = []
 
     def selectbox(self, *args, **kwargs):
+        self.selectbox_calls.append((args, kwargs))
         return self._selectbox_return
 
     def radio(self, *args, **kwargs):
@@ -31,7 +33,7 @@ class _FakeSidebar:
 
 
 def test_select_source_clears_cache_when_source_changes(monkeypatch) -> None:
-    sidebar = _FakeSidebar(selectbox_return="maureen_m16fr")
+    sidebar = _FakeSidebar(selectbox_return="mia")
     events: list[str] = []
 
     monkeypatch.setattr(streamlit_app.st, "sidebar", sidebar)
@@ -42,8 +44,25 @@ def test_select_source_clears_cache_when_source_changes(monkeypatch) -> None:
 
     selected = streamlit_app._select_source()
 
-    assert selected == "maureen_m16fr"
-    assert events == ["set:maureen_m16fr", "clear", "rerun"]
+    assert selected == "mia"
+    assert events == ["set:mia", "clear", "rerun"]
+
+
+def test_select_source_hides_maureen_and_redirects_stale_selection(monkeypatch) -> None:
+    sidebar = _FakeSidebar(selectbox_return="am")
+    events: list[str] = []
+
+    monkeypatch.setattr(streamlit_app.st, "sidebar", sidebar)
+    monkeypatch.setattr(streamlit_app, "get_active_source_id", lambda: "maureen_m16fr")
+    monkeypatch.setattr(streamlit_app, "set_active_source_id", lambda source_id: events.append(f"set:{source_id}"))
+    monkeypatch.setattr(streamlit_app, "_clear_page_data_cache", lambda: events.append("clear"))
+    monkeypatch.setattr(streamlit_app.st, "rerun", lambda: events.append("rerun"))
+
+    selected = streamlit_app._select_source()
+
+    assert selected == "am"
+    assert sidebar.selectbox_calls[0][1]["options"] == ["am", "mia"]
+    assert events == ["set:am", "clear", "rerun"]
 
 
 def test_select_page_clears_cache_when_page_changes(monkeypatch) -> None:

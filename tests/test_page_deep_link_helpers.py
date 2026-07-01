@@ -20,6 +20,12 @@ def test_classroom_pages_map_query_mode_scope_to_sidebar_label() -> None:
     assert sankey._initial_mode_label(None) == "ZPDES"
 
 
+def test_classroom_sankey_disables_all_data_population_scope() -> None:
+    sankey = importlib.import_module("page_modules.6_classroom_progression_sankey")
+
+    assert sankey._allow_all_data_population_scope("mia") is False
+
+
 def test_student_elo_prefers_query_module_when_available() -> None:
     module = importlib.import_module("page_modules.5_student_elo_evolution")
 

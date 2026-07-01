@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 from datetime import date
 from pathlib import Path
+from typing import cast
 
 import polars as pl
 import pyarrow.parquet as pq
@@ -20,7 +21,7 @@ if str(APPS_DIR) not in sys.path:
 
 from figure_analysis import render_figure_analysis
 from figure_info import render_figure_info
-from overview_shared import render_population_filters
+from overview_shared import format_option, render_population_filters
 from plotly_config import build_plotly_chart_config
 from source_state import get_active_source_id
 
@@ -62,17 +63,40 @@ def _load_activity_daily_summary(path: Path) -> dict[str, object]:
         .collect()
         .to_dicts()[0]
     )
-    module_codes = (
+    module_frame = (
         pl.scan_parquet(path)
-        .select(pl.col("module_code").drop_nulls().unique().sort())
-        .collect()["module_code"]
-        .to_list()
+        .select(
+            pl.col("module_code").cast(pl.Utf8),
+            pl.col("module_label").cast(pl.Utf8).str.strip_chars(),
+        )
+        .filter(pl.col("module_code").is_not_null())
+        .group_by("module_code")
+        .agg(
+            pl.col("module_label")
+            .filter(pl.col("module_label").is_not_null() & (pl.col("module_label") != ""))
+            .sort()
+            .first()
+            .alias("module_label")
+        )
+        .sort("module_code")
+        .collect()
     )
+    module_rows = module_frame.to_dicts()
     return {
         "min_date": summary_row.get("min_date"),
         "max_date": summary_row.get("max_date"),
-        "module_codes": [str(code) for code in module_codes if str(code or "").strip()],
+        "module_codes": [str(row["module_code"]) for row in module_rows],
+        "module_labels": {
+            str(row["module_code"]): str(row["module_label"])
+            for row in module_rows
+            if row.get("module_label")
+        },
     }
+
+
+def _format_module_option(module_code: str, module_labels: dict[str, str]) -> str:
+    """Show a readable module title while retaining the code as the selector value."""
+    return format_option(module_labels.get(module_code), module_code)
 
 
 @st.cache_data(show_spinner=False)
@@ -305,6 +329,7 @@ div, p, label {
         {
             "date_utc",
             "module_code",
+            "module_label",
             "activity_id",
             "first_attempt_success_rate",
             "first_attempt_count",
@@ -363,7 +388,13 @@ div, p, label {
     )
     start_date = population_filters.start_date
     end_date = population_filters.end_date
-    selected_module = st.sidebar.selectbox("Module", module_codes, index=0)
+    module_labels = cast(dict[str, str], activity_summary["module_labels"])
+    selected_module = st.sidebar.selectbox(
+        "Module",
+        module_codes,
+        index=0,
+        format_func=lambda module_code: _format_module_option(module_code, module_labels),
+    )
 
     metric_label = st.sidebar.selectbox("Activity coloring", list(NODE_METRIC_OPTIONS.keys()), index=0)
     metric = NODE_METRIC_OPTIONS[metric_label]

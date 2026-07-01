@@ -33,6 +33,8 @@ from source_state import (
 
 from visu2.runtime_sources import get_runtime_source, list_runtime_sources
 
+SOURCE_IDS_HIDDEN_FROM_SELECTOR = frozenset({"maureen_m16fr"})
+
 st.set_page_config(
     page_title="Learning Analytics Explorer",
     page_icon=":bar_chart:",
@@ -53,16 +55,23 @@ def _source_option_label(source_id: str) -> str:
     return f"{source.label} [{source.source_id}]"
 
 
+def _selectable_source_ids() -> list[str]:
+    """Return configured sources that are currently exposed in the app selector."""
+    return [
+        source.source_id
+        for source in list_runtime_sources()
+        if source.source_id not in SOURCE_IDS_HIDDEN_FROM_SELECTOR
+    ]
+
+
 def _select_source() -> str:
-    source_specs = list_runtime_sources()
-    source_ids = [spec.source_id for spec in source_specs]
+    source_ids = _selectable_source_ids()
     active_source_id = get_active_source_id()
-    if active_source_id not in source_ids:
-        active_source_id = source_ids[0]
+    selected_index_source_id = active_source_id if active_source_id in source_ids else source_ids[0]
     selected_source = st.sidebar.selectbox(
         "Dataset source",
         options=source_ids,
-        index=source_ids.index(active_source_id),
+        index=source_ids.index(selected_index_source_id),
         format_func=_source_option_label,
     )
     if selected_source != active_source_id:

@@ -45,7 +45,7 @@ from visu2.classroom_progression_sankey import (
 from visu2.config import get_settings
 from visu2.figure_analysis import analyze_classroom_progression_sankey
 from visu2.remote_query import query_fact_attempts_for_classroom
-from visu2.runtime_sources import get_runtime_source
+from visu2.runtime_sources import source_supports_classroom_all_data_option
 
 MODE_OPTIONS = {
     "ZPDES": "zpdes",
@@ -54,6 +54,7 @@ MODE_OPTIONS = {
 }
 CLASSROOM_ID_QUERY_KEY = "classroom_id"
 MODE_SCOPE_QUERY_KEY = "mode_scope"
+ENABLE_ALL_DATA_POPULATION_SCOPE = False
 
 
 @st.cache_data(show_spinner=False)
@@ -129,6 +130,14 @@ def _initial_mode_label(query_mode_scope: str | None) -> str:
     return "ZPDES"
 
 
+def _allow_all_data_population_scope(source_id: str) -> bool:
+    """Return whether this page should expose its optional all-data population scope."""
+    return (
+        ENABLE_ALL_DATA_POPULATION_SCOPE
+        and source_supports_classroom_all_data_option(source_id)
+    )
+
+
 def _clear_picker_keys(*keys: str) -> None:
     for key in keys:
         st.session_state.pop(key, None)
@@ -200,9 +209,7 @@ div, p, label {
 
     min_students = int(scoped_profiles["students"].min() or 0)
     max_students = int(scoped_profiles["students"].max() or 0)
-    allow_all_data = "has_classroom_all_data_option" in get_runtime_source(
-        settings.source_id
-    ).capability_flags
+    allow_all_data = _allow_all_data_population_scope(settings.source_id)
     synthetic_only_scope = (
         scoped_profiles.height == 1
         and str(scoped_profiles["classroom_id"][0]) == SYNTHETIC_ALL_STUDENTS_CLASSROOM_ID
