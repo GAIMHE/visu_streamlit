@@ -258,12 +258,7 @@ div, p, label {
         "All catalog objectives for the selected module stay visible. Coverage uses distinct exercises only, while success rate uses all attempts inside each objective."
     )
 
-    figure = build_student_objective_spider_figure(
-        summary,
-        student_id=normalized_student,
-        module_code=selected_module_code,
-        module_label=selected_module_label,
-    )
+    figure = build_student_objective_spider_figure(summary)
     st.plotly_chart(
         figure,
         width="stretch",

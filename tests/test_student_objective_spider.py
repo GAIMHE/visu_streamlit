@@ -265,12 +265,7 @@ def test_build_student_objective_spider_figure_has_two_traces_and_percent_axis(t
         module_code="M1",
     )
 
-    figure = build_student_objective_spider_figure(
-        summary,
-        student_id="u1",
-        module_code="M1",
-        module_label="Numbers",
-    )
+    figure = build_student_objective_spider_figure(summary)
 
     assert len(figure.data) == 2
     assert figure.data[0].name == "Coverage %"
@@ -280,6 +275,7 @@ def test_build_student_objective_spider_figure_has_two_traces_and_percent_axis(t
     assert figure.data[0].customdata[0][1] == 2
     assert figure.data[0].customdata[0][2] == 3
     assert figure.data[1].r[2] is None
+    assert figure.layout.title.text is None
 
 
 def test_analyze_student_objective_spider_surfaces_touch_and_gap_findings(tmp_path: Path) -> None:

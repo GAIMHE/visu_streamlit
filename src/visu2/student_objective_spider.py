@@ -337,13 +337,8 @@ def summarize_student_module_profile(summary: pl.DataFrame) -> dict[str, float |
 
 def build_student_objective_spider_figure(
     summary: pl.DataFrame,
-    *,
-    student_id: str,
-    module_code: str,
-    module_label: str | None = None,
 ) -> go.Figure:
     """Render the student objective radar chart."""
-    module_display = str(module_label or module_code or "").strip() or str(module_code or "").strip()
     if summary.height == 0:
         figure = go.Figure()
         figure.add_annotation(
@@ -431,12 +426,6 @@ def build_student_objective_spider_figure(
         )
     )
     figure.update_layout(
-        title={
-            "text": f"{student_id} · {module_display}",
-            "x": 0.02,
-            "xanchor": "left",
-            "font": {"family": "Fraunces, Georgia, serif", "size": 22, "color": "#1E1B18"},
-        },
         paper_bgcolor="#FBF8F2",
         plot_bgcolor="#FBF8F2",
         font={"family": "IBM Plex Sans, Arial, sans-serif", "size": 14, "color": "#1E1B18"},
