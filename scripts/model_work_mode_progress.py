@@ -6,11 +6,11 @@ attempts and fits the primary system-level model:
 
     mean_progress ~ work_mode
                     + (1 | classroom_id)
-                    + (1 | student_id within classroom)
+                    + (1 | student_id)
 
 for two populations. Activity is deliberately not adjusted for because activity
 selection is part of the ZPDES mechanism being evaluated. GPBoost represents
-classroom and nested student identifiers as separate random-intercept grouping
+classroom and globally unique student identifiers as separate random-intercept grouping
 columns. The script also writes a forest-style Plotly HTML chart for the top
 modules by usage.
 
@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import sys
 import warnings
 from collections.abc import Iterable
@@ -212,30 +213,74 @@ def _read_table_input(path: Path) -> pd.DataFrame:
 
 
 def _read_mia_exercise_catalog(exercise_catalog_json: Path, module_config_json: Path) -> pd.DataFrame:
-    module_config = json.loads(module_config_json.read_text(encoding="utf-8"))
-    modules = module_config["config"]["module"]
-    module_names = {}
-    for module_id, module in modules.items():
-        title = module.get("title") or {}
-        module_names[str(module_id)] = title.get("short") or title.get("long") or str(module_id)
+    """Build an unambiguous exercise hierarchy from config learning items.
 
-    exercise_catalog = json.loads(exercise_catalog_json.read_text(encoding="utf-8"))
-    rows = []
-    for exercise in exercise_catalog.get("exercises", []):
-        module_ids = [str(module_id) for module_id in exercise.get("modules", [])]
-        if not module_ids:
+    ``exo_mia.json`` exposes local ordinal arrays such as ``modules=['1']`` and
+    ``activities=['1']``. Those values are not globally qualified hierarchy
+    identifiers and can collapse unrelated playlist exercises into a single
+    fictitious activity. The authoritative MIA configuration instead lists the
+    exercise IDs attached to every UUID-backed activity in ``learning_items``.
+
+    ``exercise_catalog_json`` remains in the signature for compatibility with
+    existing notebooks and CLI calls, but hierarchy resolution deliberately
+    uses ``config_mia.json`` only. Exercises attached to more than one activity
+    are omitted because their playlist context cannot be inferred safely.
+    """
+
+    _ = exercise_catalog_json
+    module_config = json.loads(module_config_json.read_text(encoding="utf-8"))
+    config = module_config["config"]
+    modules = config.get("module", {})
+    module_names: dict[str, str] = {}
+    for module_key, module in modules.items():
+        title = module.get("title") or {}
+        module_name = (
+            title.get("short")
+            or title.get("long")
+            or str(module.get("code") or module_key)
+        )
+        aliases = {
+            str(module_key),
+            str(module.get("id") or ""),
+            str(module.get("code") or ""),
+        }
+        for alias in aliases.difference({""}):
+            module_names[alias] = module_name
+
+    exercise_contexts: dict[str, set[tuple[str, str]]] = {}
+    for activity_key, activity in config.get("activity", {}).items():
+        activity_id = str(activity.get("id") or "").strip()
+        activity_code = str(activity.get("code") or activity_key).strip()
+        module_match = re.match(r"^(M[^O]+)O", activity_code)
+        if not activity_id or module_match is None:
             continue
-        module_id = module_ids[0]
+        module_code = module_match.group(1)
+        module_name = module_names.get(
+            module_code,
+            module_names.get(module_code.removeprefix("M"), module_code),
+        )
+        context = (module_name, activity_id)
+        for exercise_id in activity.get("learning_items", []) or []:
+            normalized_exercise_id = str(exercise_id).strip()
+            if normalized_exercise_id:
+                exercise_contexts.setdefault(normalized_exercise_id, set()).add(context)
+
+    rows = []
+    for exercise_id, contexts in exercise_contexts.items():
+        if len(contexts) != 1:
+            continue
+        catalog_module, catalog_activity_id = next(iter(contexts))
         rows.append(
             {
-                "exercise_id": exercise.get("id"),
-                "catalog_module": module_names.get(module_id, module_id),
-                "catalog_activity_id": (
-                    str(exercise.get("activities", [])[0]) if exercise.get("activities") else pd.NA
-                ),
+                "exercise_id": exercise_id,
+                "catalog_module": catalog_module,
+                "catalog_activity_id": catalog_activity_id,
             }
         )
-    return pd.DataFrame(rows).dropna(subset=["exercise_id"]).drop_duplicates("exercise_id")
+    return pd.DataFrame(
+        rows,
+        columns=["exercise_id", "catalog_module", "catalog_activity_id"],
+    )
 
 
 def _with_catalog_module_fill(frame: pd.DataFrame, args: argparse.Namespace) -> pd.DataFrame:
@@ -346,7 +391,12 @@ def load_attempts(args: argparse.Namespace) -> pd.DataFrame:
                 "Expected `playlist_or_module_id` or `playlist_id`."
             )
         frame = filter_single_module_playlists(frame)
-    frame["created_at"] = pd.to_datetime(frame["created_at"], errors="coerce", utc=True)
+    frame["created_at"] = pd.to_datetime(
+        frame["created_at"],
+        format="mixed",
+        errors="coerce",
+        utc=True,
+    )
     frame = frame.dropna(subset=["created_at"])
     frame["success"] = _to_success_numeric(frame["data_correct"])
     frame = frame.dropna(subset=["success"])
@@ -388,6 +438,36 @@ def _to_success_numeric(series: pd.Series) -> pd.Series:
     return normalized.map(lambda value: 1 if value in truthy else 0 if value in falsy else np.nan)
 
 
+def _qualify_playlist_activity_sequences(attempts: pd.DataFrame) -> pd.DataFrame:
+    """Keep the same pedagogical activity separate across playlist sequences."""
+
+    frame = attempts.copy()
+    playlist_rows = frame["work_mode"].eq("playlist")
+    if not playlist_rows.any():
+        return frame
+    if "playlist_id" not in frame.columns:
+        raise ValueError(
+            "Playlist activity progress requires playlist_id to separate sequences"
+        )
+
+    playlist_ids = frame["playlist_id"].astype("string").str.strip()
+    playlist_ids = playlist_ids.mask(playlist_ids.fillna("").eq(""), pd.NA)
+    missing_playlist_id = playlist_rows & playlist_ids.isna()
+    if missing_playlist_id.any():
+        raise ValueError(
+            "Playlist activity progress requires playlist_id for every playlist row; "
+            f"missing on {int(missing_playlist_id.sum())} rows"
+        )
+
+    frame.loc[playlist_rows, "activity_id"] = (
+        "playlist::"
+        + playlist_ids.loc[playlist_rows].astype(str)
+        + "::activity::"
+        + frame.loc[playlist_rows, "activity_id"].astype(str)
+    )
+    return frame
+
+
 def split_populations(
     attempts: pd.DataFrame,
     min_unique_exercises: int | None = None,
@@ -419,8 +499,10 @@ def build_activity_level(
 ) -> pd.DataFrame:
     """Build first-versus-later progress from first retained exercise attempts.
 
-    Activity ids are module-local in MIA, so module is part of the sequence key.
-    The first retained student-exercise row is selected before each activity
+    Playlist activities are qualified by playlist id so the same pedagogical
+    activity in two playlists produces two progress observations. Activity ids
+    are module-local in MIA, so module remains part of the sequence key. The
+    first retained student-exercise row is selected before each activity
     timeline is split into contiguous work-mode runs.
     """
 
@@ -429,8 +511,9 @@ def build_activity_level(
         build_first_attempt_trajectory,
     )
 
+    sequence_attempts = _qualify_playlist_activity_sequences(attempts)
     frame = build_first_attempt_trajectory(
-        attempts,
+        sequence_attempts,
         min_activity_exercises=min_activity_exercises,
     )
     group_keys = SEGMENT_KEYS
@@ -473,8 +556,7 @@ def build_activity_level(
 
 PRIMARY_MODEL_FORMULA = "mean_progress ~ C(work_mode, Treatment('playlist'))"
 PRIMARY_MODEL_SPECIFICATION = (
-    "Gaussian GPBoost model; random intercepts for classroom and student "
-    "within classroom"
+    "Gaussian GPBoost model; random intercepts for classroom and student"
 )
 INTERACTION_MODEL_FORMULA = (
     "mean_progress ~ C(work_mode, Treatment('playlist')) "
@@ -547,7 +629,7 @@ def _random_classroom_variance(result) -> float | None:
 def _prepare_gpboost_progress_inputs(
     model_df: pd.DataFrame,
 ) -> tuple[np.ndarray, pd.DataFrame, pd.DataFrame]:
-    """Build the Gaussian response, fixed effects, and nested group identifiers."""
+    """Build the Gaussian response, fixed effects, and random-effect groups."""
 
     fixed_effects = pd.DataFrame(
         {
@@ -556,12 +638,9 @@ def _prepare_gpboost_progress_inputs(
         },
         index=model_df.index,
     )
-    student_in_classroom = pd.MultiIndex.from_frame(
-        model_df[["classroom_id", "student_id"]]
-    )
     grouping_values = {
         "classroom_id": model_df["classroom_id"],
-        "student_in_classroom": student_in_classroom,
+        "student_id": model_df["student_id"],
     }
     group_data = pd.DataFrame(index=model_df.index)
     for name, values in grouping_values.items():
@@ -694,7 +773,7 @@ def fit_mixed_model(activity_level: pd.DataFrame, population: str, maxiter: int)
         converged=converged,
         scale=variance_components.get("Error_var"),
         log_likelihood=-float(model.get_current_neg_log_likelihood()),
-        random_student_var=variance_components.get("student_in_classroom"),
+        random_student_var=variance_components.get("student_id"),
         random_classroom_var=variance_components.get("classroom_id"),
         variance_components="; ".join(
             f"{name}={value:.6g}"
@@ -1251,13 +1330,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--exercise-catalog-json",
         type=Path,
         default=None,
-        help="Optional MIA exo_mia.json used to fill missing module labels from exercise ids.",
+        help="Compatibility path for MIA analyses; hierarchy mapping comes from config_mia.json.",
     )
     parser.add_argument(
         "--module-config-json",
         type=Path,
         default=None,
-        help="Optional MIA config_mia.json used with --exercise-catalog-json.",
+        help="Optional MIA config_mia.json used to map learning-item IDs to activities.",
     )
     parser.add_argument(
         "--data-dir",

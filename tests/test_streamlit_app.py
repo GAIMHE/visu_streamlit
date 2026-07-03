@@ -32,6 +32,11 @@ class _FakeSidebar:
         self.info_messages.append(message)
 
 
+def test_source_option_label_hides_internal_source_id() -> None:
+    assert streamlit_app._source_option_label("am") == "Adaptiv'Math"
+    assert streamlit_app._source_option_label("mia") == "MIA"
+
+
 def test_select_source_clears_cache_when_source_changes(monkeypatch) -> None:
     sidebar = _FakeSidebar(selectbox_return="mia")
     events: list[str] = []

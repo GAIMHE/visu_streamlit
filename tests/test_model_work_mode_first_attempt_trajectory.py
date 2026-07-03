@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pandas as pd
 
@@ -9,6 +11,7 @@ from scripts.model_work_mode_first_attempt_trajectory import (
     build_first_attempt_trajectory,
     build_fixed_effect_trajectory,
     fit_gpboost_trajectory,
+    load_mia_first_attempt_trajectory,
     prepare_gpboost_inputs,
 )
 
@@ -33,6 +36,65 @@ def _attempt(
         "created_at": pd.Timestamp("2026-01-01", tz="UTC") + pd.Timedelta(minutes=minute),
         "success": success,
     }
+
+
+def test_raw_mia_trajectory_uses_config_learning_item_activity(tmp_path) -> None:
+    input_path = tmp_path / "attempts.parquet"
+    exercise_ids = [f"exercise_{index}" for index in range(4)]
+    pd.DataFrame(
+        {
+            "user_id": ["student"] * 4,
+            "classroom_id": ["classroom"] * 4,
+            "playlist_or_module_id": ["playlist"] * 4,
+            "exercise_id": exercise_ids,
+            "activity_id": [None] * 4,
+            "module_short_title": [None] * 4,
+            "module_long_title": [None] * 4,
+            "created_at": [
+                f"2026-01-01 00:0{index}:00+00:00" for index in range(4)
+            ],
+            "data_correct": [False, False, True, True],
+            "work_mode": ["playlist"] * 4,
+        }
+    ).to_parquet(input_path, index=False)
+    config_path = tmp_path / "config.json"
+    catalog_path = tmp_path / "exercises.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "config": {
+                    "module": {
+                        "101": {
+                            "code": "M101",
+                            "title": {"short": "Module 101"},
+                        }
+                    },
+                    "activity": {
+                        "M101O1A1": {
+                            "id": "activity-uuid",
+                            "code": "M101O1A1",
+                            "learning_items": exercise_ids,
+                        }
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    catalog_path.write_text(json.dumps({"exercises": []}), encoding="utf-8")
+
+    result = load_mia_first_attempt_trajectory(
+        input_file=input_path,
+        exercise_catalog_json=catalog_path,
+        module_config_json=config_path,
+        population="combined",
+        min_activity_exercises=4,
+        sequence_scope="activity",
+    )
+
+    assert len(result.frame) == 4
+    assert result.frame["activity_id"].eq("activity-uuid").all()
+    assert result.frame["module"].eq("Module 101").all()
 
 
 def test_first_attempts_are_unique_and_positions_restart_by_segment() -> None:

@@ -447,6 +447,43 @@ Recommended use:
 
 ---
 
+## 6B. Batch Elo On Initial Work-Mode Segment Windows
+
+The work-mode segment export reuses the adaptive-test batch estimator without
+performing chronological Elo updates. It filters to playlist and ZPDES, retains
+the first such encounter with each exercise, then builds contiguous
+student-module-work-mode segments. A return to the same module and work mode
+after another segment receives a new deterministic `segment_id`.
+
+By default, only segments containing at least 30 retained attempts are eligible.
+One student Elo is fitted from the first 15 attempts against the fixed calibrated
+exercise difficulties. The event-level export contains those 15 rows and repeats
+the fitted segment Elo on each row so it can be used directly for trajectory plots.
+
+```bash
+python scripts/export_work_mode_segment_elo.py --source mia
+```
+
+Default output:
+
+- `artifacts/reports/mia_work_mode_segment_elo_first_15_min_30.parquet`
+
+Important columns:
+
+- `segment_id`, `segment_ordinal`, `segment_total_attempts`;
+- `segment_attempt_position` (1 to 15);
+- `user_id`, `classroom_id`, module fields, and `work_mode`;
+- `created_at`, `exercise_id`, `activity_id`, and `data_correct`;
+- `exercise_elo` and `exercise_elo_calibrated`;
+- `student_elo_first_window`, `segment_elo_attempts`, and
+  `segment_elo_coverage`.
+
+The first retained playlist/ZPDES encounter may have `attempt_number > 1` when
+the same exercise was previously encountered in another excluded work mode.
+This matches the first-attempt trajectory notebook's retained-mode scope.
+
+---
+
 ## 7. Student Elo Page
 
 The Student Elo page compares two replay curves for the same student:

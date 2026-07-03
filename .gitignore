@@ -39,7 +39,8 @@ htmlcov/
 
 # Notebooks
 .ipynb_checkpoints/
-notebooks/
+notebooks/*
+!notebooks/mia_interaction_overview.ipynb
 
 # IDE / editor
 .vscode/
@@ -82,7 +83,8 @@ Desktop.ini
 # Extra ressources
 ressources/figures/
 ressources/summaries
-iterations/
+iterations/*
+!iterations/2026-07-03-mia-interaction-overview.md
 ressources/archive/
 ressources/paper_appendix
 research_question_investigation_plan.md
