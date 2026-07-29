@@ -41,6 +41,13 @@ htmlcov/
 .ipynb_checkpoints/
 notebooks/*
 !notebooks/mia_interaction_overview.ipynb
+!notebooks/work_mode_progress_random_module_model.ipynb
+!notebooks/work_mode_sequence_slope_model.ipynb
+!notebooks/work_mode_exercise_elo_invariance.ipynb
+!notebooks/work_mode_sequence_position_comparison.ipynb
+!notebooks/build_maths_data_am_adaptiv.ipynb
+!notebooks/build_maths_dependencies_am_adaptiv.ipynb
+!notebooks/zpdes_progress_elo_quartile_module_model.ipynb
 
 # IDE / editor
 .vscode/
@@ -61,6 +68,9 @@ data_am_mia/
 data_neurips/
 exercises/
 data_miaam/
+data_adaptiv_world/
+data_adaptiv_college/
+data_HF/
 
 # Local Codex assistant config
 AGENTS.md
@@ -84,7 +94,6 @@ Desktop.ini
 ressources/figures/
 ressources/summaries
 iterations/*
-!iterations/2026-07-03-mia-interaction-overview.md
 ressources/archive/
 ressources/paper_appendix
 research_question_investigation_plan.md

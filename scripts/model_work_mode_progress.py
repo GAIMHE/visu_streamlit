@@ -14,6 +14,16 @@ classroom and globally unique student identifiers as separate random-intercept g
 columns. The script also writes a forest-style Plotly HTML chart for the top
 modules by usage.
 
+The analysis can additionally fit a paired half-level model:
+
+    success_rate ~ work_mode * half
+                   + (1 | classroom_id)
+                   + (1 | student_id)
+                   + (1 | sequence_id)
+
+This exposes whether the work modes start from different first-half success
+levels, which cannot be recovered from ``mean_progress`` alone.
+
 Population definitions:
 - exclusive_modes: students observed in exactly one of playlist/zpdes.
 - both_modes: students observed in both playlist and zpdes.
@@ -83,6 +93,44 @@ class FitSummary:
     variance_components: str | None = None
     warning_count: int = 0
     warning_messages: str | None = None
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class HalfSuccessSummary:
+    """Adjusted first/later-half success estimates for one population."""
+
+    population: str
+    status: str
+    n_sequences: int
+    n_half_rows: int
+    n_students: int
+    n_classrooms: int
+    model_specification: str
+    optimizer: str | None = None
+    playlist_first_half: float | None = None
+    playlist_later_half: float | None = None
+    playlist_change: float | None = None
+    zpdes_first_half: float | None = None
+    zpdes_later_half: float | None = None
+    zpdes_change: float | None = None
+    initial_zpdes_vs_playlist: float | None = None
+    initial_std_error: float | None = None
+    initial_p_value: float | None = None
+    initial_ci_low: float | None = None
+    initial_ci_high: float | None = None
+    difference_in_differences: float | None = None
+    did_std_error: float | None = None
+    did_p_value: float | None = None
+    did_ci_low: float | None = None
+    did_ci_high: float | None = None
+    converged: bool | None = None
+    scale: float | None = None
+    log_likelihood: float | None = None
+    random_student_var: float | None = None
+    random_classroom_var: float | None = None
+    random_sequence_var: float | None = None
+    variance_components: str | None = None
     error: str | None = None
 
 
@@ -493,9 +541,89 @@ def split_populations(
     return filtered
 
 
+def _attach_exercise_elo(
+    trajectory: pd.DataFrame,
+    exercise_elo: pd.DataFrame,
+) -> pd.DataFrame:
+    """Attach calibrated exercise difficulty to retained trajectory rows.
+
+    Playlist activity ids are qualified with their playlist context before the
+    trajectory is built. The original pedagogical activity id is recovered for
+    the exact Elo-context join. An exercise-id average is retained as a fallback
+    for the small number of attempts whose exact activity context is absent.
+    """
+
+    required = {"exercise_id", "activity_id", "exercise_elo"}
+    missing = sorted(required.difference(exercise_elo.columns))
+    if missing:
+        raise ValueError("Missing exercise Elo columns: " + ", ".join(missing))
+
+    elo_context = exercise_elo.copy()
+    if "calibrated" in elo_context.columns:
+        elo_context = elo_context.loc[elo_context["calibrated"].fillna(False)]
+    elo_context = elo_context.dropna(
+        subset=["exercise_id", "activity_id", "exercise_elo"]
+    )[["exercise_id", "activity_id", "exercise_elo"]].copy()
+    elo_context["exercise_id"] = elo_context["exercise_id"].astype(str)
+    elo_context["activity_id"] = elo_context["activity_id"].astype(str)
+    duplicate_contexts = elo_context.duplicated(
+        subset=["exercise_id", "activity_id"],
+        keep=False,
+    )
+    if duplicate_contexts.any():
+        raise ValueError(
+            "Exercise Elo must be unique for each exercise_id and activity_id context"
+        )
+
+    exact_context = elo_context.rename(
+        columns={
+            "activity_id": "elo_activity_id",
+            "exercise_elo": "exact_exercise_elo",
+        }
+    )
+    exercise_fallback = (
+        elo_context.groupby("exercise_id", as_index=False, observed=True)["exercise_elo"]
+        .mean()
+        .rename(columns={"exercise_elo": "fallback_exercise_elo"})
+    )
+
+    attached = trajectory.copy()
+    attached["exercise_id"] = attached["exercise_id"].astype(str)
+    attached["elo_activity_id"] = attached["activity_id"].astype(str)
+    playlist_rows = attached["work_mode"].eq("playlist")
+    attached.loc[playlist_rows, "elo_activity_id"] = (
+        attached.loc[playlist_rows, "elo_activity_id"]
+        .str.rsplit("::activity::", n=1)
+        .str[-1]
+    )
+    attached = attached.merge(
+        exact_context,
+        on=["exercise_id", "elo_activity_id"],
+        how="left",
+        validate="many_to_one",
+    ).merge(
+        exercise_fallback,
+        on="exercise_id",
+        how="left",
+        validate="many_to_one",
+    )
+    attached["exercise_elo"] = attached["exact_exercise_elo"].fillna(
+        attached["fallback_exercise_elo"]
+    )
+    attached["elo_exact_context"] = attached["exact_exercise_elo"].notna()
+    attached["elo_exercise_fallback"] = (
+        attached["exact_exercise_elo"].isna()
+        & attached["fallback_exercise_elo"].notna()
+    )
+    return attached.drop(
+        columns=["elo_activity_id", "exact_exercise_elo", "fallback_exercise_elo"]
+    )
+
+
 def build_activity_level(
     attempts: pd.DataFrame,
     min_activity_exercises: int = 4,
+    exercise_elo: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Build first-versus-later progress from first retained exercise attempts.
 
@@ -516,6 +644,8 @@ def build_activity_level(
         sequence_attempts,
         min_activity_exercises=min_activity_exercises,
     )
+    if exercise_elo is not None:
+        frame = _attach_exercise_elo(frame, exercise_elo)
     group_keys = SEGMENT_KEYS
     rank = frame["attempt_position"] + 1
     n_attempts = frame["segment_exercises"]
@@ -534,10 +664,32 @@ def build_activity_level(
     unique_exercises = frame.groupby(group_keys)["exercise_id"].nunique().rename("unique_exercises")
     classroom = frame.groupby(group_keys)["classroom_id"].first()
 
-    activity_level = pd.concat(
-        [success_first, success_later, success_all, n_rows, unique_exercises, classroom],
-        axis=1,
-    ).reset_index()
+    summaries: list[pd.Series] = [
+        success_first,
+        success_later,
+        success_all,
+        n_rows,
+        unique_exercises,
+        classroom,
+    ]
+    if exercise_elo is not None:
+        for half_name, half_mask in (("first", first_half), ("later", second_half)):
+            half = frame[half_mask].groupby(group_keys)
+            summaries.extend(
+                [
+                    half["exercise_elo"].mean().rename(f"mean_exercise_elo_{half_name}"),
+                    half["exercise_elo"].count().rename(f"elo_exercises_{half_name}"),
+                    half["success"].size().rename(f"half_exercises_{half_name}"),
+                    half["elo_exact_context"].sum().rename(
+                        f"elo_exact_context_{half_name}"
+                    ),
+                    half["elo_exercise_fallback"].sum().rename(
+                        f"elo_exercise_fallback_{half_name}"
+                    ),
+                ]
+            )
+
+    activity_level = pd.concat(summaries, axis=1).reset_index()
     activity_level = activity_level.dropna(subset=["success_rate_first", "success_rate_later"])
     activity_level["mean_progress"] = (
         activity_level["success_rate_later"] - activity_level["success_rate_first"]
@@ -554,9 +706,84 @@ def build_activity_level(
     return activity_level
 
 
+def summarize_half_exercise_elo(activity_level: pd.DataFrame) -> pd.DataFrame:
+    """Summarize first/later exercise Elo with equal weight per sequence.
+
+    The mean and median are calculated across each sequence-half's mean Elo,
+    matching the equal-sequence weighting of the progress analysis.
+    """
+
+    required = {
+        "work_mode",
+        "student_id",
+        "mean_exercise_elo_first",
+        "mean_exercise_elo_later",
+        "elo_exercises_first",
+        "elo_exercises_later",
+        "half_exercises_first",
+        "half_exercises_later",
+        "elo_exact_context_first",
+        "elo_exact_context_later",
+        "elo_exercise_fallback_first",
+        "elo_exercise_fallback_later",
+    }
+    missing = sorted(required.difference(activity_level.columns))
+    if missing:
+        raise ValueError("Missing sequence-half Elo columns: " + ", ".join(missing))
+
+    half_frames = []
+    for half_name in ("first", "later"):
+        half = activity_level[
+            [
+                "work_mode",
+                "student_id",
+                f"mean_exercise_elo_{half_name}",
+                f"elo_exercises_{half_name}",
+                f"half_exercises_{half_name}",
+                f"elo_exact_context_{half_name}",
+                f"elo_exercise_fallback_{half_name}",
+            ]
+        ].rename(
+            columns={
+                f"mean_exercise_elo_{half_name}": "sequence_mean_elo",
+                f"elo_exercises_{half_name}": "elo_exercises",
+                f"half_exercises_{half_name}": "half_exercises",
+                f"elo_exact_context_{half_name}": "exact_context_rows",
+                f"elo_exercise_fallback_{half_name}": "fallback_rows",
+            }
+        )
+        half.insert(1, "half", half_name)
+        half_frames.append(half)
+
+    long = pd.concat(half_frames, ignore_index=True)
+    summary = (
+        long.groupby(["work_mode", "half"], as_index=False, observed=True)
+        .agg(
+            sequences=("sequence_mean_elo", "size"),
+            sequences_with_elo=("sequence_mean_elo", "count"),
+            students=("student_id", "nunique"),
+            mean_sequence_elo=("sequence_mean_elo", "mean"),
+            median_sequence_elo=("sequence_mean_elo", "median"),
+            elo_exercises=("elo_exercises", "sum"),
+            half_exercises=("half_exercises", "sum"),
+            exact_context_rows=("exact_context_rows", "sum"),
+            fallback_rows=("fallback_rows", "sum"),
+        )
+        .sort_values(["work_mode", "half"])
+        .reset_index(drop=True)
+    )
+    summary["elo_coverage"] = summary["elo_exercises"] / summary["half_exercises"]
+    return summary
+
+
 PRIMARY_MODEL_FORMULA = "mean_progress ~ C(work_mode, Treatment('playlist'))"
 PRIMARY_MODEL_SPECIFICATION = (
     "Gaussian GPBoost model; random intercepts for classroom and student"
+)
+HALF_SUCCESS_MODEL_FORMULA = "success_rate ~ work_mode * half"
+HALF_SUCCESS_MODEL_SPECIFICATION = (
+    "Gaussian GPBoost half-level model; work mode by half fixed effects; "
+    "random intercepts for classroom, student, and paired sequence"
 )
 INTERACTION_MODEL_FORMULA = (
     "mean_progress ~ C(work_mode, Treatment('playlist')) "
@@ -653,6 +880,49 @@ def _prepare_gpboost_progress_inputs(
     return response, fixed_effects, group_data
 
 
+def _prepare_gpboost_half_success_inputs(
+    model_df: pd.DataFrame,
+) -> tuple[np.ndarray, pd.DataFrame, pd.DataFrame]:
+    """Build the paired first/later-half Gaussian model inputs.
+
+    Each source row becomes two observations sharing a sequence random
+    intercept. Success is expressed in percentage points so the coefficients
+    remain directly comparable with ``mean_progress``.
+    """
+
+    n_sequences = len(model_df)
+    is_zpdes = model_df["work_mode"].eq("zpdes").to_numpy(dtype=np.float64)
+    zpdes = np.concatenate([is_zpdes, is_zpdes])
+    later_half = np.concatenate(
+        [np.zeros(n_sequences, dtype=np.float64), np.ones(n_sequences, dtype=np.float64)]
+    )
+    fixed_effects = pd.DataFrame(
+        {
+            "Intercept": np.ones(n_sequences * 2, dtype=np.float64),
+            "zpdes": zpdes,
+            "later_half": later_half,
+            "zpdes_x_later_half": zpdes * later_half,
+        }
+    )
+
+    group_data = pd.DataFrame()
+    for name in ("classroom_id", "student_id"):
+        codes, _ = pd.factorize(model_df[name], sort=True)
+        if np.any(codes < 0):
+            raise ValueError(f"Could not encode grouping column {name}")
+        group_data[name] = np.concatenate([codes, codes]).astype(np.int32)
+    sequence_codes = np.arange(n_sequences, dtype=np.int32)
+    group_data["sequence_id"] = np.concatenate([sequence_codes, sequence_codes])
+
+    response = np.concatenate(
+        [
+            model_df["success_rate_first"].to_numpy(dtype=np.float64),
+            model_df["success_rate_later"].to_numpy(dtype=np.float64),
+        ]
+    ) * 100.0
+    return response, fixed_effects, group_data
+
+
 def _gpboost_parameter_map(table: pd.DataFrame) -> dict[str, float]:
     return {
         str(name): float(value)
@@ -675,6 +945,142 @@ def _normal_p_value(estimate: float, std_error: float) -> float:
     if std_error <= 0 or not np.isfinite(std_error):
         return math.nan
     return math.erfc(abs(estimate / std_error) / math.sqrt(2.0))
+
+
+def fit_half_success_model(
+    activity_level: pd.DataFrame,
+    population: str,
+    maxiter: int,
+) -> HalfSuccessSummary:
+    """Fit adjusted first/later-half success levels by work mode.
+
+    The interaction coefficient is a difference-in-differences: the ZPDES
+    first-to-later change minus the playlist first-to-later change. Every
+    eligible sequence receives equal weight, matching the primary change-score
+    analysis.
+    """
+
+    required = [
+        "success_rate_first",
+        "success_rate_later",
+        "work_mode",
+        "student_id",
+        "classroom_id",
+    ]
+    missing = sorted(set(required).difference(activity_level.columns))
+    if missing:
+        return HalfSuccessSummary(
+            population=population,
+            status="failed",
+            n_sequences=0,
+            n_half_rows=0,
+            n_students=0,
+            n_classrooms=0,
+            model_specification=HALF_SUCCESS_MODEL_SPECIFICATION,
+            error=f"Missing required half-success columns: {', '.join(missing)}",
+        )
+
+    model_df = activity_level.dropna(subset=required).copy()
+    base = {
+        "population": population,
+        "n_sequences": len(model_df),
+        "n_half_rows": len(model_df) * 2,
+        "n_students": model_df["student_id"].nunique(),
+        "n_classrooms": model_df["classroom_id"].nunique(),
+        "model_specification": HALF_SUCCESS_MODEL_SPECIFICATION,
+    }
+    if model_df.empty or model_df["work_mode"].nunique() < 2:
+        return HalfSuccessSummary(
+            **base,
+            status="skipped",
+            error="Half-success model requires both work modes and non-empty data.",
+        )
+    success_values = model_df[["success_rate_first", "success_rate_later"]]
+    if ((success_values < 0) | (success_values > 1)).any().any():
+        return HalfSuccessSummary(
+            **base,
+            status="failed",
+            error="Half-success rates must lie between 0 and 1.",
+        )
+    nesting_error = _student_classroom_error(model_df)
+    if nesting_error:
+        return HalfSuccessSummary(**base, status="failed", error=nesting_error)
+
+    try:
+        import gpboost as gpb
+    except ImportError:  # pragma: no cover - exercised only without optional dep
+        return HalfSuccessSummary(
+            **base,
+            status="failed",
+            error="gpboost is required for half-level mixed-model fitting.",
+        )
+
+    try:
+        response, fixed_effects, group_data = _prepare_gpboost_half_success_inputs(model_df)
+        model = gpb.GPModel(likelihood="gaussian", group_data=group_data)
+        model.fit(
+            y=response,
+            X=fixed_effects,
+            params={
+                "optimizer_cov": "lbfgs",
+                "optimizer_coef": "lbfgs",
+                "maxit": maxiter,
+                "trace": False,
+            },
+        )
+        coefficient_table = model.get_coef(std_err=True, format_pandas=True)
+        covariance_table = model.get_cov_pars(std_err=False, format_pandas=True)
+        coefficients = _gpboost_parameter_map(coefficient_table)
+        standard_errors = {
+            str(name): float(value)
+            for name, value in coefficient_table.loc["Std. err."].items()
+        }
+        variance_components = _gpboost_parameter_map(covariance_table)
+        iterations = int(model._get_num_optim_iter())
+        converged = iterations < maxiter
+    except Exception as exc:  # pragma: no cover - model construction/data dependent
+        return HalfSuccessSummary(**base, status="failed", error=str(exc))
+
+    intercept = coefficients["Intercept"]
+    initial_difference = coefficients["zpdes"]
+    playlist_change = coefficients["later_half"]
+    difference_in_differences = coefficients["zpdes_x_later_half"]
+    zpdes_change = playlist_change + difference_in_differences
+    initial_se = standard_errors["zpdes"]
+    did_se = standard_errors["zpdes_x_later_half"]
+    return HalfSuccessSummary(
+        **base,
+        status="ok" if converged else "not_converged",
+        optimizer="lbfgs",
+        playlist_first_half=intercept,
+        playlist_later_half=intercept + playlist_change,
+        playlist_change=playlist_change,
+        zpdes_first_half=intercept + initial_difference,
+        zpdes_later_half=intercept + initial_difference + zpdes_change,
+        zpdes_change=zpdes_change,
+        initial_zpdes_vs_playlist=initial_difference,
+        initial_std_error=initial_se,
+        initial_p_value=_normal_p_value(initial_difference, initial_se),
+        initial_ci_low=initial_difference - 1.96 * initial_se,
+        initial_ci_high=initial_difference + 1.96 * initial_se,
+        difference_in_differences=difference_in_differences,
+        did_std_error=did_se,
+        did_p_value=_normal_p_value(difference_in_differences, did_se),
+        did_ci_low=difference_in_differences - 1.96 * did_se,
+        did_ci_high=difference_in_differences + 1.96 * did_se,
+        converged=converged,
+        scale=variance_components.get("Error_var"),
+        log_likelihood=-float(model.get_current_neg_log_likelihood()),
+        random_student_var=variance_components.get("student_id"),
+        random_classroom_var=variance_components.get("classroom_id"),
+        random_sequence_var=variance_components.get("sequence_id"),
+        variance_components="; ".join(
+            f"{name}={value:.6g}"
+            for name, value in variance_components.items()
+            if name != "Error_var"
+        ),
+        error=None if converged else "Optimizer reached the maximum iteration count.",
+    )
 
 
 def fit_mixed_model(activity_level: pd.DataFrame, population: str, maxiter: int) -> FitSummary:

@@ -8,14 +8,17 @@ import pandas as pd
 
 from scripts.model_work_mode_progress import (
     _keep_only_single_module_playlists,
+    _prepare_gpboost_half_success_inputs,
     _prepare_gpboost_progress_inputs,
     _read_mia_exercise_catalog,
     _student_classroom_error,
     build_activity_level,
+    fit_half_success_model,
     fit_mixed_model,
     fit_population_interaction_model,
     load_attempts,
     split_populations,
+    summarize_half_exercise_elo,
 )
 
 
@@ -217,6 +220,102 @@ def test_gpboost_groups_use_unique_student_ids() -> None:
 
     assert list(group_data.columns) == ["classroom_id", "student_id"]
     assert group_data["student_id"].nunique() == activity["student_id"].nunique()
+
+
+def test_half_success_model_recovers_initial_difference_and_changes() -> None:
+    activity = _synthetic_activity_data()
+    rng = np.random.default_rng(7)
+    is_zpdes = activity["work_mode"].eq("zpdes").astype(float)
+    shared_noise = rng.normal(0, 0.025, len(activity))
+    activity["success_rate_first"] = np.clip(
+        0.72 - 0.10 * is_zpdes + shared_noise,
+        0.01,
+        0.99,
+    )
+    activity["success_rate_later"] = np.clip(
+        activity["success_rate_first"]
+        + 0.02 * (1 - is_zpdes)
+        + 0.15 * is_zpdes
+        + rng.normal(0, 0.015, len(activity)),
+        0.01,
+        0.99,
+    )
+
+    summary = fit_half_success_model(activity, population="synthetic", maxiter=200)
+
+    assert summary.status == "ok"
+    assert summary.converged is True
+    assert -11.0 < summary.initial_zpdes_vs_playlist < -9.0
+    assert 1.0 < summary.playlist_change < 3.0
+    assert 14.0 < summary.zpdes_change < 16.0
+    assert 12.0 < summary.difference_in_differences < 14.0
+    assert summary.random_sequence_var is not None
+
+
+def test_half_success_inputs_pair_sequence_random_intercepts() -> None:
+    activity = _synthetic_activity_data().head(12).copy()
+    activity["success_rate_first"] = 0.5
+    activity["success_rate_later"] = 0.75
+
+    response, fixed_effects, group_data = _prepare_gpboost_half_success_inputs(activity)
+
+    assert len(response) == len(activity) * 2
+    assert list(fixed_effects.columns) == [
+        "Intercept",
+        "zpdes",
+        "later_half",
+        "zpdes_x_later_half",
+    ]
+    assert list(group_data.columns) == ["classroom_id", "student_id", "sequence_id"]
+    assert group_data.groupby("sequence_id").size().eq(2).all()
+
+
+def test_activity_level_summarizes_first_and_later_half_exercise_elo() -> None:
+    rows = []
+    elo_rows = []
+    mode_elos = {
+        "playlist": [1400.0, 1410.0, 1500.0, 1510.0],
+        "zpdes": [1600.0, 1610.0, 1700.0, 1710.0],
+    }
+    for mode, elo_values in mode_elos.items():
+        for position, elo in enumerate(elo_values):
+            exercise_id = f"{mode}_exercise_{position}"
+            rows.append(
+                {
+                    "student_id": f"{mode}_student",
+                    "classroom_id": "classroom",
+                    "module": "module",
+                    "activity_id": "activity",
+                    "playlist_id": "playlist" if mode == "playlist" else pd.NA,
+                    "work_mode": mode,
+                    "exercise_id": exercise_id,
+                    "created_at": pd.Timestamp("2025-01-01", tz="UTC")
+                    + pd.Timedelta(minutes=position),
+                    "success": float(position % 2),
+                }
+            )
+            elo_rows.append(
+                {
+                    "exercise_id": exercise_id,
+                    "activity_id": "activity",
+                    "exercise_elo": elo,
+                    "calibrated": True,
+                }
+            )
+
+    activity = build_activity_level(
+        pd.DataFrame(rows),
+        min_activity_exercises=4,
+        exercise_elo=pd.DataFrame(elo_rows),
+    )
+    summary = summarize_half_exercise_elo(activity).set_index(["work_mode", "half"])
+
+    assert summary.loc[("playlist", "first"), "mean_sequence_elo"] == 1405.0
+    assert summary.loc[("playlist", "later"), "mean_sequence_elo"] == 1505.0
+    assert summary.loc[("zpdes", "first"), "median_sequence_elo"] == 1605.0
+    assert summary.loc[("zpdes", "later"), "median_sequence_elo"] == 1705.0
+    assert summary["elo_coverage"].eq(1.0).all()
+    assert summary["fallback_rows"].eq(0).all()
 
 
 def test_population_interaction_recovers_smaller_both_mode_effect() -> None:

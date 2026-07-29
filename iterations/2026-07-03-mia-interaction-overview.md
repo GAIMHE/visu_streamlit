@@ -10,6 +10,7 @@ Create a reusable notebook for the MIA interaction parquet that reports overall 
 - Added narrow `.gitignore` exceptions so this notebook and its iteration log are commit-ready while other local notebooks and iteration files remain ignored.
 - Added configurable parquet discovery and optional CSV exports.
 - Added overall counts, work-mode summaries, exclusive student participation groups, module totals, and work-mode summaries by module.
+- Added contiguous ZPDES/playlist sequence counts and mean/median sequence lengths, with timestamp-quality diagnostics.
 - Recovered module identity for playlist attempts through the exercise hierarchy in `config_mia.json` and exposed mapping coverage.
 
 ## Important decisions and rationale
@@ -20,6 +21,8 @@ Create a reusable notebook for the MIA interaction parquet that reports overall 
 - Used module codes and short titles because displayed module numbers are reused across French and mathematics.
 - Preserved unresolved module mappings as `Unmapped` instead of silently dropping them.
 - Used DuckDB to scan the 6.4-million-row parquet efficiently without loading the full interaction table into pandas.
+- Defined a sequence as a student-level chronological run with an unchanged work mode; every work mode participates in boundary detection, and length counts attempt rows.
+- Used original parquet row position as the final ordering key so tied timestamps receive consistent sequence boundaries across window operations.
 
 ## Follow-up actions
 
