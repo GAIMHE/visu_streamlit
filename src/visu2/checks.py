@@ -209,7 +209,10 @@ dict[str, Any]
         objective_activities.filter(~pl.col("activity_id").is_in(list(activity_ids))).height
     )
 
-    catalog_exercise_ids = set(frames.activity_exercises["exercise_id"].to_list())
+    normalized_catalog_exercise_ids = frames.activity_exercises.select(
+        pl.col("exercise_id").cast(pl.Utf8).str.strip_chars()
+    ).filter(pl.col("exercise_id").is_not_null() & (pl.col("exercise_id") != ""))
+    catalog_exercise_ids = set(normalized_catalog_exercise_ids["exercise_id"].to_list())
 
     return {
         "modules": int(frames.modules.height),

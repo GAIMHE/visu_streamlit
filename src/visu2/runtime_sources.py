@@ -366,10 +366,11 @@ RUNTIME_SOURCES: dict[str, RuntimeSourceSpec] = {
     ),
     "neurips": RuntimeSourceSpec(
         source_id="neurips",
-        label="MIAAM",
+        label="MIAAM V2",
         description=(
-            "MIAAM maths dataset release built from Adaptiv'Math and MIA interaction logs, "
-            "exercise metadata, simplified ZPDES dependency graphs, and classroom identifiers."
+            "MIAAM V2 maths dataset release built from Adaptiv'Math, Adaptiv World, "
+            "and Adaptiv College interaction logs, exercise metadata, simplified "
+            "ZPDES dependency graphs, and classroom identifiers."
         ),
         runtime_root_relative=Path("artifacts") / "sources" / "neurips",
         local_root_relative=Path("artifacts") / "local" / "neurips",

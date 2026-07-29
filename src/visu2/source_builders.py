@@ -32,12 +32,19 @@ UUID_RE = re.compile(
 )
 
 NEURIPS_MODULE_CODE_BY_ID: dict[str, str] = {
+    # Adaptiv'Math modules.
     "63e98e5f-94e3-4630-9704-076882d6de38": "M1",
     "14fe4ca0-8fff-4c4a-bad2-6ef051eee349": "M31",
     "8ff53d40-9b1f-44c8-8646-f699fed002e9": "M32",
     "27709aa2-b055-4ed3-ac73-8dca783b4afe": "M33",
+    # Adaptiv World modules keep their V1 app codes.
     "053df3ec-5501-4ad8-9917-a935bcf76740": "M101",
     "14321a7e-4ef7-4b6a-9ff8-99329e08d7a2": "M105",
+    # Adaptiv College graph codes overlap with World, so the combined app uses
+    # a separate stable range while preserving the source-local ordering.
+    "1977213e-f43b-407c-a455-488c15445417": "M201",
+    "9c85b221-0536-4863-a69a-d8c42f9323c2": "M202",
+    "6075b1c1-8edb-4d6a-9524-76d91f86de10": "M203",
     "d840c0c0-3e48-11f1-8e68-975e7ffdd3c5": "M999",
 }
 
@@ -2449,11 +2456,12 @@ def _load_neurips_exercise_table(path: Path) -> pl.DataFrame:
         "module_name",
         "objective_id",
         "objective_name",
-        "objective_targeted_difficulties",
         "activity_id",
         "activity_name",
         "source",
     }
+    objective_intent_column = "objective_pedagogical_intent"
+    legacy_objective_intent_column = "objective_targeted_difficulties"
     text_required = {"instruction", "question", "feedback"}
     if path.suffix.lower() == ".parquet":
         frame = pl.read_parquet(path)
@@ -2462,6 +2470,15 @@ def _load_neurips_exercise_table(path: Path) -> pl.DataFrame:
     missing = sorted(base_required - set(frame.columns))
     if missing:
         raise ValueError(f"NeurIPS exercise table is missing columns: {missing}")
+    if objective_intent_column not in frame.columns:
+        if legacy_objective_intent_column not in frame.columns:
+            raise ValueError(
+                "NeurIPS exercise table is missing column: "
+                f"{objective_intent_column} (or legacy {legacy_objective_intent_column})"
+            )
+        frame = frame.with_columns(
+            pl.col(legacy_objective_intent_column).alias(objective_intent_column)
+        )
     if not text_required.issubset(frame.columns):
         if "content" not in frame.columns:
             missing_text = sorted(text_required - set(frame.columns))
@@ -2487,7 +2504,7 @@ def _load_neurips_exercise_table(path: Path) -> pl.DataFrame:
                 dtype=pl.Utf8,
             ),
         )
-    required = base_required | text_required
+    required = base_required | text_required | {objective_intent_column}
     return frame.with_columns(
         [_optional_text_expr(column).alias(column) for column in sorted(required)]
     )
@@ -2497,7 +2514,7 @@ def _neurips_module_code_map(
     exercise_rows: list[dict[str, Any]],
     dependencies: dict[str, Any],
 ) -> dict[str, str]:
-    """Return stable app-compatible module codes for NeurIPS modules."""
+    """Return globally unique, stable app-compatible module codes."""
     module_ids = {
         str(row.get("module_id") or "").strip()
         for row in exercise_rows
@@ -2507,20 +2524,36 @@ def _neurips_module_code_map(
     if isinstance(raw_modules, dict):
         module_ids.update(str(module_id) for module_id in raw_modules if str(module_id).strip())
 
+    configured_codes = {
+        NEURIPS_MODULE_CODE_BY_ID[module_id]
+        for module_id in module_ids
+        if module_id in NEURIPS_MODULE_CODE_BY_ID
+    }
     code_by_id: dict[str, str] = {}
+    used_codes: set[str] = set()
     fallback_cursor = 900
     for module_id in sorted(module_ids):
+        stable_code = NEURIPS_MODULE_CODE_BY_ID.get(module_id)
+        if stable_code:
+            if stable_code in used_codes:
+                raise ValueError(f"Duplicate configured MIAAM module code: {stable_code}")
+            code_by_id[module_id] = stable_code
+            used_codes.add(stable_code)
+            continue
         module_payload = raw_modules.get(module_id) if isinstance(raw_modules, dict) else None
         dependency_code = _clean_text(module_payload.get("code")) if isinstance(module_payload, dict) else None
-        if dependency_code:
+        if (
+            dependency_code
+            and dependency_code not in used_codes
+            and dependency_code not in configured_codes
+        ):
             code_by_id[module_id] = dependency_code
+            used_codes.add(dependency_code)
             continue
-        if module_id in NEURIPS_MODULE_CODE_BY_ID:
-            code_by_id[module_id] = NEURIPS_MODULE_CODE_BY_ID[module_id]
-            continue
-        while f"M{fallback_cursor}" in set(code_by_id.values()):
+        while f"M{fallback_cursor}" in used_codes:
             fallback_cursor += 1
         code_by_id[module_id] = f"M{fallback_cursor}"
+        used_codes.add(code_by_id[module_id])
         fallback_cursor += 1
     return code_by_id
 
@@ -2762,7 +2795,7 @@ def _neurips_catalog_payloads(
             objective_name_by_id.setdefault(objective_id, _clean_text(row.get("objective_name")))
             objective_long_by_id.setdefault(
                 objective_id,
-                _clean_text(row.get("objective_targeted_difficulties")),
+                _clean_text(row.get("objective_pedagogical_intent")),
             )
         if activity_id:
             activity_name_by_id.setdefault(activity_id, _clean_text(row.get("activity_name")))

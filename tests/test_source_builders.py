@@ -15,6 +15,7 @@ from visu2.source_builders import (
     _build_single_module_researcher_catalog_and_raw,
     _build_single_module_researcher_zpdes_rules,
     _neurips_catalog_payloads,
+    _neurips_module_code_map,
 )
 
 
@@ -183,7 +184,7 @@ def test_neurips_catalog_payloads_accept_parquet_content_and_preserve_classrooms
             "module_name": ["Numbers"],
             "objective_id": ["objective-1"],
             "objective_name": ["Objective 1"],
-            "objective_targeted_difficulties": ["Long 1"],
+            "objective_pedagogical_intent": ["Long 1"],
             "activity_id": ["activity-1"],
             "activity_name": ["Activity 1"],
             "source": ["am"],
@@ -218,7 +219,7 @@ def test_neurips_catalog_payloads_accept_parquet_content_and_preserve_classrooms
         encoding="utf-8",
     )
 
-    raw_attempts, _catalog, _rules, exercises_json, warnings = _neurips_catalog_payloads(
+    raw_attempts, catalog, _rules, exercises_json, warnings = _neurips_catalog_payloads(
         attempts_parquet_path=attempts_path,
         exercises_table_path=exercises_path,
         dependencies_json_path=dependencies_path,
@@ -226,11 +227,52 @@ def test_neurips_catalog_payloads_accept_parquet_content_and_preserve_classrooms
     )
 
     assert raw_attempts["classroom_id"].to_list() == ["class-a", "class-b"]
+    assert catalog["modules"][0]["objectives"][0]["title"]["long"] == "Long 1"
     exercise = exercises_json["exercises"][0]
     assert exercise["instruction"] == "Instruction from content"
     assert exercise["question"] == "Question from content"
     assert '"correct": "OK"' in exercise["feedback"]
     assert warnings == ()
+
+
+def test_neurips_module_codes_keep_world_stable_and_namespace_college() -> None:
+    unknown_module_id = "00000000-0000-0000-0000-000000000000"
+    world_m101_id = "053df3ec-5501-4ad8-9917-a935bcf76740"
+    world_m105_id = "14321a7e-4ef7-4b6a-9ff8-99329e08d7a2"
+    college_m101_id = "1977213e-f43b-407c-a455-488c15445417"
+    college_m102_id = "9c85b221-0536-4863-a69a-d8c42f9323c2"
+    college_m103_id = "6075b1c1-8edb-4d6a-9524-76d91f86de10"
+    module_ids = [
+        unknown_module_id,
+        world_m101_id,
+        world_m105_id,
+        college_m101_id,
+        college_m102_id,
+        college_m103_id,
+    ]
+    exercise_rows = [{"module_id": module_id} for module_id in module_ids]
+    dependencies = {
+        "modules": {
+            unknown_module_id: {"code": "M201"},
+            world_m101_id: {"code": "M101"},
+            world_m105_id: {"code": "M103"},
+            college_m101_id: {"code": "M101"},
+            college_m102_id: {"code": "M102"},
+            college_m103_id: {"code": "M103"},
+        }
+    }
+
+    code_by_id = _neurips_module_code_map(exercise_rows, dependencies)
+
+    assert code_by_id == {
+        unknown_module_id: "M900",
+        world_m101_id: "M101",
+        world_m105_id: "M105",
+        college_m101_id: "M201",
+        college_m102_id: "M202",
+        college_m103_id: "M203",
+    }
+    assert len(set(code_by_id.values())) == len(code_by_id)
 
 
 def test_neurips_catalog_payloads_use_embedded_codes_from_unsorted_dependencies(
